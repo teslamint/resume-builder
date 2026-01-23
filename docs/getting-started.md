@@ -1,0 +1,88 @@
+# Getting Started
+
+이력서 빌드 시스템을 사용하기 위한 빠른 시작 가이드입니다.
+
+## Prerequisites
+
+다음 도구들이 설치되어 있어야 합니다:
+
+- **Python 3.8+**
+- **Pandoc** - Markdown을 HTML로 변환
+- **WeasyPrint** - HTML을 PDF로 변환
+
+### macOS
+
+```bash
+brew install python pandoc
+pip3 install weasyprint
+```
+
+### Ubuntu/Debian
+
+```bash
+sudo apt-get install python3 pandoc
+pip3 install weasyprint
+```
+
+## Quick Start
+
+### 1. 예제로 테스트
+
+먼저 예제 데이터로 빌드를 테스트합니다:
+
+```bash
+./build.sh example all
+```
+
+생성된 파일:
+- `build/resume-example.pdf` - 전체 이력서
+- `build/resume-example-short.pdf` - 1페이지 요약
+- `build/resume-example-wanted.txt` - 채용 사이트용 텍스트
+
+### 2. 개인 데이터 설정
+
+`example/` 디렉토리를 참고하여 개인 데이터를 생성합니다:
+
+```bash
+# 프로필 디렉토리 생성
+mkdir -p profile
+
+# 예제에서 복사하여 수정
+cp example/profile/*.md profile/
+# 이후 profile/*.md 파일들을 개인 정보로 수정
+```
+
+자세한 설정 방법은 [USER_DATA.md](../USER_DATA.md)를 참고하세요.
+
+### 3. 개인 이력서 빌드
+
+```bash
+# 공개용 (포트폴리오)
+./build.sh public all
+
+# 지원용
+./build.sh job all
+```
+
+## 디렉토리 구조
+
+```
+resume/
+├── profile/              # 개인 프로필 (연락처, 요약, 기술스택)
+├── companies/            # 경력 정보
+│   └── <company>/
+│       ├── profile.md
+│       └── projects/
+├── overrides/            # 타겟별 오버라이드
+│   └── <target>/
+├── templates/            # 빌드 도구
+│   ├── resume_builder.py
+│   └── style.css
+├── example/              # 예제 데이터
+└── build/                # 생성된 파일 (gitignored)
+```
+
+## 다음 단계
+
+- [Customization](customization.md) - variant 시스템과 오버라이드 설정
+- [AI Workflow](ai-workflow.md) - Claude Code 스킬 활용

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# Build outputs
+build/
+
+# Personal data (fork users should add their own data here)
+/profile/
+/companies/
+/overrides/
+/company_info/
+/job_postings/
+/jd_analysis/
+
+# Keep example data
+!/example/
+
+# Claude Code
+.claude/*
+!.claude/CLAUDE.md
+!.claude/settings.json
+!.claude/skills/
+
+# Local settings (personal)
+.claude/settings.local.json
+
+# Serena
+.serena/
