@@ -35,7 +35,16 @@ Dependencies: `python3`, `pandoc`, `weasyprint` (enforced by `build.sh`).
 - Keep filenames lowercase with hyphens (e.g., `reward-service-api.md`).
 
 ## Testing Guidelines
-- No automated tests in this repo. Validate by running `./build.sh public all` and `./build.sh job all` to ensure outputs render.
+
+**Resume Build Validation:**
+```bash
+./build.sh public all && ./build.sh job all
+```
+
+**JD Pipeline Unit Tests (no dependencies):**
+```bash
+python3 templates/test_jd_status.py -v
+```
 
 ## Commit & Pull Request Guidelines
 - Commit messages follow Conventional Commits with scope, e.g. `docs(CO3): add portfolio`, `fix(builder): ...`.
@@ -275,6 +284,32 @@ python3 templates/jd_pipeline.py --rescreen job_postings/pass/ --dry-run
 | 🟢 지원 추천 | `job_postings/conditional/high/` |
 | 🟡 지원 보류 | `job_postings/conditional/hold/` |
 | 🔴 지원 비추천 | `job_postings/pass/` |
+
+### Status Management
+
+JD 파일에 frontmatter로 지원 상태를 관리. 상태가 설정된 파일은 재분류로부터 보호됨.
+
+**Frontmatter 스키마:**
+```yaml
+---
+status: rejected  # pending | applied | rejected | interview | offer
+status_updated: 2026-01-24
+status_reason: 채용 프로세스 부담  # optional
+---
+```
+
+**보호된 상태:** `applied`, `rejected`, `interview`, `offer` (재분류 스킵)
+**비보호 상태:** `pending`, 미설정 (재분류 가능)
+
+```bash
+# 상태 설정
+python3 templates/jd_pipeline.py --set-status rejected path/to/file.md
+python3 templates/jd_pipeline.py --set-status applied path/to/file.md --reason "서류 통과"
+
+# 기존 applied/rejected 폴더 파일에 상태 마이그레이션
+python3 templates/jd_pipeline.py --migrate-status --dry-run
+python3 templates/jd_pipeline.py --migrate-status
+```
 
 ---
 
