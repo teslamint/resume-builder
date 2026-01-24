@@ -1,0 +1,6 @@
+services:
+  resume:
+    build: .
+    volumes:
+      - .:/app
+      - ./build:/app/build

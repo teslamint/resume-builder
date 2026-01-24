@@ -29,7 +29,12 @@ jobs:
 
       - name: Run unit tests
         working-directory: templates
-        run: python3 test_jd_status.py -v
+        run: |
+          python3 test_jd_status.py -v
+          python3 test_schema.py -v
+
+      - name: Validate schema
+        run: python3 templates/schema.py --validate-all --example
 
   build:
     runs-on: ubuntu-latest

@@ -827,7 +827,7 @@ def build_for_company(company, variant):
 
 def main():
     parser = argparse.ArgumentParser(description='Build resume from modular markdown files')
-    parser.add_argument('--variant', '-v', required=True, choices=['public', 'job'],
+    parser.add_argument('--variant', '-v', choices=['public', 'job'],
                         help='Resume variant (public or job)')
     parser.add_argument('company', nargs='?', help='Company name (optional, builds full resume if not specified)')
     parser.add_argument('-o', '--output', help='Output file (default: stdout)')
@@ -838,10 +838,27 @@ def main():
     parser.add_argument('--target', '-t', help='Target company for override files')
     parser.add_argument('--example', action='store_true',
                         help='Use example data from example/ directory')
+    parser.add_argument('--validate', action='store_true',
+                        help='Validate all markdown files before building')
     args = parser.parse_args()
 
     global _GLOBAL_TARGET, _EXAMPLE_MODE, BASE_DIR
     _GLOBAL_TARGET = args.target
+
+    if args.validate:
+        from schema import validate_all
+        errors = validate_all(example=args.example)
+        if errors:
+            print("Validation errors found:", file=sys.stderr)
+            for error in errors:
+                print(f"  {error}", file=sys.stderr)
+            sys.exit(1)
+        print("All validations passed.")
+        if not args.variant:
+            return
+
+    if not args.variant:
+        parser.error("--variant is required for building")
 
     if args.example:
         _EXAMPLE_MODE = True

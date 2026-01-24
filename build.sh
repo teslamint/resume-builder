@@ -25,7 +25,7 @@ build_full() {
     if [[ -n "$example_opt" ]]; then
         output_name="build/resume-example${suffix}"
     fi
-    local css_path="$(pwd)/templates/style.css"
+    local css_path="$(pwd)/templates/themes/default/style.css"
     # Use target-specific style if exists
     if [[ -n "$build_target" && -f "overrides/${build_target}/style.css" ]]; then
         css_path="$(pwd)/overrides/${build_target}/style.css"
@@ -48,7 +48,7 @@ build_short() {
     if [[ -n "$example_opt" ]]; then
         output_name="build/resume-example-short"
     fi
-    local css_path="$(pwd)/templates/style-short.css"
+    local css_path="$(pwd)/templates/themes/default/style-short.css"
     echo "Building short resume (${variant})..."
     python3 templates/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt} --short > "${output_name}.md"
     python3 templates/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt} --short --format pdf > "${output_name}-pdf.md"
