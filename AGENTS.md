@@ -200,6 +200,7 @@ grep "target-specific phrase" build/resume-job.md           # Should NOT find
 | `/extract-company-info` | Extract company info from Wanted pages | `company_info/<company>.md` |
 | `/extract-job-posting` | Extract JD from recruitment sites | `job_postings/<id>-<company>-<position>.md` |
 | `/jd-screening` | Analyze JD fit against criteria | `jd_analysis/screening/<id>-<company>-<position>.md` |
+| `/jd-batch` | Batch process URLs or reclassify files | Auto-classify to folders |
 
 ### General Skills
 
@@ -242,6 +243,41 @@ python3 jd_analysis/interview/build-sheet.py <file>.md --stage 실무|심화|컬
 
 ---
 
+## JD Pipeline Commands
+
+### Status Check
+```bash
+python3 templates/jd_pipeline.py --status
+```
+
+### URL Processing
+```bash
+# Single URL - check duplicates
+python3 templates/jd_pipeline.py --url "https://wanted.co.kr/wd/123456"
+
+# Batch URLs from file
+python3 templates/jd_pipeline.py --file urls.txt
+```
+
+### Auto-Classification
+```bash
+# Classify files based on screening verdict
+python3 templates/jd_pipeline.py --classify job_postings/unprocessed/
+
+# Re-classify with dry-run preview
+python3 templates/jd_pipeline.py --rescreen job_postings/pass/ --dry-run
+```
+
+### Folder Classification Mapping
+
+| Verdict | Target Folder |
+|---------|---------------|
+| 🟢 지원 추천 | `job_postings/conditional/high/` |
+| 🟡 지원 보류 | `job_postings/conditional/hold/` |
+| 🔴 지원 비추천 | `job_postings/pass/` |
+
+---
+
 ## Extended Directory Structure
 
 ```
@@ -253,8 +289,16 @@ resume/
 ├── build/                # Generated (gitignored)
 ├── company_info/         # Company database
 │   └── <company>.md
-├── job_postings/         # Raw JDs
-│   └── <id>-<company>-<position>.md
+├── job_postings/         # JDs with auto-classification
+│   ├── jd-screening-rules.md
+│   ├── pass/             # 🔴 Not recommended
+│   ├── conditional/
+│   │   ├── high/         # 🟢 Recommended
+│   │   ├── hold/         # 🟡 On hold
+│   │   ├── middle/
+│   │   └── low/
+│   ├── applied/          # ✅ Applied
+│   └── rejected/         # ❌ Rejected
 └── jd_analysis/
     ├── screening/        # Screening results
     │   ├── SUMMARY.md

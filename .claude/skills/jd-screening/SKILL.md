@@ -50,6 +50,20 @@ company_info/{company}.md 파일 확인
 jd_analysis/screening/{id}-{company}-{position}.md
 ```
 
+### 6. 자동 분류 (파일 이동)
+
+스크리닝 완료 후 판정 결과에 따라 JD 파일 자동 분류:
+
+```bash
+python3 templates/jd_pipeline.py --classify <jd_file_folder>
+```
+
+| 판정 | 대상 폴더 |
+|------|----------|
+| 지원 추천 | `job_postings/conditional/high/` |
+| 지원 보류 | `job_postings/conditional/hold/` |
+| 지원 비추천 | `job_postings/pass/` |
+
 ## 출력 템플릿
 
 ```markdown
