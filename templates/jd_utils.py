@@ -6,7 +6,10 @@ import re
 import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Dict
+
+# Protected statuses that should not be auto-reclassified
+PROTECTED_STATUSES = {"rejected", "applied", "interview", "offer"}
 
 # Base paths
 BASE_DIR = Path(__file__).parent.parent
@@ -23,6 +26,7 @@ VERDICT_FOLDER_MAP = {
     "조건부 상": "conditional/high",
     "조건부 중": "conditional/middle",
     "조건부 하": "conditional/low",
+    "조건부 보류": "conditional/hold",
 }
 
 VerdictType = Literal["지원 추천", "지원 보류", "지원 비추천"]
@@ -52,6 +56,32 @@ def extract_job_id(url: str) -> Optional[str]:
             return match.group(1)
 
     return None
+
+
+def extract_job_id_from_filename(filename: str) -> Optional[str]:
+    """Extract job ID from JD filename.
+
+    Patterns:
+    - "123456-company-position.md" -> "123456"
+    - "remember-273986-company-position.md" -> "273986" (platform prefix)
+    - "private-company-position.md" -> "private"
+    """
+    stem = Path(filename).stem if "." in filename else filename
+    parts = stem.split("-")
+
+    if not parts:
+        return None
+
+    # First part is numeric -> job_id
+    if parts[0].isdigit():
+        return parts[0]
+
+    # First part is prefix (e.g., "remember"), check second part
+    if len(parts) > 1 and parts[1].isdigit():
+        return parts[1]
+
+    # Fallback to first part (e.g., "private")
+    return parts[0]
 
 
 def get_platform_from_url(url: str) -> Optional[str]:
@@ -177,6 +207,11 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[str]:
     if match:
         return match.group(1).strip()
 
+    # Pattern: **결론**: {verdict}
+    match = re.search(r"\*\*결론\*\*[:\s]+([^\n]+)", screening_content)
+    if match:
+        return match.group(1).strip()
+
     return None
 
 
@@ -243,6 +278,101 @@ def extract_metadata_from_jd(jd_content: str) -> dict:
         metadata["url"] = url_match.group(1)
 
     return metadata
+
+
+def parse_frontmatter(content: str) -> Dict[str, str]:
+    """Parse YAML frontmatter from file content.
+
+    Returns a dict of key-value pairs from the frontmatter block.
+    Returns empty dict if no frontmatter found.
+    """
+    if not content.startswith("---"):
+        return {}
+
+    lines = content.split("\n")
+    if len(lines) < 2:
+        return {}
+
+    end_idx = -1
+    for i, line in enumerate(lines[1:], 1):
+        if line.strip() == "---":
+            end_idx = i
+            break
+
+    if end_idx == -1:
+        return {}
+
+    result = {}
+    for line in lines[1:end_idx]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            result[key.strip()] = value.strip()
+
+    return result
+
+
+def get_user_status(content: str) -> Optional[str]:
+    """Get user-defined status from file content.
+
+    Returns the status value if found in frontmatter, None otherwise.
+    """
+    frontmatter = parse_frontmatter(content)
+    return frontmatter.get("status")
+
+
+def is_protected_status(status: Optional[str]) -> bool:
+    """Check if status is protected from auto-reclassification.
+
+    Protected statuses: rejected, applied, interview, offer
+    Non-protected: pending, None
+    """
+    if status is None:
+        return False
+    return status in PROTECTED_STATUSES
+
+
+def add_frontmatter_status(
+    content: str,
+    status: str,
+    reason: Optional[str] = None,
+) -> str:
+    """Add or update status in file frontmatter.
+
+    If frontmatter exists, updates status field.
+    If no frontmatter, creates new frontmatter block.
+    Always updates status_updated timestamp.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    existing = parse_frontmatter(content)
+
+    # Build new frontmatter
+    new_fields = dict(existing)
+    new_fields["status"] = status
+    new_fields["status_updated"] = today
+    if reason:
+        new_fields["status_reason"] = reason
+
+    # Generate frontmatter block
+    fm_lines = ["---"]
+    for key, value in new_fields.items():
+        fm_lines.append(f"{key}: {value}")
+    fm_lines.append("---")
+    frontmatter_block = "\n".join(fm_lines)
+
+    # Remove existing frontmatter if present
+    if content.startswith("---"):
+        lines = content.split("\n")
+        end_idx = -1
+        for i, line in enumerate(lines[1:], 1):
+            if line.strip() == "---":
+                end_idx = i
+                break
+        if end_idx != -1:
+            body = "\n".join(lines[end_idx + 1 :])
+            return frontmatter_block + "\n" + body.lstrip("\n")
+
+    # No existing frontmatter
+    return frontmatter_block + "\n" + content
 
 
 if __name__ == "__main__":

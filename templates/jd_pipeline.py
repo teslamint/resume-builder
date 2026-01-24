@@ -19,6 +19,7 @@ from enum import Enum
 
 from jd_utils import (
     extract_job_id,
+    extract_job_id_from_filename,
     get_platform_from_url,
     is_duplicate,
     find_existing_jd,
@@ -29,6 +30,9 @@ from jd_utils import (
     parse_verdict_from_screening,
     update_summary,
     extract_metadata_from_jd,
+    get_user_status,
+    is_protected_status,
+    add_frontmatter_status,
     JOB_POSTINGS_DIR,
     SCREENING_DIR,
 )
@@ -83,35 +87,47 @@ def check_url(url: str) -> ProcessedItem:
 
 
 def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
-    """Classify a JD file based on its screening result or embedded verdict."""
+    """Classify a JD file based on its screening result or embedded verdict.
+
+    Protected status files (applied, rejected, interview, offer) are skipped.
+    """
+    job_id = extract_job_id_from_filename(file_path.name)
+
     if not file_path.exists():
         return ProcessedItem(
             url_or_path=str(file_path),
-            job_id=None,
+            job_id=job_id,
             result=ProcessResult.ERROR,
             message="파일이 존재하지 않습니다.",
         )
 
     content = file_path.read_text(encoding="utf-8")
-    metadata = extract_metadata_from_jd(content)
+
+    # Check for protected status
+    user_status = get_user_status(content)
+    if is_protected_status(user_status):
+        return ProcessedItem(
+            url_or_path=str(file_path),
+            job_id=job_id,
+            result=ProcessResult.SKIPPED,
+            message=f"보호된 상태 ({user_status}): 재분류 스킵",
+        )
 
     # Try to find verdict from the file itself
     verdict = parse_verdict_from_screening(content)
 
     # If not found in JD, check screening file
-    if not verdict:
-        job_id = file_path.stem.split("-")[0] if "-" in file_path.stem else None
-        if job_id:
-            for screening_file in SCREENING_DIR.glob(f"{job_id}-*.md"):
-                screening_content = screening_file.read_text(encoding="utf-8")
-                verdict = parse_verdict_from_screening(screening_content)
-                if verdict:
-                    break
+    if not verdict and job_id:
+        for screening_file in SCREENING_DIR.glob(f"{job_id}-*.md"):
+            screening_content = screening_file.read_text(encoding="utf-8")
+            verdict = parse_verdict_from_screening(screening_content)
+            if verdict:
+                break
 
     if not verdict:
         return ProcessedItem(
             url_or_path=str(file_path),
-            job_id=metadata.get("job_id"),
+            job_id=job_id,
             result=ProcessResult.SKIPPED,
             message="판정 결과를 찾을 수 없습니다. 스크리닝이 필요합니다.",
         )
@@ -121,7 +137,7 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
     if dry_run:
         return ProcessedItem(
             url_or_path=str(file_path),
-            job_id=metadata.get("job_id"),
+            job_id=job_id,
             result=ProcessResult.SUCCESS,
             message=f"[DRY-RUN] {verdict} → {target_folder}",
             target_folder=target_folder,
@@ -131,11 +147,75 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
 
     return ProcessedItem(
         url_or_path=str(file_path),
-        job_id=metadata.get("job_id"),
+        job_id=job_id,
         result=ProcessResult.SUCCESS,
         message=f"{verdict} → {new_path.relative_to(JOB_POSTINGS_DIR)}",
         target_folder=target_folder,
     )
+
+
+def migrate_status(base_dir: Path, dry_run: bool = False) -> List[ProcessedItem]:
+    """Migrate files in applied/rejected folders to have frontmatter status.
+
+    This adds status field to files based on their folder location,
+    allowing them to be protected from auto-reclassification.
+    """
+    results = []
+
+    folder_status_map = {
+        "applied": "applied",
+        "rejected": "rejected",
+    }
+
+    for folder_name, status_value in folder_status_map.items():
+        folder_path = base_dir / folder_name
+        if not folder_path.exists():
+            continue
+
+        for md_file in folder_path.glob("*.md"):
+            if md_file.name in ("CLAUDE.md", "jd-screening-rules.md"):
+                continue
+
+            content = md_file.read_text(encoding="utf-8")
+            existing_status = get_user_status(content)
+
+            # Skip if already has a status
+            if existing_status:
+                results.append(
+                    ProcessedItem(
+                        url_or_path=str(md_file),
+                        job_id=extract_job_id_from_filename(md_file.name),
+                        result=ProcessResult.SKIPPED,
+                        message=f"이미 상태 존재: {existing_status}",
+                    )
+                )
+                continue
+
+            if dry_run:
+                results.append(
+                    ProcessedItem(
+                        url_or_path=str(md_file),
+                        job_id=extract_job_id_from_filename(md_file.name),
+                        result=ProcessResult.SUCCESS,
+                        message=f"[DRY-RUN] status: {status_value} 추가 예정",
+                    )
+                )
+                continue
+
+            # Add frontmatter status
+            new_content = add_frontmatter_status(content, status_value)
+            md_file.write_text(new_content, encoding="utf-8")
+
+            results.append(
+                ProcessedItem(
+                    url_or_path=str(md_file),
+                    job_id=extract_job_id_from_filename(md_file.name),
+                    result=ProcessResult.SUCCESS,
+                    message=f"status: {status_value} 추가됨",
+                )
+            )
+
+    return results
 
 
 def get_status() -> dict:
@@ -285,6 +365,12 @@ Examples:
 
   # Show current status
   python3 templates/jd_pipeline.py --status
+
+  # Set status on a file
+  python3 templates/jd_pipeline.py --set-status rejected path/to/file.md --reason "면접 거절"
+
+  # Migrate applied/rejected folders to have frontmatter status
+  python3 templates/jd_pipeline.py --migrate-status --dry-run
         """,
     )
 
@@ -294,8 +380,20 @@ Examples:
     group.add_argument("--rescreen", help="Folder to rescreen/reclassify")
     group.add_argument("--classify", help="Folder to classify based on verdict")
     group.add_argument("--status", action="store_true", help="Show current folder status")
+    group.add_argument(
+        "--set-status",
+        nargs=2,
+        metavar=("STATUS", "FILE"),
+        help="Set status on a file (pending|applied|rejected|interview|offer)",
+    )
+    group.add_argument(
+        "--migrate-status",
+        action="store_true",
+        help="Migrate files in applied/rejected folders to have frontmatter status",
+    )
 
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without moving files")
+    parser.add_argument("--reason", help="Reason for status change (used with --set-status)")
 
     args = parser.parse_args()
 
@@ -331,6 +429,41 @@ Examples:
         if args.dry_run:
             print("\n⚠️ DRY-RUN 모드: 실제 파일 이동 없음")
             print("   실제 이동하려면 --dry-run 옵션을 제거하세요.")
+
+    elif args.set_status:
+        status_value, file_path = args.set_status
+        valid_statuses = ["pending", "applied", "rejected", "interview", "offer"]
+
+        if status_value not in valid_statuses:
+            print(f"❌ 유효하지 않은 상태: {status_value}")
+            print(f"   유효한 상태: {', '.join(valid_statuses)}")
+            sys.exit(1)
+
+        path = Path(file_path)
+        if not path.exists():
+            print(f"❌ 파일을 찾을 수 없습니다: {path}")
+            sys.exit(1)
+
+        content = path.read_text(encoding="utf-8")
+
+        if args.dry_run:
+            print(f"[DRY-RUN] {path.name}: status -> {status_value}")
+            if args.reason:
+                print(f"[DRY-RUN] reason: {args.reason}")
+        else:
+            new_content = add_frontmatter_status(content, status_value, args.reason)
+            path.write_text(new_content, encoding="utf-8")
+            print(f"✅ {path.name}: status -> {status_value}")
+            if args.reason:
+                print(f"   reason: {args.reason}")
+
+    elif args.migrate_status:
+        results = migrate_status(JOB_POSTINGS_DIR, dry_run=args.dry_run)
+        print_results(results)
+
+        if args.dry_run:
+            print("\n⚠️ DRY-RUN 모드: 실제 파일 수정 없음")
+            print("   실제 마이그레이션하려면 --dry-run 옵션을 제거하세요.")
 
 
 if __name__ == "__main__":
