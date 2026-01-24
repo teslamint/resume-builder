@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'templates/**'
+      - 'example/**'
+      - 'build.sh'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'templates/**'
+      - 'example/**'
+      - 'build.sh'
+      - '.github/workflows/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run unit tests
+        working-directory: templates
+        run: python3 test_jd_status.py -v
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc weasyprint
+
+      - name: Build example resume
+        run: ./build.sh example all
+
+      - name: Verify outputs
+        run: |
+          test -f build/resume-example.md
+          test -f build/resume-example.pdf
+          test -f build/resume-example-short.pdf
+          test -f build/resume-example-wanted.txt
+          echo "✅ All outputs generated successfully"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: resume-example
+          path: build/resume-example*
+          retention-days: 7
