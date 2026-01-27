@@ -25,6 +25,7 @@ import yaml
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 from jd_utils import is_duplicate, extract_job_id, JOB_POSTINGS_DIR
+from company_validator import parse_company_file, validate_company, COMPANY_INFO_DIR
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
@@ -109,6 +110,39 @@ def save_state(state: SearchState) -> None:
     state.last_run = datetime.now().isoformat()
     with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump(state.to_dict(), f, indent=2, ensure_ascii=False)
+
+
+def check_company_risks(company_name: str) -> Optional[dict]:
+    """
+    Check company info and return risk summary.
+    Returns dict with completeness and risks, or None if not found.
+    """
+    # Normalize company name for matching
+    company_lower = company_name.lower().strip()
+    
+    # Search for matching files
+    for f in COMPANY_INFO_DIR.glob("*.md"):
+        if f.name.startswith("_"):
+            continue
+        
+        # Check if company name is in filename or file content
+        if company_lower in f.stem.lower():
+            try:
+                data = parse_company_file(f)
+                result = validate_company(data, f)
+                
+                critical_risks = [r for r in result.risk_flags if r.severity in ("critical", "high")]
+                
+                return {
+                    "file": f.name,
+                    "completeness": result.completeness_score,
+                    "risks": critical_risks,
+                    "incomplete": result.completeness_score < 70,
+                }
+            except Exception:
+                return None
+    
+    return None
 
 
 def quick_filter_title(title: str, config: dict) -> Optional[str]:
@@ -308,14 +342,49 @@ def run_search(
     print(f"   중복 스킵: {total_duplicates}개")
     print(f"   필터링: {total_filtered}개")
     
-    # List new postings
+    # List new postings with company risk check
     if all_new_postings:
         print("\n📋 새로 발견된 공고:")
+        companies_with_risks = []
+        companies_incomplete = []
+        companies_missing = []
+        
         for i, posting in enumerate(all_new_postings, 1):
             priority = "⭐" if posting.quick_filter_result == "prefer" else "  "
             print(f"   {priority} {i}. [{posting.job_id}] {posting.title}")
             print(f"       {posting.company} | {posting.experience}")
             print(f"       {posting.url}")
+            
+            # Check company risks
+            company_info = check_company_risks(posting.company)
+            if company_info:
+                completeness = company_info["completeness"]
+                risks = company_info["risks"]
+                
+                # Show completeness status
+                if completeness >= 70:
+                    print(f"       ✅ 기업정보 {completeness:.0f}%")
+                else:
+                    print(f"       ⚠️ 기업정보 불완전 ({completeness:.0f}%)")
+                    companies_incomplete.append(posting.company)
+                
+                # Show critical/high risks
+                for risk in risks:
+                    icon = "🚨" if risk.severity == "critical" else "⚠️"
+                    print(f"       {icon} {risk.code}: {risk.message}")
+                    if posting.company not in companies_with_risks:
+                        companies_with_risks.append(posting.company)
+            else:
+                print(f"       ❓ 기업정보 없음")
+                companies_missing.append(posting.company)
+        
+        # Summary warnings
+        if companies_with_risks:
+            print(f"\n   ⚠️ 리스크 주의 기업: {', '.join(companies_with_risks[:5])}")
+        if companies_incomplete:
+            print(f"   📝 정보 보완 필요: {', '.join(companies_incomplete[:5])}")
+        if companies_missing:
+            print(f"   ❓ 정보 추출 권장: {', '.join(companies_missing[:5])}")
     
     # Save state
     if not dry_run:

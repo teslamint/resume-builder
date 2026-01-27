@@ -27,6 +27,12 @@ from jd_utils import (
     find_existing_jd,
     is_duplicate,
 )
+from company_validator import (
+    parse_company_file,
+    validate_company,
+    ValidationResult,
+    COMPANY_INFO_DIR,
+)
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
@@ -92,6 +98,60 @@ def format_notification(postings: List[dict], summary: dict) -> str:
             lines.append(f"  ... 외 {len(recommended) - 5}개")
     
     return "\n".join(lines)
+
+
+def check_company_info(company_name: str) -> Optional[dict]:
+    """
+    Check company info file and return validation results.
+    Returns dict with completeness, risks, and warnings.
+    """
+    # Try to find company file (fuzzy match)
+    company_slug = company_name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+    
+    # Search for matching files
+    matches = []
+    for f in COMPANY_INFO_DIR.glob("*.md"):
+        if f.name.startswith("_"):
+            continue
+        if company_slug in f.stem.lower() or company_name.lower() in f.stem.lower():
+            matches.append(f)
+    
+    if not matches:
+        return {
+            "found": False,
+            "message": f"⚠️ 기업정보 없음: {company_name}",
+            "completeness": 0,
+            "risks": [],
+        }
+    
+    # Use first match
+    file_path = matches[0]
+    try:
+        data = parse_company_file(file_path)
+        result = validate_company(data, file_path)
+        
+        # Extract critical/high risks
+        critical_risks = [f for f in result.risk_flags if f.severity in ("critical", "high")]
+        
+        return {
+            "found": True,
+            "file": file_path.name,
+            "completeness": result.completeness_score,
+            "risks": [
+                {"code": r.code, "severity": r.severity, "message": r.message}
+                for r in critical_risks
+            ],
+            "is_startup": data.is_startup,
+            "incomplete_warning": result.completeness_score < 70,
+        }
+    except Exception as e:
+        return {
+            "found": True,
+            "file": file_path.name,
+            "error": str(e),
+            "completeness": 0,
+            "risks": [],
+        }
 
 
 def run_extraction(url: str, dry_run: bool = False) -> Optional[Path]:

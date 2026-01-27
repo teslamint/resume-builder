@@ -359,7 +359,10 @@ resume/
 ├── company_info/         # Company database
 │   └── <company>.md
 ├── job_postings/         # JDs with auto-classification
-│   ├── jd-screening-rules.md
+│   ├── jd-screening-rules.md         # User's screening rules (gitignored)
+│   ├── jd-screening-rules-template.md # Template for new users
+│   ├── examples/
+│   │   └── jd-screening-rules-sample.md
 │   ├── pass/             # 🔴 Not recommended
 │   ├── conditional/
 │   │   ├── high/         # 🟢 Recommended
