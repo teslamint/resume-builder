@@ -37,14 +37,15 @@ def extract_job_id(url: str) -> Optional[str]:
 
     Supports:
     - Wanted: wanted.co.kr/wd/{id}
-    - Remember: rememberapp.co.kr/job/{id}
+    - Remember: rememberapp.co.kr/job/{id}, career.rememberapp.co.kr/job/posting/{id}
     - Saramin: saramin.co.kr/zf_user/jobs/relay/view?rec_idx={id}
     - JobKorea: jobkorea.co.kr/Recruit/GI_Read/{id}
     - Jumpit: jumpit.saramin.co.kr/position/{id}
     """
     patterns = [
         r"wanted\.co\.kr/wd/(\d+)",
-        r"rememberapp\.co\.kr/job/(\d+)",
+        r"rememberapp\.co\.kr/job/(?:posting/)?(\d+)",
+        r"career\.rememberapp\.co\.kr/job/posting/(\d+)",
         r"saramin\.co\.kr.*rec_idx=(\d+)",
         r"jobkorea\.co\.kr/Recruit/GI_Read/(\d+)",
         r"jumpit\.saramin\.co\.kr/position/(\d+)",
