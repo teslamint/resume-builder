@@ -211,6 +211,40 @@ grep "target-specific phrase" build/resume-job.md           # Should NOT find
 | `/jd-screening` | Analyze JD fit against criteria | `jd_analysis/screening/<id>-<company>-<position>.md` |
 | `/jd-batch` | Batch process URLs or reclassify files | Auto-classify to folders |
 
+### Automated Job Search (jd_search.py / jd_auto.py)
+
+**검색 자동화 스크립트:**
+```bash
+# 단일 키워드 검색 (테스트)
+python3 templates/jd_search.py --query "백엔드 시니어" --dry-run
+
+# 전체 키워드 검색 실행
+python3 templates/jd_search.py
+
+# 상태 확인
+python3 templates/jd_search.py --status
+
+# 상태 초기화
+python3 templates/jd_search.py --reset-state
+
+# 풀 파이프라인 (검색만)
+python3 templates/jd_auto.py --search-only
+```
+
+**설정 파일:** `job_postings/search_config.yaml`
+- 검색 키워드 목록
+- 제목 기반 빠른 필터 (title_exclude, title_prefer)
+- 실행 설정 (max_urls, scroll_count, request_delay)
+
+**Cron 스케줄 (Clawdbot):**
+- `jd-search-morning`: 매일 오전 9시 (KST)
+- `jd-search-evening`: 매일 오후 7시 (KST)
+
+**출력:**
+- 새 URL 목록: `job_postings/unprocessed/search_YYYYMMDD_HHMM.txt`
+- 검색 결과: `job_postings/auto_results/search_YYYYMMDD_HHMM.json`
+- 상태 파일: `job_postings/.search_state.json`
+
 ### General Skills
 
 | Skill | Purpose |
