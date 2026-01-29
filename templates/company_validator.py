@@ -98,14 +98,18 @@ RISK_THRESHOLDS = {
 
 
 def parse_number(text: str) -> Optional[int]:
-    """Extract number from text like '59명' or '5,619만원'."""
+    """Extract number from text like '59명', '5,619만원', '약 1,220명', '2,774명 (국민연금)'."""
     if not text:
         return None
-    # Remove commas and extract digits
-    match = re.search(r'[\d,]+', text.replace(',', ''))
+    # Skip if explicitly marked as unavailable
+    if '비공개' in text or '정보없음' in text:
+        return None
+    # Remove "약", commas, and extract first number
+    cleaned = text.replace('약', '').replace(',', '')
+    match = re.search(r'(\d+)', cleaned)
     if match:
         try:
-            return int(match.group().replace(',', ''))
+            return int(match.group(1))
         except ValueError:
             return None
     return None
@@ -160,35 +164,35 @@ def parse_company_file(file_path: Path) -> CompanyData:
         if year_match:
             data.founded_year = int(year_match.group(1))
         
-        # 직원수
-        emp_match = re.search(r'직원수.*?\|\s*(\d+)명', section_text)
+        # 직원수 - handles "2,774명 (국민연금) / 4,411명 (고용보험)"
+        emp_match = re.search(r'직원수.*?\|\s*([\d,]+)명', section_text)
         if emp_match:
-            data.employee_current = int(emp_match.group(1))
+            data.employee_current = int(emp_match.group(1).replace(',', ''))
         
         # 업종
         industry_match = re.search(r'업종.*?\|\s*([^|]+)', section_text)
         if industry_match:
             data.industry = industry_match.group(1).strip()
     
-    # 인원 통계
-    staff_section = re.search(r'## 인원 통계.*?(?=##|\Z)', content, re.DOTALL)
+    # 인원 통계 or 인원 현황 (stops at next ## but not ###)
+    staff_section = re.search(r'## 인원 (?:통계|현황).*?(?=\n## [^#]|\Z)', content, re.DOTALL)
     if staff_section:
         section_text = staff_section.group()
         
-        # 현재 인원
-        current_match = re.search(r'현재 인원.*?\|\s*(\d+)명', section_text)
+        # 현재 인원 or 총 인원 - handles "2,774명", "약 100명", "2,774명 (국민연금)"
+        current_match = re.search(r'(?:현재 인원|총 인원).*?\|\s*약?\s*([\d,]+)명', section_text)
         if current_match:
-            data.employee_current = int(current_match.group(1))
+            data.employee_current = int(current_match.group(1).replace(',', ''))
         
-        # 1년간 입사자
-        joined_match = re.search(r'1년간 입사자.*?\|\s*(\d+)명', section_text)
+        # 1년간 입사자 - handles "약 1,220명", table or list format
+        joined_match = re.search(r'(?:1년간 입사자.*?\|\s*|입사[:\s]+)약?\s*([\d,]+)명', section_text)
         if joined_match:
-            data.employee_joined_1y = int(joined_match.group(1))
+            data.employee_joined_1y = int(joined_match.group(1).replace(',', ''))
         
-        # 1년간 퇴사자
-        left_match = re.search(r'1년간 퇴사자.*?\|\s*(\d+)명', section_text)
+        # 1년간 퇴사자 - handles table or list format ("- 퇴사: 14명")
+        left_match = re.search(r'(?:1년간 퇴사자.*?\|\s*|퇴사[:\s]+)약?\s*([\d,]+)명', section_text)
         if left_match:
-            data.employee_left_1y = int(left_match.group(1))
+            data.employee_left_1y = int(left_match.group(1).replace(',', ''))
         
         # MoM 변동
         mom_match = re.search(r'MoM\s*([-+]?\d+(?:\.\d+)?)\s*%', section_text)
@@ -216,13 +220,18 @@ def parse_company_file(file_path: Path) -> CompanyData:
         section_text = investment_section.group()
         data.is_startup = True
         
-        # 현재 라운드
-        round_match = re.search(r'현재 라운드.*?\|\s*(\S+)', section_text)
+        # 현재 라운드 or 상태 (handles "Series C", "상장기업", "M&A")
+        round_match = re.search(r'(?:현재 라운드|현재 상태).*?\|\s*([^\n|]+)', section_text)
         if round_match:
-            data.investment_round = round_match.group(1)
+            round_val = round_match.group(1).strip()
+            if '상장' in round_val:
+                data.investment_round = "IPO"
+                data.is_startup = False  # Listed company, not a startup for screening
+            else:
+                data.investment_round = round_val
         
-        # 누적 투자금
-        total_match = re.search(r'누적 투자금.*?\|\s*([\d,]+(?:\.\d+)?)\s*억', section_text)
+        # 누적 투자금 - handles "100억원", "100억 이상", "약 130억원"
+        total_match = re.search(r'누적 투자.*?\|\s*(?:약\s*)?([\d,]+(?:\.\d+)?)\s*억', section_text)
         if total_match:
             data.investment_total = float(total_match.group(1).replace(',', ''))
     

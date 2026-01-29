@@ -33,5 +33,8 @@ build/
 # Local settings (personal)
 .claude/settings.local.json
 
+# Local dashboard (sync_dashboard.py)
+dashboard_local.md
+
 # Serena
 .serena/

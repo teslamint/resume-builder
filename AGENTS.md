@@ -393,3 +393,41 @@ resume/
 | `jd_analysis/interview/` | `<id>-<company>-<position>.md` | `123456-techcorp-backend.md` |
 
 Private JDs: `private-<company>-<position>.md`
+
+---
+
+## Obsidian Dashboard Sync (sync_dashboard.py)
+
+Bidirectional sync between `job_postings/` and Obsidian dashboard.
+
+**Usage:**
+```bash
+# Obsidian → job_postings (apply dashboard status changes)
+python scripts/sync_dashboard.py --from-obsidian
+
+# job_postings → Obsidian (generate tables for copy-paste)
+python scripts/sync_dashboard.py --to-obsidian
+
+# Full bidirectional sync (Obsidian wins on conflict)
+python scripts/sync_dashboard.py --sync
+
+# Preview mode
+python scripts/sync_dashboard.py --from-obsidian --dry-run
+```
+
+**Environment Variables:**
+- `OBSIDIAN_DASHBOARD_PATH`: Override default dashboard path (optional)
+
+**Status Mapping (Dashboard → Folder):**
+
+| Dashboard Status | Target Folder |
+|------------------|---------------|
+| 지원, 서류통과, 면접 | `applied/` |
+| 패스 | `pass/` |
+| 서류 탈락, 탈락 | `rejected/` |
+| 보류, 조건부, 킵 | `conditional/hold/` |
+
+**Notes:**
+- `--to-obsidian` prints tables for manual copy-paste (auto-replace not implemented)
+- Files in `conditional/high/`, `conditional/hold/` etc. are properly scanned
+- Safe file move: skips if destination exists, logs errors on failure
