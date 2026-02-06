@@ -9,6 +9,13 @@
 - `build/`: generated artifacts (`resume-*.md`, `resume-*.html`, `resume-*.pdf`, `resume-*-remember.txt`, `resume-*-wanted.txt`).
 
 ## Build, Test, and Development Commands
+
+### build.sh Usage
+```
+./build.sh <public|job|example> [full|short|wanted|base|all] [--target <name>] [--clean]
+```
+
+**Common builds:**
 - `./build.sh example all`: build demo resume with example data (for testing).
 - `./build.sh public all`: build full + short + wanted public resume.
 - `./build.sh job all`: build all job resume variants.
@@ -16,11 +23,24 @@
 - `./build.sh job short`: build 1-page JD-focused resume only.
 - `./build.sh public wanted`: build Wanted site plain text format.
 - `./build.sh job base`: generate immutable base resume for diff tracking.
-- `./build.sh job full --target "Company"`: build with automatic diff notes vs base.
+
+**Target-specific builds:**
+- `./build.sh job full --target <name>`: build with override files from `overrides/<name>/`, outputs to `build/resume-job-<name>.*`.
 - `./build.sh job full --clean`: overwrite notes instead of appending.
+
+**Build pipeline (per format):**
+1. `resume_builder.py` → `.md` (Markdown)
+2. `resume_builder.py --format pdf` → `-pdf.md` (PDF layout with style includes)
+3. `pandoc` → `.html` (with CSS from `templates/themes/default/` or override)
+4. `weasyprint` → `.pdf`
+5. `pandoc -t plain` → `-remember.txt` (plain text for Remember app)
+6. `generate_notes.py` → `resume-job-notes.md` (diff vs base, job variant only)
+
+**Python CLI direct usage:**
 - `python3 templates/resume_builder.py --list`: list available company keys.
 - `python3 templates/resume_builder.py --variant public > resume-public.md`: generate Markdown only.
 - `python3 templates/resume_builder.py --variant job --format wanted`: generate Wanted format.
+- `python3 templates/resume_builder.py --variant job --target protopie`: generate with target overrides.
 - `python3 templates/resume_builder.py --variant public --example`: generate example resume.
 - `python3 templates/generate_notes.py --base build/resume-job-base.md --current build/resume-job.md --target "Company"`: manual diff generation.
 
@@ -142,6 +162,16 @@ Use `--clean` flag to overwrite notes instead of appending for fresh start.
 - **Fix**: Use `splitlines()` without keepends, set explicit `lineterm='\n'` in unified_diff
 - **Location**: `templates/generate_notes.py`
 
+**Override Missing for Full-Mode Company Projects**
+- **Symptom**: Mixed Korean/English in targeted resume output
+- **Root cause**: Only some project files overridden for a full-mode company; non-overridden files pull from original (Korean) source
+- **Fix**: When a company is in full mode, override ALL files under `companies/<company>/projects/` — not just key ones
+
+**Summary-Mode Content in Wrong Section**
+- **Symptom**: Summary-mode company shows only name/period/role, no description
+- **Root cause**: Description placed in `## Summary` section, but `extract_overview()` only reads content under `## Overview`
+- **Fix**: Place all summary-mode content (description, key experience) inside `## Overview` using `job-only` variant tags
+
 ### Target-Specific Override System
 
 When customizing resumes for specific company targets:
@@ -151,20 +181,49 @@ When customizing resumes for specific company targets:
 ```text
 overrides/
 └── <target>/          # e.g., targetco
+    ├── config.json    # company list, detail levels, feature flags
+    ├── style.css      # optional target-specific CSS (overrides default)
     ├── profile/       # overrides for profile/ files
-    │   └── summary-job.md
+    │   ├── contact.md
+    │   ├── summary-job.md
+    │   ├── skills-job.md
+    │   ├── education.md
+    │   └── languages.md
     └── companies/
         └── <company>/
+            ├── profile.md
             └── projects/
                 └── <project>.md
 ```
 
+**config.json schema:**
+
+```json
+{
+  "job": {
+    "companies": ["company1", "CO4", "company5", "CO3", "company2"],
+    "company_detail": {
+      "CO3": "summary",
+      "company2": "summary"
+    },
+    "include_awards": false,
+    "include_certificates": false,
+    "include_languages": true
+  }
+}
+```
+
+- `companies`: ordered list (display order in resume)
+- `company_detail`: `"summary"` or omit for full (default)
+- Config merges with base VARIANT_CONFIG; `company_detail` shallow-merges
+
 **How it works:**
 
-1. `resolve_path()` checks `overrides/{target}/` for matching file
+1. `resolve_path()` checks `overrides/{target}/` for matching file path
 2. If override exists, it's used instead of base file
 3. Override files contain complete content (not patches)
 4. Variant tags (`job-only:start/end`) work within overrides
+5. Target-specific `style.css` in override dir replaces default theme CSS
 
 **Build command:**
 
@@ -172,6 +231,15 @@ overrides/
 ./build.sh job full --target targetco   # Uses overrides/targetco/ files
 ./build.sh job full                     # Uses base files only
 ```
+
+**Build outputs with --target:**
+
+| File | Description |
+|------|-------------|
+| `build/resume-job-<target>.md` | Markdown output |
+| `build/resume-job-<target>.pdf` | PDF output |
+| `build/resume-job-<target>-remember.txt` | Plain text (for Remember app) |
+| `build/resume-job-notes.md` | Diff notes vs base |
 
 **Creating overrides:**
 
@@ -191,6 +259,45 @@ grep "target-specific phrase" build/resume-job-targetco.md  # Should find
 ./build.sh job full
 grep "target-specific phrase" build/resume-job.md           # Should NOT find
 ```
+
+**Override Gotchas (Critical):**
+
+1. **Full-mode companies need ALL project files overridden**: Override is file-level. If a company is in full mode (not `"summary"` in `company_detail`), ALL project files under `companies/<company>/projects/` must have override files. Missing overrides will pull in original (possibly Korean) content.
+
+2. **Summary mode only reads `## Overview`**: `extract_overview()` extracts content between `# CompanyName` / `## Overview` and the next `## ` heading. Content in `## Summary` or later sections is ignored for summary-mode companies. Place all summary-mode content (description, key experience) inside `## Overview` using `job-only` tags:
+   ```markdown
+   ## Overview
+   - Period: 2020.09 - 2022.09
+   - Employment: Full-time
+   <!-- job-only:start -->
+   - Role: Backend Developer
+
+   Description text here.
+
+   **Key Experience**
+   - Item 1
+   - Item 2
+   <!-- job-only:end -->
+   ```
+
+3. **Company key case sensitivity**: `config.json` company keys must match directory names exactly (e.g., `"CO4"` not `"co4"` if the directory is `companies/CO4/`).
+
+### English Resume Workflow
+
+For creating English-language resumes targeting international companies:
+
+1. Create full override directory: `overrides/<target>/`
+2. Override ALL files (profile + all companies in full mode + all their projects)
+3. Translate content, do NOT add experiences that don't exist in the original
+4. For skills/tech not possessed, emphasize analogous experience instead
+5. Build and verify:
+   ```bash
+   ./build.sh job full --target <target>
+   # Check: no Korean remnants
+   python3 -c "import re; content=open('build/resume-job-<target>.md').read(); korean=re.findall(r'[\uac00-\ud7af]+', content); print(f'{len(korean)} Korean' if korean else 'All English')"
+   # Check: no false claims
+   grep -i "keyword-that-should-not-exist" build/resume-job-<target>.md
+   ```
 
 ### Git Workflow Notes
 - Generated outputs in `build/` directory are gitignored
@@ -263,6 +370,19 @@ python3 templates/jd_auto.py --search-only
 # Output: company_info/<company>.md
 ```
 
+#### Company Validation (`templates/company_validator.py`)
+```bash
+# Human-readable validation (+ risk section auto-insert)
+python3 templates/company_validator.py --file company_info/<company>.md --fix
+
+# Machine-readable output for automation
+python3 templates/company_validator.py --file company_info/<company>.md --json
+```
+
+Notes:
+- `--json` prints JSON only (`summary`, `results`, `errors`, `fixed_files`, `report_path`)
+- Companies marked as `상장` or `M&A` are treated as non-startups even if file text contains startup keywords (e.g., TheVC, Series)
+
 ### 2. JD Extraction
 ```bash
 # Use /extract-job-posting
@@ -304,11 +424,14 @@ python3 templates/jd_pipeline.py --file urls.txt
 
 ### Auto-Classification
 ```bash
-# Classify files based on screening verdict
-python3 templates/jd_pipeline.py --classify job_postings/unprocessed/
+# Classify markdown files based on screening verdict
+python3 templates/jd_pipeline.py --classify job_postings/conditional/hold/
 
-# Re-classify with dry-run preview
+# Re-classify with dry-run + report (recommended before actual move)
 python3 templates/jd_pipeline.py --rescreen job_postings/pass/ --dry-run
+
+# Save dry-run report to custom directory
+python3 templates/jd_pipeline.py --rescreen job_postings/conditional/hold --dry-run --report-out build/reports --report-format both
 ```
 
 ### Folder Classification Mapping
@@ -353,8 +476,14 @@ python3 templates/jd_pipeline.py --migrate-status
 resume/
 ├── profile/              # Profile sections
 ├── companies/            # Career content
-├── templates/            # Build tools
-├── overrides/            # Target overrides
+├── templates/            # Build tools & styling
+├── scripts/              # Utility scripts (sync, etc.)
+├── overrides/            # Target-specific overrides
+│   └── <target>/
+│       ├── config.json   # Company list & detail levels
+│       ├── style.css     # Optional custom CSS
+│       ├── profile/      # Profile overrides
+│       └── companies/    # Company overrides (mirror structure)
 ├── build/                # Generated (gitignored)
 ├── company_info/         # Company database
 │   └── <company>.md
