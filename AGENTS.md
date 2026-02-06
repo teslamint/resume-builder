@@ -6,6 +6,9 @@
 - `companies/<company>/`: per-company content with `profile.md`, plus `projects/`, `achievements/`, and sometimes `portfolios/`.
 - `templates/`: build tooling and styling (`resume_builder.py`, `generate_notes.py`, `layout.md`, `style.css`, `style-short.css`).
 - `overrides/<target>/`: target-specific file overrides mirroring `profile/` and `companies/` structure.
+- `variant_config.json`: variant-specific company lists and settings (gitignored, personal data).
+- `variant_config.example.json`: template for fork users (tracked).
+- `example/variant_config.json`: config used in `--example` mode (tracked).
 - `build/`: generated artifacts (`resume-*.md`, `resume-*.html`, `resume-*.pdf`, `resume-*-remember.txt`, `resume-*-wanted.txt`).
 
 ## Build, Test, and Development Commands
@@ -45,6 +48,11 @@
 - `python3 templates/generate_notes.py --base build/resume-job-base.md --current build/resume-job.md --target "Company"`: manual diff generation.
 
 Dependencies: `python3`, `pandoc`, `weasyprint` (enforced by `build.sh`).
+
+**Prerequisites:** `variant_config.json` must exist in project root. Copy from `variant_config.example.json` for initial setup:
+```bash
+cp variant_config.example.json variant_config.json
+```
 
 ## Coding Style & Naming Conventions
 - Markdown is the source of truth; keep sections consistent with templates.
@@ -167,6 +175,11 @@ Use `--clean` flag to overwrite notes instead of appending for fresh start.
 - **Root cause**: Only some project files overridden for a full-mode company; non-overridden files pull from original (Korean) source
 - **Fix**: When a company is in full mode, override ALL files under `companies/<company>/projects/` — not just key ones
 
+**Missing variant_config.json**
+- **Symptom**: `Error: .../variant_config.json not found` on any build
+- **Root cause**: `variant_config.json` is gitignored (contains personal company names); must be created manually
+- **Fix**: `cp variant_config.example.json variant_config.json` then edit with actual company data
+
 **Summary-Mode Content in Wrong Section**
 - **Symptom**: Summary-mode company shows only name/period/role, no description
 - **Root cause**: Description placed in `## Summary` section, but `extract_overview()` only reads content under `## Overview`
@@ -215,7 +228,7 @@ overrides/
 
 - `companies`: ordered list (display order in resume)
 - `company_detail`: `"summary"` or omit for full (default)
-- Config merges with base VARIANT_CONFIG; `company_detail` shallow-merges
+- Config merges with base `variant_config.json`; `company_detail` shallow-merges
 
 **How it works:**
 
@@ -474,6 +487,8 @@ python3 templates/jd_pipeline.py --migrate-status
 
 ```
 resume/
+├── variant_config.json       # Variant settings (gitignored, personal)
+├── variant_config.example.json # Template for fork users (tracked)
 ├── profile/              # Profile sections
 ├── companies/            # Career content
 ├── templates/            # Build tools & styling
