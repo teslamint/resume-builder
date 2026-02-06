@@ -116,6 +116,64 @@ class TestIsProtectedStatus(unittest.TestCase):
 
         self.assertFalse(is_protected_status(None))
 
+    def test_protected_legacy_pass_alias(self):
+        from jd_utils import is_protected_status
+
+        self.assertTrue(is_protected_status("패스"))
+
+    def test_not_protected_legacy_hold_alias(self):
+        from jd_utils import is_protected_status
+
+        self.assertFalse(is_protected_status("조건부(하)"))
+
+
+class TestVerdictParsing(unittest.TestCase):
+    """Verdict parser/mapping regression tests."""
+
+    def test_parse_heading_colon(self):
+        from jd_utils import parse_verdict_from_screening
+
+        content = "### 최종 판정: 🟢 지원 추천"
+        self.assertEqual(parse_verdict_from_screening(content), "지원 추천")
+
+    def test_parse_section_pass_heading(self):
+        from jd_utils import parse_verdict_from_screening
+
+        content = """## 판정
+
+### 🔴 **PASS**
+"""
+        self.assertEqual(parse_verdict_from_screening(content), "지원 비추천")
+
+    def test_parse_section_table_worst_case(self):
+        from jd_utils import parse_verdict_from_screening
+
+        content = """## 최종 판정
+
+| 포지션 | 판정 | 사유 |
+|--------|------|------|
+| Senior Backend | 🟡 지원 보류 | 조건부 |
+| Backend Lead | 🔴 지원 비추천 | 리드 역할 |
+"""
+        self.assertEqual(parse_verdict_from_screening(content), "지원 비추천")
+
+    def test_parse_ignores_table_header(self):
+        from jd_utils import parse_verdict_from_screening
+
+        content = """## 최종 판정
+
+| 포지션 | 판정 | 사유 |
+|--------|------|------|
+"""
+        self.assertIsNone(parse_verdict_from_screening(content))
+
+    def test_classify_by_verdict_handles_legacy(self):
+        from jd_utils import classify_by_verdict
+
+        self.assertEqual(classify_by_verdict("조건부(상)"), "conditional/hold")
+        self.assertEqual(classify_by_verdict("강력 추천"), "conditional/high")
+        self.assertEqual(classify_by_verdict("PASS"), "pass")
+
 
 class TestAddFrontmatterStatus(unittest.TestCase):
     """Step 5: add_frontmatter_status tests."""
@@ -272,6 +330,83 @@ class TestMigrateStatus(unittest.TestCase):
             migrate_status(tmp_path, dry_run=True)
 
             self.assertEqual(jd.read_text(), original_content)
+
+
+class TestDryRunReport(unittest.TestCase):
+    """Dry-run report generation tests."""
+
+    def test_build_dry_run_report_summary(self):
+        from jd_pipeline import build_dry_run_report, ProcessedItem, ProcessResult
+
+        results = [
+            ProcessedItem(
+                url_or_path="job_postings/conditional/hold/1-a.md",
+                job_id="1",
+                result=ProcessResult.SUCCESS,
+                message="[DRY-RUN] 지원 비추천 → pass",
+                target_folder="pass",
+                current_folder="conditional/hold",
+                verdict="지원 비추천",
+                verdict_source="screening:1-a.md",
+            ),
+            ProcessedItem(
+                url_or_path="job_postings/conditional/hold/2-b.md",
+                job_id="2",
+                result=ProcessResult.SKIPPED,
+                message="보호된 상태 (패스 → rejected): 재분류 스킵",
+                current_folder="conditional/hold",
+                skip_reason="protected_status",
+                protected_status="패스 → rejected",
+            ),
+        ]
+        report = build_dry_run_report(results, Path("job_postings/conditional/hold"), "rescreen")
+
+        self.assertEqual(report["summary"]["total"], 2)
+        self.assertEqual(report["summary"]["success"], 1)
+        self.assertEqual(report["summary"]["skipped"], 1)
+        self.assertEqual(report["summary"]["move_candidates"], 1)
+        self.assertEqual(report["skip_reasons"]["protected_status"], 1)
+        self.assertIn("1", report["move_candidates"])
+        self.assertIn("2", report["skipped_job_ids"])
+
+    def test_write_dry_run_report_creates_json_and_md(self):
+        from jd_pipeline import write_dry_run_report
+
+        report = {
+            "generated_at": "2026-02-04T00:00:00",
+            "action": "rescreen",
+            "folder": "job_postings/conditional/hold",
+            "summary": {
+                "total": 1,
+                "success": 1,
+                "skipped": 0,
+                "error": 0,
+                "duplicate": 0,
+                "needs_manual": 0,
+                "move_candidates": 1,
+                "no_change": 0,
+            },
+            "target_folders": {"pass": 1},
+            "skip_reasons": {},
+            "recommendations": {"next_command": "python3 templates/jd_pipeline.py --rescreen job_postings/conditional/hold"},
+            "move_candidates": ["1"],
+            "skipped_job_ids": [],
+            "items": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "reports"
+            paths = write_dry_run_report(
+                report,
+                Path("job_postings/conditional/hold"),
+                str(output_dir),
+                "both",
+            )
+            self.assertEqual(len(paths), 2)
+            self.assertTrue(any(p.suffix == ".json" for p in paths))
+            self.assertTrue(any(p.suffix == ".md" for p in paths))
+            for p in paths:
+                self.assertTrue(p.exists())
 
 
 if __name__ == "__main__":

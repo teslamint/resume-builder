@@ -411,6 +411,16 @@ tabs_context_mcp 재호출 후 createIfEmpty: true로 새 탭 생성
 python3 templates/company_validator.py --file company_info/{company_slug}.md --fix
 ```
 
+자동화/스크립트 연동 시 JSON 출력 사용:
+
+```bash
+python3 templates/company_validator.py --file company_info/{company_slug}.md --json
+```
+
+- `--json` 출력에는 `summary`, `results`, `errors`, `fixed_files`, `report_path` 포함
+- `--json` 사용 시 사람이 읽는 콘솔 로그 대신 JSON만 출력됨
+- `현재 상태`가 `상장`/`M&A`인 경우 키워드(TheVC, Series 등)가 있어도 `is_startup=false`로 유지됨
+
 ### 검증 항목
 
 **필수 필드 체크:**

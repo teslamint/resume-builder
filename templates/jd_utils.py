@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """JD Pipeline Utilities - Common functions for job posting processing."""
 
-import os
 import re
 import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple, Literal, Dict
+from typing import Optional, Tuple, Literal, Dict, List
 
 # Protected statuses that should not be auto-reclassified
 PROTECTED_STATUSES = {"rejected", "applied", "interview", "offer"}
@@ -23,13 +22,32 @@ VERDICT_FOLDER_MAP = {
     "지원 추천": "conditional/high",
     "지원 보류": "conditional/hold",
     "지원 비추천": "pass",
-    "조건부 상": "conditional/high",
-    "조건부 중": "conditional/middle",
-    "조건부 하": "conditional/low",
-    "조건부 보류": "conditional/hold",
 }
 
 VerdictType = Literal["지원 추천", "지원 보류", "지원 비추천"]
+
+VERDICT_PRIORITY = {"지원 비추천": 0, "지원 보류": 1, "지원 추천": 2}
+
+STATUS_ALIASES = {
+    "pending": "pending",
+    "보류": "pending",
+    "조건부": "pending",
+    "조건부(상)": "pending",
+    "조건부(중)": "pending",
+    "조건부(하)": "pending",
+    "조건부(보류)": "pending",
+    "우선": "pending",
+    "보류 / 패스": "pending",
+    "pass": "rejected",
+    "패스": "rejected",
+    "rejected": "rejected",
+    "applied": "applied",
+    "지원": "applied",
+    "interview": "interview",
+    "면접": "interview",
+    "offer": "offer",
+    "오퍼": "offer",
+}
 
 
 def extract_job_id(url: str) -> Optional[str]:
@@ -158,26 +176,78 @@ def load_company_info(company: str) -> Optional[str]:
     return None
 
 
-def classify_by_verdict(verdict: str) -> str:
-    """Map verdict string to target folder path."""
-    # Normalize verdict
-    verdict_clean = verdict.strip()
+def normalize_verdict(verdict: str) -> Optional[VerdictType]:
+    """Normalize many verdict variants to canonical 3-state values."""
+    if not verdict:
+        return None
 
-    # Direct match
-    if verdict_clean in VERDICT_FOLDER_MAP:
-        return VERDICT_FOLDER_MAP[verdict_clean]
-
-    # Fuzzy match
+    verdict_clean = re.sub(r"[\*\`_#>\[\]\(\)]", "", verdict).strip()
+    verdict_clean = re.sub(r"\s+", " ", verdict_clean)
     verdict_lower = verdict_clean.lower()
-    if "추천" in verdict_lower and "비" not in verdict_lower:
-        return "conditional/high"
-    elif "보류" in verdict_lower:
-        return "conditional/hold"
-    elif "비추천" in verdict_lower or "패스" in verdict_lower:
-        return "pass"
 
-    # Default to hold if unclear
-    return "conditional/hold"
+    if verdict_clean in {"| 포지션 | 판정 | 사유 |", "포지션 판정 사유", "판정"}:
+        return None
+
+    if any(token in verdict_lower for token in ("비추천", "pass", "지원 안 함", "지원안함", "컷", "패스")):
+        return "지원 비추천"
+
+    if any(token in verdict_lower for token in ("조건부", "보류", "hold", "검토", "킵", "keep", "우선")):
+        return "지원 보류"
+
+    if verdict_clean == "지원":
+        return "지원 추천"
+
+    if any(token in verdict_lower for token in ("강력 추천", "지원 추천", "즉시 지원", "추천")):
+        return "지원 추천"
+
+    return None
+
+
+def _pick_worst_case_verdict(verdicts: List[str]) -> Optional[VerdictType]:
+    """For multi-position tables, keep conservative (worst-case) verdict."""
+    normalized = [normalize_verdict(v) for v in verdicts]
+    candidates = [v for v in normalized if v is not None]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
+
+
+def _extract_verdict_from_section(section: str) -> Optional[VerdictType]:
+    """Extract verdict from a dedicated section body."""
+    candidates: List[str] = []
+
+    # e.g. ### 🔴 **PASS**
+    for line in section.splitlines():
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        heading_match = re.match(r"^#{2,6}\s*(.+)$", line_stripped)
+        if heading_match:
+            candidates.append(heading_match.group(1))
+
+        quote_match = re.match(r"^>?\s*판정\s*[:：]\s*(.+)$", line_stripped, re.IGNORECASE)
+        if quote_match:
+            candidates.append(quote_match.group(1))
+
+        if line_stripped.startswith("|") and line_stripped.endswith("|"):
+            cells = [c.strip() for c in line_stripped.strip("|").split("|")]
+            if len(cells) >= 2:
+                # Skip table header/separator rows.
+                if cells[0] in {"포지션", "position"} and cells[1] in {"판정", "verdict"}:
+                    continue
+                if re.fullmatch(r"[-:\s]+", cells[0]) and re.fullmatch(r"[-:\s]+", cells[1]):
+                    continue
+                candidates.append(cells[1])
+
+    return _pick_worst_case_verdict(candidates)
+
+
+def classify_by_verdict(verdict: str) -> Optional[str]:
+    """Map verdict string to target folder path."""
+    normalized = normalize_verdict(verdict)
+    if not normalized:
+        return None
+    return VERDICT_FOLDER_MAP.get(normalized)
 
 
 def move_to_folder(file_path: Path, target_folder: str, dry_run: bool = False) -> Path:
@@ -196,24 +266,37 @@ def move_to_folder(file_path: Path, target_folder: str, dry_run: bool = False) -
     return dest
 
 
-def parse_verdict_from_screening(screening_content: str) -> Optional[str]:
-    """Extract verdict from screening analysis file."""
-    # Pattern: ### 최종 판정: {verdict}
-    match = re.search(r"###?\s*최종\s*판정[:\s]+([^\n]+)", screening_content)
-    if match:
-        return match.group(1).strip()
+def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType]:
+    """Extract canonical verdict from screening analysis content."""
+    single_line_patterns = [
+        r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$",
+        r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$",
+        r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
+        r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
+        r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
+        r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
+    ]
+    for pattern in single_line_patterns:
+        match = re.search(pattern, screening_content, re.IGNORECASE | re.MULTILINE)
+        if match:
+            verdict = normalize_verdict(match.group(1))
+            if verdict:
+                return verdict
 
-    # Alternative pattern: | 최종 판단 | **{verdict}** |
-    match = re.search(r"\|\s*최종\s*판단\s*\|\s*\*?\*?([^|*\n]+)", screening_content)
-    if match:
-        return match.group(1).strip()
+    section_patterns = [
+        r"(?is)^##\s*최종\s*판정\s*\n(.*?)(?=^##\s|\Z)",
+        r"(?is)^##\s*판정\s*\n(.*?)(?=^##\s|\Z)",
+    ]
+    for pattern in section_patterns:
+        section_match = re.search(pattern, screening_content, re.MULTILINE)
+        if section_match:
+            verdict = _extract_verdict_from_section(section_match.group(1))
+            if verdict:
+                return verdict
 
-    # Pattern: **결론**: {verdict}
-    match = re.search(r"\*\*결론\*\*[:\s]+([^\n]+)", screening_content)
-    if match:
-        return match.group(1).strip()
-
-    return None
+    # Fallback for lines like "### 🔴 **PASS**" even without a 판정 section.
+    heading_candidates = re.findall(r"^\s*#{2,6}\s*(.+?)\s*$", screening_content, re.MULTILINE)
+    return _pick_worst_case_verdict(heading_candidates)
 
 
 def generate_jd_filename(job_id: str, company: str, position: str) -> str:
@@ -321,15 +404,34 @@ def get_user_status(content: str) -> Optional[str]:
     return frontmatter.get("status")
 
 
+def normalize_status(status: Optional[str]) -> Optional[str]:
+    """Normalize legacy/Korean status labels to canonical status keys."""
+    if status is None:
+        return None
+    status_clean = str(status).strip().strip("'\"")
+    if not status_clean:
+        return None
+
+    # Fast path for canonical statuses
+    if status_clean in {"pending", "applied", "rejected", "interview", "offer"}:
+        return status_clean
+
+    status_lower = status_clean.lower()
+    if status_lower in STATUS_ALIASES:
+        return STATUS_ALIASES[status_lower]
+    return STATUS_ALIASES.get(status_clean, status_clean)
+
+
 def is_protected_status(status: Optional[str]) -> bool:
     """Check if status is protected from auto-reclassification.
 
     Protected statuses: rejected, applied, interview, offer
     Non-protected: pending, None
     """
-    if status is None:
+    normalized = normalize_status(status)
+    if normalized is None:
         return False
-    return status in PROTECTED_STATUSES
+    return normalized in PROTECTED_STATUSES
 
 
 def add_frontmatter_status(
@@ -345,10 +447,11 @@ def add_frontmatter_status(
     """
     today = datetime.now().strftime("%Y-%m-%d")
     existing = parse_frontmatter(content)
+    normalized_status = normalize_status(status) or status
 
     # Build new frontmatter
     new_fields = dict(existing)
-    new_fields["status"] = status
+    new_fields["status"] = normalized_status
     new_fields["status_updated"] = today
     if reason:
         new_fields["status_reason"] = reason

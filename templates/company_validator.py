@@ -7,12 +7,14 @@ Usage:
     python3 templates/company_validator.py --file company.md   # 단일 파일
     python3 templates/company_validator.py --fix               # 자동 수정
     python3 templates/company_validator.py --report            # 리포트 생성
+    python3 templates/company_validator.py --json              # 기계 처리용 JSON 출력
 """
 
 import argparse
+import json
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -145,6 +147,7 @@ def parse_company_file(file_path: Path) -> CompanyData:
     """Parse company info markdown file."""
     content = file_path.read_text(encoding='utf-8')
     data = CompanyData()
+    startup_status_locked = False
     
     # Extract company name from title
     title_match = re.search(r'^#\s+(.+?)(?:\s*\((.+?)\))?\s*$', content, re.MULTILINE)
@@ -224,9 +227,15 @@ def parse_company_file(file_path: Path) -> CompanyData:
         round_match = re.search(r'(?:현재 라운드|현재 상태).*?\|\s*([^\n|]+)', section_text)
         if round_match:
             round_val = round_match.group(1).strip()
+            round_upper = round_val.upper()
             if '상장' in round_val:
                 data.investment_round = "IPO"
                 data.is_startup = False  # Listed company, not a startup for screening
+                startup_status_locked = True
+            elif "M&A" in round_upper or "MNA" in round_upper:
+                data.investment_round = "M&A"
+                data.is_startup = False  # Acquired company, not a startup for screening
+                startup_status_locked = True
             else:
                 data.investment_round = round_val
         
@@ -236,12 +245,12 @@ def parse_company_file(file_path: Path) -> CompanyData:
             data.investment_total = float(total_match.group(1).replace(',', ''))
     
     # TheVC 언급 확인
-    if 'TheVC' in content or 'thevc.kr' in content:
+    if not startup_status_locked and ('TheVC' in content or 'thevc.kr' in content):
         data.is_startup = True
     
     # 스타트업 키워드 확인
     startup_keywords = ['스타트업', 'Series', '시리즈', '벤처', '투자 유치']
-    if any(kw in content for kw in startup_keywords):
+    if not startup_status_locked and any(kw in content for kw in startup_keywords):
         data.is_startup = True
     
     # 매출
@@ -490,6 +499,13 @@ def add_risk_section_to_file(file_path: Path, result: ValidationResult) -> str:
     return "\n".join(lines)
 
 
+def validation_result_to_dict(result: ValidationResult) -> dict:
+    """Convert validation result to JSON-serializable dict."""
+    data = asdict(result)
+    data["file_path"] = str(result.file_path)
+    return data
+
+
 def main():
     parser = argparse.ArgumentParser(description="기업정보 검증 및 리스크 플래깅")
     parser.add_argument("--file", "-f", help="단일 파일 검증")
@@ -509,6 +525,8 @@ def main():
         files = [f for f in files if not f.name.startswith("_")]  # Exclude meta files
     
     results = []
+    errors = []
+    fixed_files = []
     for file_path in files:
         try:
             data = parse_company_file(file_path)
@@ -516,7 +534,7 @@ def main():
             results.append(result)
             
             # Print individual result
-            if args.file or not args.report:
+            if not args.json and (args.file or not args.report):
                 print(f"\n{'='*60}")
                 print(f"📊 {result.company_name} ({file_path.name})")
                 print(f"{'='*60}")
@@ -549,17 +567,41 @@ def main():
                         content += risk_section
                     
                     file_path.write_text(content, encoding='utf-8')
-                    print(f"\n✅ 리스크 섹션 추가됨")
+                    fixed_files.append(str(file_path))
+                    if not args.json:
+                        print(f"\n✅ 리스크 섹션 추가됨")
                     
         except Exception as e:
-            print(f"❌ Error processing {file_path}: {e}")
+            errors.append({"file": str(file_path), "error": str(e)})
+            if not args.json:
+                print(f"❌ Error processing {file_path}: {e}")
     
     # Generate report
+    report_path = None
     if args.report and results:
         report = generate_report(results)
         REPORT_PATH.write_text(report, encoding='utf-8')
-        print(f"\n📄 리포트 생성: {REPORT_PATH}")
-        print(report)
+        report_path = str(REPORT_PATH)
+        if not args.json:
+            print(f"\n📄 리포트 생성: {REPORT_PATH}")
+            print(report)
+
+    if args.json:
+        payload = {
+            "generated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "summary": {
+                "processed_files": len(results),
+                "error_files": len(errors),
+                "critical_risk_companies": sum(1 for r in results if any(f.severity == "critical" for f in r.risk_flags)),
+                "high_risk_companies": sum(1 for r in results if any(f.severity == "high" for f in r.risk_flags)),
+                "incomplete_companies": sum(1 for r in results if r.completeness_score < 70),
+            },
+            "results": [validation_result_to_dict(r) for r in results],
+            "errors": errors,
+            "fixed_files": fixed_files,
+            "report_path": report_path,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

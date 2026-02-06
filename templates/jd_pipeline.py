@@ -11,9 +11,12 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
-from typing import List, Optional
+from collections import Counter
+from datetime import datetime
+from typing import List, Optional, Dict
 from dataclasses import dataclass
 from enum import Enum
 
@@ -31,6 +34,7 @@ from jd_utils import (
     update_summary,
     extract_metadata_from_jd,
     get_user_status,
+    normalize_status,
     is_protected_status,
     add_frontmatter_status,
     JOB_POSTINGS_DIR,
@@ -53,6 +57,20 @@ class ProcessedItem:
     result: ProcessResult
     message: str
     target_folder: Optional[str] = None
+    current_folder: Optional[str] = None
+    verdict: Optional[str] = None
+    verdict_source: Optional[str] = None
+    skip_reason: Optional[str] = None
+    protected_status: Optional[str] = None
+
+
+def _relative_folder(file_path: Path) -> str:
+    """Return file's folder relative to job_postings directory when possible."""
+    try:
+        parent = file_path.resolve().parent.relative_to(JOB_POSTINGS_DIR.resolve())
+        return str(parent) if str(parent) != "." else "root"
+    except ValueError:
+        return file_path.parent.name or "unknown"
 
 
 def check_url(url: str) -> ProcessedItem:
@@ -92,6 +110,7 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
     Protected status files (applied, rejected, interview, offer) are skipped.
     """
     job_id = extract_job_id_from_filename(file_path.name)
+    current_folder = _relative_folder(file_path)
 
     if not file_path.exists():
         return ProcessedItem(
@@ -99,22 +118,30 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
             job_id=job_id,
             result=ProcessResult.ERROR,
             message="파일이 존재하지 않습니다.",
+            current_folder=current_folder,
+            skip_reason="missing_file",
         )
 
     content = file_path.read_text(encoding="utf-8")
 
     # Check for protected status
     user_status = get_user_status(content)
+    normalized_status = normalize_status(user_status)
     if is_protected_status(user_status):
+        status_label = f"{user_status} → {normalized_status}" if user_status != normalized_status else str(user_status)
         return ProcessedItem(
             url_or_path=str(file_path),
             job_id=job_id,
             result=ProcessResult.SKIPPED,
-            message=f"보호된 상태 ({user_status}): 재분류 스킵",
+            message=f"보호된 상태 ({status_label}): 재분류 스킵",
+            current_folder=current_folder,
+            skip_reason="protected_status",
+            protected_status=status_label,
         )
 
     # Try to find verdict from the file itself
     verdict = parse_verdict_from_screening(content)
+    verdict_source = "jd"
 
     # If not found in JD, check screening file
     if not verdict and job_id:
@@ -122,6 +149,7 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
             screening_content = screening_file.read_text(encoding="utf-8")
             verdict = parse_verdict_from_screening(screening_content)
             if verdict:
+                verdict_source = f"screening:{screening_file.name}"
                 break
 
     if not verdict:
@@ -130,9 +158,22 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
             job_id=job_id,
             result=ProcessResult.SKIPPED,
             message="판정 결과를 찾을 수 없습니다. 스크리닝이 필요합니다.",
+            current_folder=current_folder,
+            skip_reason="missing_verdict",
         )
 
     target_folder = classify_by_verdict(verdict)
+    if not target_folder:
+        return ProcessedItem(
+            url_or_path=str(file_path),
+            job_id=job_id,
+            result=ProcessResult.SKIPPED,
+            message=f"판정 결과를 분류할 수 없습니다: {verdict}",
+            current_folder=current_folder,
+            verdict=verdict,
+            verdict_source=verdict_source,
+            skip_reason="unmapped_verdict",
+        )
 
     if dry_run:
         return ProcessedItem(
@@ -141,6 +182,9 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
             result=ProcessResult.SUCCESS,
             message=f"[DRY-RUN] {verdict} → {target_folder}",
             target_folder=target_folder,
+            current_folder=current_folder,
+            verdict=verdict,
+            verdict_source=verdict_source,
         )
 
     new_path = move_to_folder(file_path, target_folder)
@@ -151,6 +195,9 @@ def classify_file(file_path: Path, dry_run: bool = False) -> ProcessedItem:
         result=ProcessResult.SUCCESS,
         message=f"{verdict} → {new_path.relative_to(JOB_POSTINGS_DIR)}",
         target_folder=target_folder,
+        current_folder=current_folder,
+        verdict=verdict,
+        verdict_source=verdict_source,
     )
 
 
@@ -229,6 +276,7 @@ def get_status() -> dict:
         "applied": 0,
         "rejected": 0,
         "unprocessed": 0,
+        "unprocessed_files": 0,
     }
 
     for folder, count in status.items():
@@ -236,10 +284,13 @@ def get_status() -> dict:
         if folder_path.exists():
             status[folder] = len(list(folder_path.glob("*.md")))
 
-    # Count root level MD files (unprocessed)
+    # Count root level MD files (legacy unprocessed format)
     status["unprocessed"] = len(
         [f for f in JOB_POSTINGS_DIR.glob("*.md") if f.name != "CLAUDE.md" and f.name != "jd-screening-rules.md"]
     )
+    unprocessed_dir = JOB_POSTINGS_DIR / "unprocessed"
+    if unprocessed_dir.exists():
+        status["unprocessed_files"] = len([f for f in unprocessed_dir.glob("*") if f.is_file()])
 
     return status
 
@@ -270,7 +321,15 @@ def rescreen_folder(folder_path: Path, dry_run: bool = False) -> List[ProcessedI
         print(f"폴더를 찾을 수 없습니다: {folder_path}")
         return results
 
-    for md_file in folder_path.glob("*.md"):
+    md_files = list(folder_path.glob("*.md"))
+    if not md_files:
+        non_md_files = [f for f in folder_path.glob("*") if f.is_file() and f.suffix != ".md"]
+        if non_md_files:
+            print(f"ℹ️ {folder_path}에는 md 파일이 없습니다. (기타 파일 {len(non_md_files)}개)")
+            print("   txt/json은 먼저 JD markdown으로 추출한 뒤 분류하세요.")
+        return results
+
+    for md_file in md_files:
         if md_file.name in ("CLAUDE.md", "jd-screening-rules.md"):
             continue
         result = classify_file(md_file, dry_run)
@@ -337,12 +396,155 @@ def print_status(status: dict) -> None:
                 "applied": "✅",
                 "rejected": "❌",
                 "unprocessed": "📋",
+                "unprocessed_files": "🗂️",
             }.get(folder, "📁")
             print(f"  {icon} {folder:<20} {count:>3}건")
             total += count
 
     print("=" * 40)
     print(f"  총계: {total}건")
+
+
+def build_dry_run_report(results: List[ProcessedItem], folder: Path, action: str) -> Dict:
+    """Build structured dry-run report data."""
+    counts = Counter(item.result.value for item in results)
+    skip_reasons = Counter(item.skip_reason for item in results if item.skip_reason)
+    target_counts = Counter(item.target_folder for item in results if item.target_folder)
+    move_candidates = [
+        item
+        for item in results
+        if item.result == ProcessResult.SUCCESS and item.target_folder and item.target_folder != item.current_folder
+    ]
+    no_change = [
+        item
+        for item in results
+        if item.result == ProcessResult.SUCCESS and item.target_folder and item.target_folder == item.current_folder
+    ]
+    skipped_items = [item for item in results if item.result == ProcessResult.SKIPPED]
+
+    items = []
+    for item in results:
+        items.append(
+            {
+                "job_id": item.job_id,
+                "path": item.url_or_path,
+                "current_folder": item.current_folder,
+                "predicted_folder": item.target_folder,
+                "verdict": item.verdict,
+                "verdict_source": item.verdict_source,
+                "result": item.result.value,
+                "message": item.message,
+                "skip_reason": item.skip_reason,
+                "protected_status": item.protected_status,
+            }
+        )
+
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "action": action,
+        "folder": str(folder),
+        "summary": {
+            "total": len(results),
+            "success": counts.get(ProcessResult.SUCCESS.value, 0),
+            "skipped": counts.get(ProcessResult.SKIPPED.value, 0),
+            "error": counts.get(ProcessResult.ERROR.value, 0),
+            "duplicate": counts.get(ProcessResult.DUPLICATE.value, 0),
+            "needs_manual": counts.get(ProcessResult.NEEDS_MANUAL.value, 0),
+            "move_candidates": len(move_candidates),
+            "no_change": len(no_change),
+        },
+        "target_folders": dict(sorted(target_counts.items())),
+        "skip_reasons": dict(sorted(skip_reasons.items())),
+        "recommendations": {
+            "next_command": f"python3 templates/jd_pipeline.py --{action} {folder}",
+            "review_focus": [
+                "move_candidates: 실제 이동 후보",
+                "skip_reasons: 보호 상태/미판정 원인 확인",
+                "items: 고위험 판정 변경 케이스 점검",
+            ],
+        },
+        "move_candidates": [item.job_id for item in move_candidates if item.job_id],
+        "skipped_job_ids": [item.job_id for item in skipped_items if item.job_id],
+        "items": items,
+    }
+
+
+def _resolve_report_base_path(folder: Path, report_out: Optional[str]) -> Path:
+    """Resolve base path (without suffix) for dry-run reports."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    folder_label = str(folder).replace("/", "-")
+    default_name = f"jd-rescreen-report-{folder_label}-{timestamp}"
+
+    if not report_out:
+        base_dir = JOB_POSTINGS_DIR.parent / "build"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir / default_name
+
+    report_path = Path(report_out)
+    if report_path.suffix in {".json", ".md"}:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        return report_path.with_suffix("")
+
+    if not report_path.suffix:
+        report_path.mkdir(parents=True, exist_ok=True)
+        return report_path / default_name
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    return report_path
+
+
+def write_dry_run_report(report: Dict, folder: Path, report_out: Optional[str], report_format: str) -> List[Path]:
+    """Write dry-run report files and return created paths."""
+    base_path = _resolve_report_base_path(folder, report_out)
+    created: List[Path] = []
+
+    if report_format in ("json", "both"):
+        json_path = base_path.with_suffix(".json")
+        json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        created.append(json_path)
+
+    if report_format in ("md", "both"):
+        md_path = base_path.with_suffix(".md")
+        summary = report["summary"]
+        lines = [
+            "# JD Rescreen Dry-Run Report",
+            "",
+            f"- 생성시각: {report['generated_at']}",
+            f"- 액션: `{report['action']}`",
+            f"- 대상 폴더: `{report['folder']}`",
+            "",
+            "## 요약",
+            f"- 총계: {summary['total']}건",
+            f"- 성공: {summary['success']}건",
+            f"- 스킵: {summary['skipped']}건",
+            f"- 에러: {summary['error']}건",
+            f"- 이동 후보: {summary['move_candidates']}건",
+            f"- 폴더 변경 없음: {summary['no_change']}건",
+            "",
+            "## 대상 폴더 분포",
+        ]
+
+        if report["target_folders"]:
+            for folder_name, count in report["target_folders"].items():
+                lines.append(f"- `{folder_name}`: {count}건")
+        else:
+            lines.append("- 없음")
+
+        lines.extend(["", "## 스킵 사유", ""])
+        if report["skip_reasons"]:
+            for reason, count in report["skip_reasons"].items():
+                lines.append(f"- `{reason}`: {count}건")
+        else:
+            lines.append("- 없음")
+
+        lines.extend(["", "## 실행 가이드", ""])
+        lines.append(f"- 추천 명령: `{report['recommendations']['next_command']}`")
+        lines.append("- dry-run 리포트 확인 후 `--dry-run` 제거하여 실제 실행")
+
+        md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        created.append(md_path)
+
+    return created
 
 
 def main():
@@ -357,8 +559,8 @@ Examples:
   # Check multiple URLs from file
   python3 templates/jd_pipeline.py --file urls.txt
 
-  # Classify files in a folder based on screening results
-  python3 templates/jd_pipeline.py --classify job_postings/unprocessed/
+  # Classify extracted markdown files in a folder based on screening results
+  python3 templates/jd_pipeline.py --classify job_postings/conditional/hold/
 
   # Re-classify files (dry run)
   python3 templates/jd_pipeline.py --rescreen job_postings/pass/ --dry-run
@@ -394,8 +596,19 @@ Examples:
 
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without moving files")
     parser.add_argument("--reason", help="Reason for status change (used with --set-status)")
+    parser.add_argument("--report-out", help="Dry-run report output path (directory or file prefix)")
+    parser.add_argument(
+        "--report-format",
+        choices=["json", "md", "both"],
+        default="both",
+        help="Dry-run report format (json|md|both)",
+    )
 
     args = parser.parse_args()
+
+    if (args.report_out or args.report_format != "both") and not args.dry_run:
+        print("❌ --report-out/--report-format 옵션은 --dry-run과 함께 사용해야 합니다.")
+        sys.exit(1)
 
     if args.status:
         status = get_status()
@@ -422,11 +635,18 @@ Examples:
             print("   Claude Code에서 /extract-job-posting 스킬을 사용하세요.")
 
     elif args.rescreen or args.classify:
+        action_name = "rescreen" if args.rescreen else "classify"
         folder = Path(args.rescreen or args.classify)
         results = rescreen_folder(folder, dry_run=args.dry_run)
         print_results(results)
 
         if args.dry_run:
+            report = build_dry_run_report(results, folder, action_name)
+            report_paths = write_dry_run_report(report, folder, args.report_out, args.report_format)
+            if report_paths:
+                print("\n📝 Dry-run 리포트:")
+                for report_path in report_paths:
+                    print(f"   - {report_path}")
             print("\n⚠️ DRY-RUN 모드: 실제 파일 이동 없음")
             print("   실제 이동하려면 --dry-run 옵션을 제거하세요.")
 
