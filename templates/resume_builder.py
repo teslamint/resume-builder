@@ -12,41 +12,30 @@ BASE_DIR = _BASE_DIR  # Will be updated if --example is used
 _GLOBAL_TARGET: str | None = None
 _EXAMPLE_MODE: bool = False
 
-VARIANT_CONFIG = {
-    'public': {
-        'companies': ['company1', 'company2', 'co3', 'co4', 'company5', 'company6'],
-        'include_certificates': True,
-        'company_detail': {
-            'company5': 'full',
-            'company6': 'full',
-        },
-    },
-    'job': {
-        'companies': ['company1', 'company2', 'co3', 'co4', 'company5'],
-        'include_certificates': False,
-        'company_detail': {
-            'co4': 'summary',
-            'company5': 'summary',
-        },
-    },
-}
+def _load_config_file(path: Path) -> dict:
+    """Load variant config from a JSON file."""
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
-EXAMPLE_VARIANT_CONFIG = {
-    'public': {
-        'companies': ['techcorp'],
-        'include_certificates': True,
-        'company_detail': {},
-    },
-    'job': {
-        'companies': ['techcorp'],
-        'include_certificates': False,
-        'company_detail': {},
-    },
-}
 
 def get_variant_config():
-    """Return appropriate config based on example mode"""
-    return EXAMPLE_VARIANT_CONFIG if _EXAMPLE_MODE else VARIANT_CONFIG
+    """Return appropriate config based on example mode."""
+    if _EXAMPLE_MODE:
+        config_path = BASE_DIR / 'variant_config.json'
+    else:
+        config_path = _BASE_DIR / 'variant_config.json'
+
+    if not config_path.exists():
+        example_path = _BASE_DIR / 'variant_config.example.json'
+        print(
+            f"Error: {config_path} not found.\n"
+            f"Copy the example file to get started:\n"
+            f"  cp {example_path} {config_path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return _load_config_file(config_path)
 
 def load_target_config(target: str | None, variant: str) -> dict:
     """Load target-specific config overrides from overrides/<target>/config.json"""

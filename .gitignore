@@ -12,6 +12,7 @@ __pycache__/
 build/
 
 # Personal data (fork users should add their own data here)
+/variant_config.json
 /profile/
 /companies/
 /overrides/
