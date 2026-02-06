@@ -75,7 +75,7 @@ python3 templates/test_jd_status.py -v
 ```
 
 ## Commit & Pull Request Guidelines
-- Commit messages follow Conventional Commits with scope, e.g. `docs(CO3): add portfolio`, `fix(builder): ...`.
+- Commit messages follow Conventional Commits with scope, e.g. `docs(company): add portfolio`, `fix(builder): ...`.
 - PRs should include: what changed, which variant(s) impacted, and regenerated outputs if relevant (MD/HTML/PDF diffs).
 
 ## Agent-Specific Notes
@@ -214,10 +214,10 @@ overrides/
 ```json
 {
   "job": {
-    "companies": ["company1", "CO4", "company5", "CO3", "company2"],
+    "companies": ["companyA", "companyB", "companyC", "companyD", "companyE"],
     "company_detail": {
-      "CO3": "summary",
-      "company2": "summary"
+      "companyD": "summary",
+      "companyE": "summary"
     },
     "include_awards": false,
     "include_certificates": false,
@@ -293,7 +293,7 @@ grep "target-specific phrase" build/resume-job.md           # Should NOT find
    <!-- job-only:end -->
    ```
 
-3. **Company key case sensitivity**: `config.json` company keys must match directory names exactly (e.g., `"CO4"` not `"co4"` if the directory is `companies/CO4/`).
+3. **Company key case sensitivity**: `config.json` company keys must match directory names exactly (e.g., `"CompanyB"` not `"companyb"` if the directory is `companies/CompanyB/`).
 
 ### English Resume Workflow
 
