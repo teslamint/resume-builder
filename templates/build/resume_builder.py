@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-_BASE_DIR = Path(__file__).parent.parent
+_BASE_DIR = Path(__file__).parent.parent.parent
 BASE_DIR = _BASE_DIR  # Will be updated if --example is used
 _GLOBAL_TARGET: str | None = None
 _EXAMPLE_MODE: bool = False
@@ -653,6 +653,18 @@ def build_full(variant):
     return "\n\n---\n\n".join(parts)
 
 
+def extract_contact_links(variant):
+    """Extract contact fields (excluding Name and headings) for PDF layout."""
+    contact = BASE_DIR / 'profile' / 'contact.md'
+    if not contact.exists():
+        return None
+    content = filter_content(read_file(contact), variant)
+    lines = [line for line in content.splitlines()
+             if line.strip() and not line.strip().startswith('#')
+             and not line.strip().lower().startswith('- name:')]
+    return '\n'.join(lines) if lines else None
+
+
 def build_full_pdf(variant):
     """PDF layout for job variant: summary (includes name/title) → skills → experience → footer"""
     if variant != 'job':
@@ -666,6 +678,10 @@ def build_full_pdf(variant):
         content = filter_content(read_file(summary), variant)
         if content.strip():
             parts.append(content)
+
+    contact_links = extract_contact_links(variant)
+    if contact_links:
+        parts.append(contact_links)
 
     skills = BASE_DIR / 'profile' / f'skills-{variant}.md'
     if skills.exists():
@@ -760,6 +776,10 @@ def build_short_pdf(variant):
         if content.strip():
             parts.append(content)
 
+    contact_links = extract_contact_links(variant)
+    if contact_links:
+        parts.append(contact_links)
+
     skills = BASE_DIR / 'profile' / f'skills-{variant}.md'
     if skills.exists():
         content = filter_content(read_file(skills), variant)
@@ -835,7 +855,10 @@ def main():
     _GLOBAL_TARGET = args.target
 
     if args.validate:
-        from schema import validate_all
+        try:
+            from .schema import validate_all
+        except ImportError:
+            from schema import validate_all
         errors = validate_all(example=args.example)
         if errors:
             print("Validation errors found:", file=sys.stderr)

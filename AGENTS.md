@@ -4,7 +4,7 @@
 
 - `profile/`: core profile sections (`contact.md`, `summary-*.md`, `skills-*.md`, `education.md`).
 - `companies/<company>/`: per-company content with `profile.md`, plus `projects/`, `achievements/`, and sometimes `portfolios/`.
-- `templates/`: build tooling and styling (`resume_builder.py`, `generate_notes.py`, `layout.md`, `style.css`, `style-short.css`).
+- `templates/`: build tooling and styling, organized into `build/`, `jd/`, and `tests/` subpackages.
 - `overrides/<target>/`: target-specific file overrides mirroring `profile/` and `companies/` structure.
 - `variant_config.json`: variant-specific company lists and settings (gitignored, personal data).
 - `variant_config.example.json`: template for fork users (tracked).
@@ -40,12 +40,12 @@
 6. `generate_notes.py` → `resume-job-notes.md` (diff vs base, job variant only)
 
 **Python CLI direct usage:**
-- `python3 templates/resume_builder.py --list`: list available company keys.
-- `python3 templates/resume_builder.py --variant public > resume-public.md`: generate Markdown only.
-- `python3 templates/resume_builder.py --variant job --format wanted`: generate Wanted format.
-- `python3 templates/resume_builder.py --variant job --target protopie`: generate with target overrides.
-- `python3 templates/resume_builder.py --variant public --example`: generate example resume.
-- `python3 templates/generate_notes.py --base build/resume-job-base.md --current build/resume-job.md --target "Company"`: manual diff generation.
+- `python3 templates/build/resume_builder.py --list`: list available company keys.
+- `python3 templates/build/resume_builder.py --variant public > resume-public.md`: generate Markdown only.
+- `python3 templates/build/resume_builder.py --variant job --format wanted`: generate Wanted format.
+- `python3 templates/build/resume_builder.py --variant job --target protopie`: generate with target overrides.
+- `python3 templates/build/resume_builder.py --variant public --example`: generate example resume.
+- `python3 templates/build/generate_notes.py --base build/resume-job-base.md --current build/resume-job.md --target "Company"`: manual diff generation.
 
 Dependencies: `python3`, `pandoc`, `weasyprint` (enforced by `build.sh`).
 
@@ -71,7 +71,7 @@ cp variant_config.example.json variant_config.json
 
 **JD Pipeline Unit Tests (no dependencies):**
 ```bash
-python3 templates/test_jd_status.py -v
+python3 templates/tests/test_jd_status.py -v
 ```
 
 ## Commit & Pull Request Guidelines
@@ -81,6 +81,11 @@ python3 templates/test_jd_status.py -v
 ## Agent-Specific Notes
 - Prefer editing source Markdown under `profile/` and `companies/` over generated outputs in the root.
 - Keep changes scoped; update variant tags when content differs between `public` and `job` resumes.
+
+## Resume Build System
+
+- When working with resume/override files: always verify that ALL companies, sections, and build targets produce correct output after changes. Check for missing sections (Key Experience, company summaries) and wrong headers (`## Summary` vs `## Overview`).
+- Never embellish, conflate, or overstate technical experience in resume content. Only use terminology and descriptions that precisely match what was actually implemented. When uncertain, ask the user rather than guessing.
 
 ## Common Patterns & Gotchas
 
@@ -168,7 +173,7 @@ Use `--clean` flag to overwrite notes instead of appending for fresh start.
 **Diff Line Ending Issues**
 - **Symptom**: Malformed diff output in notes file
 - **Fix**: Use `splitlines()` without keepends, set explicit `lineterm='\n'` in unified_diff
-- **Location**: `templates/generate_notes.py`
+- **Location**: `templates/build/generate_notes.py`
 
 **Override Missing for Full-Mode Company Projects**
 - **Symptom**: Mixed Korean/English in targeted resume output
@@ -336,19 +341,19 @@ For creating English-language resumes targeting international companies:
 **검색 자동화 스크립트:**
 ```bash
 # 단일 키워드 검색 (테스트)
-python3 templates/jd_search.py --query "백엔드 시니어" --dry-run
+python3 templates/jd/search.py --query "백엔드 시니어" --dry-run
 
 # 전체 키워드 검색 실행
-python3 templates/jd_search.py
+python3 templates/jd/search.py
 
 # 상태 확인
-python3 templates/jd_search.py --status
+python3 templates/jd/search.py --status
 
 # 상태 초기화
-python3 templates/jd_search.py --reset-state
+python3 templates/jd/search.py --reset-state
 
 # 풀 파이프라인 (검색만)
-python3 templates/jd_auto.py --search-only
+python3 templates/jd/auto.py --search-only
 ```
 
 **설정 파일:** `job_postings/search_config.yaml`
@@ -383,13 +388,13 @@ python3 templates/jd_auto.py --search-only
 # Output: company_info/<company>.md
 ```
 
-#### Company Validation (`templates/company_validator.py`)
+#### Company Validation (`templates/jd/company_validator.py`)
 ```bash
 # Human-readable validation (+ risk section auto-insert)
-python3 templates/company_validator.py --file company_info/<company>.md --fix
+python3 templates/jd/company_validator.py --file company_info/<company>.md --fix
 
 # Machine-readable output for automation
-python3 templates/company_validator.py --file company_info/<company>.md --json
+python3 templates/jd/company_validator.py --file company_info/<company>.md --json
 ```
 
 Notes:
@@ -423,28 +428,28 @@ python3 jd_analysis/interview/build-sheet.py <file>.md --stage 실무|심화|컬
 
 ### Status Check
 ```bash
-python3 templates/jd_pipeline.py --status
+python3 templates/jd/pipeline.py --status
 ```
 
 ### URL Processing
 ```bash
 # Single URL - check duplicates
-python3 templates/jd_pipeline.py --url "https://wanted.co.kr/wd/123456"
+python3 templates/jd/pipeline.py --url "https://wanted.co.kr/wd/123456"
 
 # Batch URLs from file
-python3 templates/jd_pipeline.py --file urls.txt
+python3 templates/jd/pipeline.py --file urls.txt
 ```
 
 ### Auto-Classification
 ```bash
 # Classify markdown files based on screening verdict
-python3 templates/jd_pipeline.py --classify job_postings/conditional/hold/
+python3 templates/jd/pipeline.py --classify job_postings/conditional/hold/
 
 # Re-classify with dry-run + report (recommended before actual move)
-python3 templates/jd_pipeline.py --rescreen job_postings/pass/ --dry-run
+python3 templates/jd/pipeline.py --rescreen job_postings/pass/ --dry-run
 
 # Save dry-run report to custom directory
-python3 templates/jd_pipeline.py --rescreen job_postings/conditional/hold --dry-run --report-out build/reports --report-format both
+python3 templates/jd/pipeline.py --rescreen job_postings/conditional/hold --dry-run --report-out build/reports --report-format both
 ```
 
 ### Folder Classification Mapping
@@ -473,12 +478,12 @@ status_reason: 채용 프로세스 부담  # optional
 
 ```bash
 # 상태 설정
-python3 templates/jd_pipeline.py --set-status rejected path/to/file.md
-python3 templates/jd_pipeline.py --set-status applied path/to/file.md --reason "서류 통과"
+python3 templates/jd/pipeline.py --set-status rejected path/to/file.md
+python3 templates/jd/pipeline.py --set-status applied path/to/file.md --reason "서류 통과"
 
 # 기존 applied/rejected 폴더 파일에 상태 마이그레이션
-python3 templates/jd_pipeline.py --migrate-status --dry-run
-python3 templates/jd_pipeline.py --migrate-status
+python3 templates/jd/pipeline.py --migrate-status --dry-run
+python3 templates/jd/pipeline.py --migrate-status
 ```
 
 ---
@@ -492,6 +497,9 @@ resume/
 ├── profile/              # Profile sections
 ├── companies/            # Career content
 ├── templates/            # Build tools & styling
+│   ├── build/            # Resume build system (resume_builder, generate_notes, schema)
+│   ├── jd/               # JD pipeline (search, pipeline, auto, validator, etc.)
+│   └── tests/            # Unit tests
 ├── scripts/              # Utility scripts (sync, etc.)
 ├── overrides/            # Target-specific overrides
 │   └── <target>/

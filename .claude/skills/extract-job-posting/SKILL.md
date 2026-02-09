@@ -19,7 +19,7 @@ Chrome MCP 확장을 사용하여 채용 플랫폼에서 채용 정보를 추출
 추출 전 기존 JD 파일 존재 여부 확인:
 
 ```bash
-python3 templates/jd_pipeline.py --url "{URL}"
+python3 templates/jd/pipeline.py --url "{URL}"
 ```
 
 - 중복인 경우: 기존 파일 경로 출력, 추출 스킵

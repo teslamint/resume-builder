@@ -3,11 +3,11 @@
 JD Pipeline - Job posting extraction and screening automation.
 
 Usage:
-    python3 templates/jd_pipeline.py --url "https://wanted.co.kr/wd/123456"
-    python3 templates/jd_pipeline.py --file urls.txt
-    python3 templates/jd_pipeline.py --rescreen job_postings/pass/
-    python3 templates/jd_pipeline.py --classify job_postings/unprocessed/
-    python3 templates/jd_pipeline.py --status
+    python3 templates/jd/pipeline.py --url "https://wanted.co.kr/wd/123456"
+    python3 templates/jd/pipeline.py --file urls.txt
+    python3 templates/jd/pipeline.py --rescreen job_postings/pass/
+    python3 templates/jd/pipeline.py --classify job_postings/unprocessed/
+    python3 templates/jd/pipeline.py --status
 """
 
 import argparse
@@ -20,26 +20,48 @@ from typing import List, Optional, Dict
 from dataclasses import dataclass
 from enum import Enum
 
-from jd_utils import (
-    extract_job_id,
-    extract_job_id_from_filename,
-    get_platform_from_url,
-    is_duplicate,
-    find_existing_jd,
-    load_screening_rules,
-    load_company_info,
-    classify_by_verdict,
-    move_to_folder,
-    parse_verdict_from_screening,
-    update_summary,
-    extract_metadata_from_jd,
-    get_user_status,
-    normalize_status,
-    is_protected_status,
-    add_frontmatter_status,
-    JOB_POSTINGS_DIR,
-    SCREENING_DIR,
-)
+try:
+    from .utils import (
+        extract_job_id,
+        extract_job_id_from_filename,
+        get_platform_from_url,
+        is_duplicate,
+        find_existing_jd,
+        load_screening_rules,
+        load_company_info,
+        classify_by_verdict,
+        move_to_folder,
+        parse_verdict_from_screening,
+        update_summary,
+        extract_metadata_from_jd,
+        get_user_status,
+        normalize_status,
+        is_protected_status,
+        add_frontmatter_status,
+        JOB_POSTINGS_DIR,
+        SCREENING_DIR,
+    )
+except ImportError:
+    from utils import (
+        extract_job_id,
+        extract_job_id_from_filename,
+        get_platform_from_url,
+        is_duplicate,
+        find_existing_jd,
+        load_screening_rules,
+        load_company_info,
+        classify_by_verdict,
+        move_to_folder,
+        parse_verdict_from_screening,
+        update_summary,
+        extract_metadata_from_jd,
+        get_user_status,
+        normalize_status,
+        is_protected_status,
+        add_frontmatter_status,
+        JOB_POSTINGS_DIR,
+        SCREENING_DIR,
+    )
 
 
 class ProcessResult(Enum):
@@ -456,7 +478,7 @@ def build_dry_run_report(results: List[ProcessedItem], folder: Path, action: str
         "target_folders": dict(sorted(target_counts.items())),
         "skip_reasons": dict(sorted(skip_reasons.items())),
         "recommendations": {
-            "next_command": f"python3 templates/jd_pipeline.py --{action} {folder}",
+            "next_command": f"python3 templates/jd/pipeline.py --{action} {folder}",
             "review_focus": [
                 "move_candidates: 실제 이동 후보",
                 "skip_reasons: 보호 상태/미판정 원인 확인",
@@ -554,25 +576,25 @@ def main():
         epilog="""
 Examples:
   # Check single URL for duplicates
-  python3 templates/jd_pipeline.py --url "https://wanted.co.kr/wd/123456"
+  python3 templates/jd/pipeline.py --url "https://wanted.co.kr/wd/123456"
 
   # Check multiple URLs from file
-  python3 templates/jd_pipeline.py --file urls.txt
+  python3 templates/jd/pipeline.py --file urls.txt
 
   # Classify extracted markdown files in a folder based on screening results
-  python3 templates/jd_pipeline.py --classify job_postings/conditional/hold/
+  python3 templates/jd/pipeline.py --classify job_postings/conditional/hold/
 
   # Re-classify files (dry run)
-  python3 templates/jd_pipeline.py --rescreen job_postings/pass/ --dry-run
+  python3 templates/jd/pipeline.py --rescreen job_postings/pass/ --dry-run
 
   # Show current status
-  python3 templates/jd_pipeline.py --status
+  python3 templates/jd/pipeline.py --status
 
   # Set status on a file
-  python3 templates/jd_pipeline.py --set-status rejected path/to/file.md --reason "면접 거절"
+  python3 templates/jd/pipeline.py --set-status rejected path/to/file.md --reason "면접 거절"
 
   # Migrate applied/rejected folders to have frontmatter status
-  python3 templates/jd_pipeline.py --migrate-status --dry-run
+  python3 templates/jd/pipeline.py --migrate-status --dry-run
         """,
     )
 

@@ -8,9 +8,9 @@ Optimized for cron execution:
 - Outputs to queue.json for worker processing
 
 Usage:
-    python3 templates/jd_search_quick.py              # Run search, update queue
-    python3 templates/jd_search_quick.py --dry-run    # Preview without saving
-    python3 templates/jd_search_quick.py --status     # Show queue status
+    python3 templates/jd/search_quick.py              # Run search, update queue
+    python3 templates/jd/search_quick.py --dry-run    # Preview without saving
+    python3 templates/jd/search_quick.py --status     # Show queue status
 """
 
 import argparse
@@ -28,14 +28,16 @@ from urllib.parse import quote, urljoin
 import yaml
 
 # Paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 CONFIG_PATH = BASE_DIR / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "job_postings" / ".search_state.json"
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-from jd_utils import is_duplicate
-from jd_queue_utils import load_queue, save_queue, QueueItem, QUEUE_PATH
+try:
+    from .utils import is_duplicate, get_rejected_companies, is_rejected_company
+    from .queue_utils import load_queue, save_queue, QueueItem, QUEUE_PATH
+except ImportError:
+    from utils import is_duplicate, get_rejected_companies, is_rejected_company
+    from queue_utils import load_queue, save_queue, QueueItem, QUEUE_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +160,10 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
     scroll_count = execution.get("scroll_count", 2)  # Reduced from 3
     request_delay = execution.get("request_delay", 1)  # Reduced from 2
     
+    # Load rejected companies
+    rejected_companies = get_rejected_companies()
+    config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
+
     # Load existing data
     seen_ids = load_seen_ids()
     existing_queue = load_queue()
@@ -201,13 +207,24 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                 
                 try:
                     page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+
+                    has_results = page.locator('a[href*="/wd/"]')
+                    no_results = page.locator('text=검색 결과가 없습니다').or_(
+                        page.locator('[class*="EmptyContent"]')
+                    ).or_(page.locator('text=일치하는 결과가 없'))
+
                     try:
-                        page.wait_for_selector('a[href*="/wd/"]', state="attached", timeout=8000)
+                        has_results.first.or_(no_results.first).wait_for(state="attached", timeout=8000)
                     except Exception:
-                        # No results for this query - not an error
+                        print(f"   📊 결과: 0개 (타임아웃)")
+                        page.close()
+                        continue
+
+                    if no_results.count() > 0 or has_results.count() == 0:
                         print(f"   📊 결과: 0개 (검색 결과 없음)")
                         page.close()
                         continue
+
                     time.sleep(request_delay)
                     
                     # Quick scroll
@@ -250,7 +267,12 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             if quick_filter_title(title, config):
                                 query_filtered += 1
                                 continue
-                            
+
+                            # Company filter - skip rejected companies
+                            if is_rejected_company(company, rejected_companies, config_excludes):
+                                query_filtered += 1
+                                continue
+
                             # Quick filter - experience range
                             if filter_experience(experience, config):
                                 query_filtered += 1

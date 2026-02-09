@@ -3,11 +3,11 @@
 Company Info Validator - 기업정보 검증 및 리스크 플래깅
 
 Usage:
-    python3 templates/company_validator.py                     # 전체 검증
-    python3 templates/company_validator.py --file company.md   # 단일 파일
-    python3 templates/company_validator.py --fix               # 자동 수정
-    python3 templates/company_validator.py --report            # 리포트 생성
-    python3 templates/company_validator.py --json              # 기계 처리용 JSON 출력
+    python3 templates/jd/company_validator.py                     # 전체 검증
+    python3 templates/jd/company_validator.py --file company.md   # 단일 파일
+    python3 templates/jd/company_validator.py --fix               # 자동 수정
+    python3 templates/jd/company_validator.py --report            # 리포트 생성
+    python3 templates/jd/company_validator.py --json              # 기계 처리용 JSON 출력
 """
 
 import argparse
@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # Paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 COMPANY_INFO_DIR = BASE_DIR / "company_info"
 REPORT_PATH = BASE_DIR / "company_info" / "_validation_report.md"
 

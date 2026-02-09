@@ -11,7 +11,7 @@ from typing import Optional, Tuple, Literal, Dict, List
 PROTECTED_STATUSES = {"rejected", "applied", "interview", "offer"}
 
 # Base paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 JOB_POSTINGS_DIR = BASE_DIR / "job_postings"
 JD_ANALYSIS_DIR = BASE_DIR / "jd_analysis"
 COMPANY_INFO_DIR = BASE_DIR / "company_info"
@@ -275,6 +275,7 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
         r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
         r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
         r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
+        r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$",
     ]
     for pattern in single_line_patterns:
         match = re.search(pattern, screening_content, re.IGNORECASE | re.MULTILINE)
@@ -477,6 +478,71 @@ def add_frontmatter_status(
 
     # No existing frontmatter
     return frontmatter_block + "\n" + content
+
+
+_LEGAL_ENTITY_RE = re.compile(
+    r'\(주\)|주식회사|\(유\)|유한회사|㈜|\(주\)|Inc\.?|Corp\.?|Co\.,?\s*Ltd\.?',
+    re.IGNORECASE,
+)
+
+
+def _normalize_company_name(name: str) -> str:
+    """Normalize company name by removing legal entity suffixes."""
+    name = _LEGAL_ENTITY_RE.sub('', name)
+    return re.sub(r'[\[\]\(\)]', '', name).strip().lower()
+
+
+def get_rejected_companies() -> set[str]:
+    """Collect normalized company names from rejected JD files.
+
+    Sources:
+    - All .md files in job_postings/rejected/ (regardless of frontmatter)
+    - Files in other folders with frontmatter status: rejected
+    """
+    rejected = set()
+    rejected_dir = JOB_POSTINGS_DIR / "rejected"
+
+    # 1) rejected/ folder — all files
+    if rejected_dir.exists():
+        for f in rejected_dir.glob("*.md"):
+            content = f.read_text(encoding="utf-8")
+            meta = extract_metadata_from_jd(content)
+            company = meta.get("company", "")
+            if company:
+                rejected.add(_normalize_company_name(company))
+
+    # 2) Other folders — status: rejected in frontmatter
+    for folder in JOB_POSTINGS_DIR.iterdir():
+        if not folder.is_dir() or folder.name in ("rejected", "unprocessed", "auto_results", "examples"):
+            continue
+        for f in folder.rglob("*.md"):
+            content = f.read_text(encoding="utf-8")
+            status = normalize_status(get_user_status(content))
+            if status == "rejected":
+                meta = extract_metadata_from_jd(content)
+                company = meta.get("company", "")
+                if company:
+                    rejected.add(_normalize_company_name(company))
+
+    return rejected
+
+
+def is_rejected_company(
+    company: str,
+    rejected_companies: set[str],
+    config_excludes: list[str] | None = None,
+) -> bool:
+    """Check if company is in the rejected set (exact match after normalization)."""
+    normalized = _normalize_company_name(company)
+    if not normalized:
+        return False
+    if normalized in rejected_companies:
+        return True
+    if config_excludes:
+        config_normalized = {_normalize_company_name(c) for c in config_excludes}
+        if normalized in config_normalized:
+            return True
+    return False
 
 
 if __name__ == "__main__":

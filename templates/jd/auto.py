@@ -3,39 +3,51 @@
 JD Auto - Full automation: Search → Extract → Screen → Classify → Notify
 
 Usage:
-    python3 templates/jd_auto.py                    # Full pipeline
-    python3 templates/jd_auto.py --search-only      # Search + extract only
-    python3 templates/jd_auto.py --dry-run          # Preview without changes
-    python3 templates/jd_auto.py --notify-test      # Test notification
+    python3 templates/jd/auto.py                    # Full pipeline
+    python3 templates/jd/auto.py --search-only      # Search + extract only
+    python3 templates/jd/auto.py --dry-run          # Preview without changes
+    python3 templates/jd/auto.py --notify-test      # Test notification
 """
 
 import argparse
 import json
 import os
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-from jd_search import run_search, load_config, JobPosting
-from jd_utils import (
-    JOB_POSTINGS_DIR,
-    SCREENING_DIR,
-    find_existing_jd,
-    is_duplicate,
-)
-from company_validator import (
-    parse_company_file,
-    validate_company,
-    ValidationResult,
-    COMPANY_INFO_DIR,
-)
+try:
+    from .search import run_search, load_config, JobPosting
+    from .utils import (
+        JOB_POSTINGS_DIR,
+        SCREENING_DIR,
+        find_existing_jd,
+        is_duplicate,
+    )
+    from .company_validator import (
+        parse_company_file,
+        validate_company,
+        ValidationResult,
+        COMPANY_INFO_DIR,
+    )
+except ImportError:
+    from search import run_search, load_config, JobPosting
+    from utils import (
+        JOB_POSTINGS_DIR,
+        SCREENING_DIR,
+        find_existing_jd,
+        is_duplicate,
+    )
+    from company_validator import (
+        parse_company_file,
+        validate_company,
+        ValidationResult,
+        COMPANY_INFO_DIR,
+    )
 
 # Paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "job_postings" / "auto_results"
 
 
@@ -254,8 +266,15 @@ def run_auto(
     # Step 2: Extract (for new postings)
     print("\n📍 Step 2: JD 추출")
     print("   ℹ️  추출은 수동 또는 Claude skill로 진행")
-    print("   다음 명령으로 추출:")
-    print(f"   python3 templates/jd_pipeline.py --file {JOB_POSTINGS_DIR / 'unprocessed' / 'search_*.txt'}")
+    # Find the latest search URL file
+    unprocessed_dir = JOB_POSTINGS_DIR / "unprocessed"
+    search_files = sorted(unprocessed_dir.glob("search_*.txt")) if unprocessed_dir.exists() else []
+    if search_files:
+        latest_file = search_files[-1]
+        print("   다음 명령으로 추출:")
+        print(f"   python3 templates/jd/pipeline.py --file {latest_file}")
+    else:
+        print("   ⚠️  추출할 URL 파일 없음")
     
     # Step 3: Screen (would be automated with LLM)
     print("\n📍 Step 3: 스크리닝")

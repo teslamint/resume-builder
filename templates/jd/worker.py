@@ -8,11 +8,11 @@ Processes items from queue.json:
 - Updates queue status
 
 Usage:
-    python3 templates/jd_worker.py                    # Process all pending
-    python3 templates/jd_worker.py --limit 5          # Process up to 5 items
-    python3 templates/jd_worker.py --job-id 123456    # Process specific job
-    python3 templates/jd_worker.py --status           # Show queue status
-    python3 templates/jd_worker.py --clear-done       # Remove completed items
+    python3 templates/jd/worker.py                    # Process all pending
+    python3 templates/jd/worker.py --limit 5          # Process up to 5 items
+    python3 templates/jd/worker.py --job-id 123456    # Process specific job
+    python3 templates/jd/worker.py --status           # Show queue status
+    python3 templates/jd/worker.py --clear-done       # Remove completed items
 """
 
 import argparse
@@ -26,14 +26,15 @@ from typing import List, Optional
 import yaml
 
 # Paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 JOB_POSTINGS_DIR = BASE_DIR / "job_postings"
 UNPROCESSED_DIR = JOB_POSTINGS_DIR / "unprocessed"
 CONFIG_PATH = JOB_POSTINGS_DIR / "search_config.yaml"
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-from jd_queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
+try:
+    from .queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
+except ImportError:
+    from queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
 
 logger = logging.getLogger(__name__)
 

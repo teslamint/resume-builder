@@ -75,7 +75,7 @@ overrides/targetco/profile/summary-job.md
 
 ## 회사별 설정
 
-`templates/resume_builder.py`의 `VARIANT_CONFIG`에서 설정합니다:
+`templates/build/resume_builder.py`의 `VARIANT_CONFIG`에서 설정합니다:
 
 ```python
 VARIANT_CONFIG = {

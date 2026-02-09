@@ -3,16 +3,15 @@
 JD Search - Automated job posting search and discovery.
 
 Usage:
-    python3 templates/jd_search.py                    # Run full search
-    python3 templates/jd_search.py --query "백엔드"   # Single query search
-    python3 templates/jd_search.py --dry-run          # Preview without processing
-    python3 templates/jd_search.py --status           # Show search state
+    python3 templates/jd/search.py                    # Run full search
+    python3 templates/jd/search.py --query "백엔드"   # Single query search
+    python3 templates/jd/search.py --dry-run          # Preview without processing
+    python3 templates/jd/search.py --status           # Show search state
 """
 
 import argparse
 import json
 import re
-import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,13 +21,15 @@ from urllib.parse import quote, urljoin
 
 import yaml
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-from jd_utils import is_duplicate, extract_job_id, JOB_POSTINGS_DIR
-from company_validator import parse_company_file, validate_company, COMPANY_INFO_DIR
+try:
+    from .utils import is_duplicate, extract_job_id, JOB_POSTINGS_DIR, get_rejected_companies, is_rejected_company
+    from .company_validator import parse_company_file, validate_company, COMPANY_INFO_DIR
+except ImportError:
+    from utils import is_duplicate, extract_job_id, JOB_POSTINGS_DIR, get_rejected_companies, is_rejected_company
+    from company_validator import parse_company_file, validate_company, COMPANY_INFO_DIR
 
 # Paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 CONFIG_PATH = BASE_DIR / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "job_postings" / ".search_state.json"
 
@@ -174,6 +175,8 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     from playwright.sync_api import sync_playwright
     
     result = SearchResult(query=query, total_found=0)
+    rejected_companies = get_rejected_companies()
+    config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
     base_url = config.get("platforms", {}).get("wanted", {}).get("base_url", "https://www.wanted.co.kr")
     search_url = f"{base_url}/search?query={quote(query)}&tab=position"
     
@@ -194,9 +197,25 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
         
         try:
             page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-            # Wait for job listings to appear (attached state, not visible)
-            page.wait_for_selector('a[href*="/wd/"]', state="attached", timeout=15000)
-            time.sleep(request_delay + 2)  # Extra wait for dynamic content
+
+            has_results = page.locator('a[href*="/wd/"]')
+            no_results = page.locator('text=검색 결과가 없습니다').or_(
+                page.locator('[class*="EmptyContent"]')
+            ).or_(page.locator('text=일치하는 결과가 없'))
+
+            try:
+                has_results.first.or_(no_results.first).wait_for(state="attached", timeout=15000)
+            except Exception:
+                print(f"   📊 결과: 0개 (타임아웃)")
+                browser.close()
+                return result
+
+            if no_results.count() > 0 or has_results.count() == 0:
+                print(f"   📊 결과: 0개 (검색 결과 없음)")
+                browser.close()
+                return result
+
+            time.sleep(request_delay + 2)
             
             # Scroll to load more results
             for i in range(scroll_count):
@@ -242,7 +261,12 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
                     if filter_result == "pass":
                         result.filtered_out += 1
                         continue
-                    
+
+                    # Company filter - skip rejected companies
+                    if is_rejected_company(company, rejected_companies, config_excludes):
+                        result.filtered_out += 1
+                        continue
+
                     # Check if already seen in this session's state
                     if job_id in state.seen_job_ids:
                         result.duplicates += 1

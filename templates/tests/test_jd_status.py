@@ -2,24 +2,27 @@
 """Tests for JD status management.
 
 Run with:
-    python3 templates/test_jd_status.py
-    python3 templates/test_jd_status.py -v  # verbose
+    python3 templates/tests/test_jd_status.py
+    python3 templates/tests/test_jd_status.py -v  # verbose
 
 Or with pytest (if installed):
-    pytest templates/test_jd_status.py -v
+    pytest templates/tests/test_jd_status.py -v
 """
 
+import sys
 import unittest
 import tempfile
 from pathlib import Path
 from datetime import datetime
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "jd"))
 
 
 class TestParseFrontmatter(unittest.TestCase):
     """Step 2: parse_frontmatter tests."""
 
     def test_parse_frontmatter_with_status(self):
-        from jd_utils import parse_frontmatter
+        from utils import parse_frontmatter
 
         content = """---
 status: rejected
@@ -31,14 +34,14 @@ status_updated: 2026-01-24
         self.assertEqual(result["status_updated"], "2026-01-24")
 
     def test_parse_frontmatter_empty(self):
-        from jd_utils import parse_frontmatter
+        from utils import parse_frontmatter
 
         content = "# JD 내용 (frontmatter 없음)"
         result = parse_frontmatter(content)
         self.assertEqual(result, {})
 
     def test_parse_frontmatter_with_reason(self):
-        from jd_utils import parse_frontmatter
+        from utils import parse_frontmatter
 
         content = """---
 status: rejected
@@ -50,7 +53,7 @@ status_reason: 채용 프로세스 부담
         self.assertEqual(result["status_reason"], "채용 프로세스 부담")
 
     def test_parse_frontmatter_partial(self):
-        from jd_utils import parse_frontmatter
+        from utils import parse_frontmatter
 
         content = """---
 status: applied
@@ -65,19 +68,19 @@ class TestGetUserStatus(unittest.TestCase):
     """Step 3: get_user_status tests."""
 
     def test_get_user_status_exists(self):
-        from jd_utils import get_user_status
+        from utils import get_user_status
 
         content = "---\nstatus: applied\n---\n# JD"
         self.assertEqual(get_user_status(content), "applied")
 
     def test_get_user_status_none(self):
-        from jd_utils import get_user_status
+        from utils import get_user_status
 
         content = "# JD without frontmatter"
         self.assertIsNone(get_user_status(content))
 
     def test_get_user_status_pending(self):
-        from jd_utils import get_user_status
+        from utils import get_user_status
 
         content = "---\nstatus: pending\n---\n# JD"
         self.assertEqual(get_user_status(content), "pending")
@@ -87,42 +90,42 @@ class TestIsProtectedStatus(unittest.TestCase):
     """Step 4: is_protected_status tests."""
 
     def test_protected_rejected(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertTrue(is_protected_status("rejected"))
 
     def test_protected_applied(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertTrue(is_protected_status("applied"))
 
     def test_protected_interview(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertTrue(is_protected_status("interview"))
 
     def test_protected_offer(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertTrue(is_protected_status("offer"))
 
     def test_not_protected_pending(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertFalse(is_protected_status("pending"))
 
     def test_not_protected_none(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertFalse(is_protected_status(None))
 
     def test_protected_legacy_pass_alias(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertTrue(is_protected_status("패스"))
 
     def test_not_protected_legacy_hold_alias(self):
-        from jd_utils import is_protected_status
+        from utils import is_protected_status
 
         self.assertFalse(is_protected_status("조건부(하)"))
 
@@ -131,13 +134,13 @@ class TestVerdictParsing(unittest.TestCase):
     """Verdict parser/mapping regression tests."""
 
     def test_parse_heading_colon(self):
-        from jd_utils import parse_verdict_from_screening
+        from utils import parse_verdict_from_screening
 
         content = "### 최종 판정: 🟢 지원 추천"
         self.assertEqual(parse_verdict_from_screening(content), "지원 추천")
 
     def test_parse_section_pass_heading(self):
-        from jd_utils import parse_verdict_from_screening
+        from utils import parse_verdict_from_screening
 
         content = """## 판정
 
@@ -146,7 +149,7 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertEqual(parse_verdict_from_screening(content), "지원 비추천")
 
     def test_parse_section_table_worst_case(self):
-        from jd_utils import parse_verdict_from_screening
+        from utils import parse_verdict_from_screening
 
         content = """## 최종 판정
 
@@ -158,7 +161,7 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertEqual(parse_verdict_from_screening(content), "지원 비추천")
 
     def test_parse_ignores_table_header(self):
-        from jd_utils import parse_verdict_from_screening
+        from utils import parse_verdict_from_screening
 
         content = """## 최종 판정
 
@@ -168,7 +171,7 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertIsNone(parse_verdict_from_screening(content))
 
     def test_classify_by_verdict_handles_legacy(self):
-        from jd_utils import classify_by_verdict
+        from utils import classify_by_verdict
 
         self.assertEqual(classify_by_verdict("조건부(상)"), "conditional/hold")
         self.assertEqual(classify_by_verdict("강력 추천"), "conditional/high")
@@ -179,7 +182,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
     """Step 5: add_frontmatter_status tests."""
 
     def test_add_frontmatter_to_new(self):
-        from jd_utils import add_frontmatter_status
+        from utils import add_frontmatter_status
 
         content = "# JD 내용"
         result = add_frontmatter_status(content, "rejected")
@@ -188,7 +191,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
         self.assertIn("# JD 내용", result)
 
     def test_add_frontmatter_update_existing(self):
-        from jd_utils import add_frontmatter_status
+        from utils import add_frontmatter_status
 
         content = "---\nstatus: pending\n---\n# JD"
         result = add_frontmatter_status(content, "rejected", "면접 거절")
@@ -197,7 +200,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
         self.assertNotIn("status: pending", result)
 
     def test_add_frontmatter_preserves_other_fields(self):
-        from jd_utils import add_frontmatter_status
+        from utils import add_frontmatter_status
 
         content = "---\nstatus: pending\ncustom_field: value\n---\n# JD"
         result = add_frontmatter_status(content, "applied")
@@ -205,7 +208,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
         self.assertIn("custom_field: value", result)
 
     def test_add_frontmatter_adds_timestamp(self):
-        from jd_utils import add_frontmatter_status
+        from utils import add_frontmatter_status
 
         content = "# JD 내용"
         result = add_frontmatter_status(content, "rejected")
@@ -217,7 +220,7 @@ class TestClassifyFileProtection(unittest.TestCase):
     """Step 6: classify_file protection tests."""
 
     def test_classify_file_skips_protected_rejected(self):
-        from jd_pipeline import classify_file, ProcessResult
+        from pipeline import classify_file, ProcessResult
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -229,7 +232,7 @@ class TestClassifyFileProtection(unittest.TestCase):
             self.assertIn("보호", result.message)
 
     def test_classify_file_skips_protected_applied(self):
-        from jd_pipeline import classify_file, ProcessResult
+        from pipeline import classify_file, ProcessResult
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -241,7 +244,7 @@ class TestClassifyFileProtection(unittest.TestCase):
             self.assertIn("보호", result.message)
 
     def test_classify_file_allows_pending(self):
-        from jd_pipeline import classify_file, ProcessResult
+        from pipeline import classify_file, ProcessResult
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -254,7 +257,7 @@ class TestClassifyFileProtection(unittest.TestCase):
             self.assertTrue(is_not_protected, f"pending should not be protected: {result}")
 
     def test_classify_file_allows_no_status(self):
-        from jd_pipeline import classify_file, ProcessResult
+        from pipeline import classify_file, ProcessResult
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -271,7 +274,7 @@ class TestMigrateStatus(unittest.TestCase):
     """Step 7: migrate_status tests."""
 
     def test_migrate_applied_folder(self):
-        from jd_pipeline import migrate_status
+        from pipeline import migrate_status
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -286,7 +289,7 @@ class TestMigrateStatus(unittest.TestCase):
             self.assertIn("status: applied", content)
 
     def test_migrate_rejected_folder(self):
-        from jd_pipeline import migrate_status
+        from pipeline import migrate_status
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -301,7 +304,7 @@ class TestMigrateStatus(unittest.TestCase):
             self.assertIn("status: rejected", content)
 
     def test_migrate_skips_existing_status(self):
-        from jd_pipeline import migrate_status
+        from pipeline import migrate_status
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -317,7 +320,7 @@ class TestMigrateStatus(unittest.TestCase):
             self.assertEqual(content.count("status:"), 1)
 
     def test_migrate_dry_run(self):
-        from jd_pipeline import migrate_status
+        from pipeline import migrate_status
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -336,7 +339,7 @@ class TestDryRunReport(unittest.TestCase):
     """Dry-run report generation tests."""
 
     def test_build_dry_run_report_summary(self):
-        from jd_pipeline import build_dry_run_report, ProcessedItem, ProcessResult
+        from pipeline import build_dry_run_report, ProcessedItem, ProcessResult
 
         results = [
             ProcessedItem(
@@ -370,7 +373,7 @@ class TestDryRunReport(unittest.TestCase):
         self.assertIn("2", report["skipped_job_ids"])
 
     def test_write_dry_run_report_creates_json_and_md(self):
-        from jd_pipeline import write_dry_run_report
+        from pipeline import write_dry_run_report
 
         report = {
             "generated_at": "2026-02-04T00:00:00",
@@ -388,7 +391,7 @@ class TestDryRunReport(unittest.TestCase):
             },
             "target_folders": {"pass": 1},
             "skip_reasons": {},
-            "recommendations": {"next_command": "python3 templates/jd_pipeline.py --rescreen job_postings/conditional/hold"},
+            "recommendations": {"next_command": "python3 templates/jd/pipeline.py --rescreen job_postings/conditional/hold"},
             "move_candidates": ["1"],
             "skipped_job_ids": [],
             "items": [],
@@ -407,6 +410,125 @@ class TestDryRunReport(unittest.TestCase):
             self.assertTrue(any(p.suffix == ".md" for p in paths))
             for p in paths:
                 self.assertTrue(p.exists())
+
+
+class TestNormalizeCompanyName(unittest.TestCase):
+    """_normalize_company_name tests."""
+
+    def test_removes_legal_suffixes_korean(self):
+        from utils import _normalize_company_name
+
+        self.assertEqual(_normalize_company_name("(주)크몽"), "크몽")
+        self.assertEqual(_normalize_company_name("주식회사 컬리"), "컬리")
+        self.assertEqual(_normalize_company_name("㈜무신사"), "무신사")
+
+    def test_removes_legal_suffixes_english(self):
+        from utils import _normalize_company_name
+
+        self.assertEqual(_normalize_company_name("ACME Corp."), "acme")
+        self.assertEqual(_normalize_company_name("Foo Inc"), "foo")
+        self.assertEqual(_normalize_company_name("Bar Co., Ltd."), "bar")
+
+    def test_strips_and_lowercases(self):
+        from utils import _normalize_company_name
+
+        self.assertEqual(_normalize_company_name("  MyCompany  "), "mycompany")
+        self.assertEqual(_normalize_company_name("ABC"), "abc")
+
+    def test_empty_string(self):
+        from utils import _normalize_company_name
+
+        self.assertEqual(_normalize_company_name(""), "")
+
+
+class TestIsRejectedCompany(unittest.TestCase):
+    """is_rejected_company tests."""
+
+    def test_exact_match(self):
+        from utils import is_rejected_company
+
+        rejected = {"크몽", "컬리", "무신사"}
+        self.assertTrue(is_rejected_company("크몽", rejected))
+        self.assertTrue(is_rejected_company("(주)크몽", rejected))
+
+    def test_no_substring_match(self):
+        from utils import is_rejected_company
+
+        rejected = {"무신사"}
+        self.assertFalse(is_rejected_company("무신사페이먼츠", rejected))
+
+    def test_config_excludes(self):
+        from utils import is_rejected_company
+
+        rejected = set()
+        self.assertTrue(is_rejected_company("BadCo", rejected, ["BadCo"]))
+        self.assertFalse(is_rejected_company("GoodCo", rejected, ["BadCo"]))
+
+    def test_empty_company(self):
+        from utils import is_rejected_company
+
+        self.assertFalse(is_rejected_company("", {"크몽"}))
+
+    def test_combined_sources(self):
+        from utils import is_rejected_company
+
+        rejected = {"크몽"}
+        config_excludes = ["엘박스"]
+        self.assertTrue(is_rejected_company("크몽", rejected, config_excludes))
+        self.assertTrue(is_rejected_company("엘박스", rejected, config_excludes))
+        self.assertFalse(is_rejected_company("네이버", rejected, config_excludes))
+
+
+class TestGetRejectedCompanies(unittest.TestCase):
+    """get_rejected_companies integration test with temp directory."""
+
+    def test_collects_from_rejected_folder(self):
+        from utils import get_rejected_companies, JOB_POSTINGS_DIR
+        import utils as jd_utils
+
+        original_dir = jd_utils.JOB_POSTINGS_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                jd_utils.JOB_POSTINGS_DIR = tmp_path
+
+                rejected_dir = tmp_path / "rejected"
+                rejected_dir.mkdir()
+
+                jd = rejected_dir / "123-testco-backend.md"
+                jd.write_text(
+                    "# JD\n\n| 회사명 | TestCo |\n| 포지션 | Backend |",
+                    encoding="utf-8",
+                )
+
+                result = get_rejected_companies()
+                self.assertIn("testco", result)
+        finally:
+            jd_utils.JOB_POSTINGS_DIR = original_dir
+
+    def test_collects_from_status_rejected(self):
+        from utils import get_rejected_companies
+        import utils as jd_utils
+
+        original_dir = jd_utils.JOB_POSTINGS_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                jd_utils.JOB_POSTINGS_DIR = tmp_path
+
+                hold_dir = tmp_path / "conditional" / "hold"
+                hold_dir.mkdir(parents=True)
+
+                jd = hold_dir / "456-otherco-dev.md"
+                jd.write_text(
+                    "---\nstatus: rejected\n---\n# JD\n\n| 회사명 | OtherCo |\n| 포지션 | Dev |",
+                    encoding="utf-8",
+                )
+
+                result = get_rejected_companies()
+                self.assertIn("otherco", result)
+        finally:
+            jd_utils.JOB_POSTINGS_DIR = original_dir
 
 
 if __name__ == "__main__":

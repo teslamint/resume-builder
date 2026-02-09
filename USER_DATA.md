@@ -164,7 +164,7 @@ mkdir -p companies/<company>/projects
 
 ## Step 3: 빌드 설정 수정
 
-`templates/resume_builder.py`의 `VARIANT_CONFIG` 수정:
+`templates/build/resume_builder.py`의 `VARIANT_CONFIG` 수정:
 
 ```python
 VARIANT_CONFIG = {

@@ -9,7 +9,7 @@ __pycache__/
 .vscode/
 
 # Build outputs
-build/
+/build/
 
 # Personal data (fork users should add their own data here)
 /variant_config.json

@@ -408,13 +408,13 @@ tabs_context_mcp 재호출 후 createIfEmpty: true로 새 탭 생성
 파일 저장 후 **반드시** 검증 스크립트 실행:
 
 ```bash
-python3 templates/company_validator.py --file company_info/{company_slug}.md --fix
+python3 templates/jd/company_validator.py --file company_info/{company_slug}.md --fix
 ```
 
 자동화/스크립트 연동 시 JSON 출력 사용:
 
 ```bash
-python3 templates/company_validator.py --file company_info/{company_slug}.md --json
+python3 templates/jd/company_validator.py --file company_info/{company_slug}.md --json
 ```
 
 - `--json` 출력에는 `summary`, `results`, `errors`, `fixed_files`, `report_path` 포함

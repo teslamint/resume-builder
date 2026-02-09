@@ -52,7 +52,7 @@ company_info/{company}.md 파일 확인
 
 ```bash
 # 기업 리스크 검증 (파일이 있으면)
-python3 templates/company_validator.py --file company_info/{company}.md
+python3 templates/jd/company_validator.py --file company_info/{company}.md
 ```
 
 | 리스크 코드 | 스크리닝 영향 | 대응 |
@@ -96,7 +96,7 @@ jd_analysis/screening/{id}-{company}-{position}.md
 스크리닝 완료 후 판정 결과에 따라 JD 파일 자동 분류:
 
 ```bash
-python3 templates/jd_pipeline.py --classify <jd_file_folder>
+python3 templates/jd/pipeline.py --classify <jd_file_folder>
 ```
 
 | 판정 | 대상 폴더 |

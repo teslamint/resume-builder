@@ -2,7 +2,7 @@
 """
 JD Queue Utilities - Shared queue operations with file locking.
 
-Provides thread-safe queue operations for jd_search_quick.py and jd_worker.py.
+Provides thread-safe queue operations for search_quick.py and worker.py.
 Uses fcntl for file locking to prevent race conditions.
 """
 
@@ -16,7 +16,7 @@ from typing import List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 QUEUE_PATH = BASE_DIR / "job_postings" / "queue.json"
 
 

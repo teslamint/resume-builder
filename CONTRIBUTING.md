@@ -77,7 +77,7 @@ docs(readme): update installation instructions
 ls build/resume-example*
 
 # Python 스크립트 직접 실행
-python3 templates/resume_builder.py --variant public --example
+python3 templates/build/resume_builder.py --variant public --example
 ```
 
 ## 질문
