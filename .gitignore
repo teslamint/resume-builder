@@ -36,6 +36,7 @@ __pycache__/
 
 # Local dashboard (sync_dashboard.py)
 dashboard_local.md
+scripts/sync_config.yaml
 
 # Serena
 .serena/

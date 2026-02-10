@@ -1,0 +1,4 @@
+# Obsidian dashboard sync configuration
+# Copy to sync_config.yaml and edit paths
+
+dashboard_path: "~/path/to/obsidian/채용공고 검색 대시보드.md"
