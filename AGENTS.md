@@ -85,7 +85,21 @@ python3 templates/tests/test_jd_status.py -v
 ## Resume Build System
 
 - When working with resume/override files: always verify that ALL companies, sections, and build targets produce correct output after changes. Check for missing sections (Key Experience, company summaries) and wrong headers (`## Summary` vs `## Overview`).
-- Never embellish, conflate, or overstate technical experience in resume content. Only use terminology and descriptions that precisely match what was actually implemented. When uncertain, ask the user rather than guessing.
+
+## Resume Content Rules
+
+- Do not embellish, conflate, or exaggerate technical experience on resumes. Only claim technologies and patterns that are directly evidenced in the codebase. When uncertain, ask the user rather than inventing.
+
+## Resume Build Workflow
+
+- After any resume/document change: verify ALL build targets (English PDF, Korean PDF, markdown, etc.)
+- Override files must cover every section: projects, summaries, company details — not just primary content
+- Verification:
+  ```bash
+  ./build.sh job full --target <target>  # targeted
+  ./build.sh job full                    # base
+  ./build.sh public all                  # public variant
+  ```
 
 ## Common Patterns & Gotchas
 
