@@ -34,6 +34,7 @@ SECTIONS = [
     ('sec-goal', 'GOAL'),
     ('sec-position', 'POS'),
     ('sec-exp', 'EXP'),
+    ('sec-assign', 'ASGN'),
     ('sec-q1', 'Q1'),
     ('sec-q2', 'Q2'),
     ('sec-tech', 'TECH'),
@@ -42,8 +43,8 @@ SECTIONS = [
 ]
 
 STAGE_PRESETS = {
-    '실무': ['sec-cover', 'sec-goal', 'sec-position', 'sec-exp', 'sec-q1', 'sec-tech', 'sec-notes'],
-    '심화': ['sec-cover', 'sec-goal', 'sec-position', 'sec-exp', 'sec-q1', 'sec-q2', 'sec-tech', 'sec-notes'],
+    '실무': ['sec-cover', 'sec-goal', 'sec-position', 'sec-exp', 'sec-assign', 'sec-q1', 'sec-tech', 'sec-notes'],
+    '심화': ['sec-cover', 'sec-goal', 'sec-position', 'sec-exp', 'sec-assign', 'sec-q1', 'sec-q2', 'sec-tech', 'sec-notes'],
     '컬처핏': ['sec-cover', 'sec-goal', 'sec-position', 'sec-exp', 'sec-q1', 'sec-notes'],
     '임원': ['sec-cover', 'sec-goal', 'sec-position', 'sec-exp', 'sec-q2', 'sec-notes'],
     'decision': ['sec-decision'],
@@ -65,6 +66,8 @@ def build_tab_nav(current_section: str, active_pages: list[str] | None = None) -
 
 def extract_table(content: str, after_heading: str) -> list[dict]:
     """테이블을 파싱하여 딕셔너리 리스트로 반환"""
+    if content and not content.endswith('\n'):
+        content = content + '\n'
     pattern = rf'{after_heading}\s*\n\s*\|[^\n]+\n\s*\|[-\s|]+\n((?:\s*\|[^\n]+\n)+)'
     match = re.search(pattern, content, re.MULTILINE)
     if not match:
@@ -197,18 +200,60 @@ def extract_positioning_qa(content: str) -> list[dict]:
     return extract_table(content, r'### \[My Positioning\] Q&A')
 
 
+def _parse_freeform_qa(subsection_text: str) -> list[dict]:
+    """자유형식 Q&A 파싱: **Q1. "..."** + blockquote → {'질문': ..., '답변 포인트': ...}"""
+    items = []
+    current_question = None
+    answer_lines = []
+
+    for line in subsection_text.split('\n'):
+        stripped = line.strip()
+
+        q_match = re.match(r'\*\*Q\d+\.\s*"(.+?)"\*\*', stripped)
+        if q_match:
+            if current_question and answer_lines:
+                items.append({'질문': current_question, '답변 포인트': ' '.join(answer_lines)})
+            current_question = q_match.group(1)
+            answer_lines = []
+            continue
+
+        if stripped.startswith('<details') or stripped.startswith('</details') or stripped.startswith('<summary'):
+            if current_question and answer_lines:
+                items.append({'질문': current_question, '답변 포인트': ' '.join(answer_lines)})
+                current_question = None
+                answer_lines = []
+            continue
+
+        if current_question and stripped.startswith('>'):
+            text = stripped.lstrip('>').strip()
+            if text:
+                answer_lines.append(text)
+
+    if current_question and answer_lines:
+        items.append({'질문': current_question, '답변 포인트': ' '.join(answer_lines)})
+
+    return items
+
+
 def extract_expected_questions(content: str) -> dict[str, list[dict]]:
-    """예상 질문 & 답변 가이드 추출"""
+    """예상 질문 & 답변 가이드 추출 (### 헤딩 자동 검출, 테이블 + 자유형식 지원)"""
     section = extract_section(content, '예상 질문 & 답변 가이드')
     if not section:
         return {}
-    
+
     result = {}
-    categories = ['기술 질문', '조직적합성 질문', '압박/포지셔닝 질문', 'KDL 맞춤 질문']
-    for cat in categories:
-        table = extract_table(f'### {cat}\n{section}', f'### {cat}')
+    headings = re.findall(r'^###\s+(.+)$', section, re.MULTILINE)
+    for cat in headings:
+        cat = cat.strip()
+        table = extract_table(section, f'### {cat}')
         if table:
             result[cat] = table
+        else:
+            subsection = extract_subsection(section, cat)
+            if subsection:
+                freeform = _parse_freeform_qa(subsection)
+                if freeform:
+                    result[cat] = freeform
     return result
 
 
@@ -241,6 +286,34 @@ def extract_motivation(content: str) -> str:
 
     match = re.search(r'>\s*"([^"]+)"', section)
     return match.group(1) if match else ''
+
+
+def extract_assignment_defense(content: str) -> dict:
+    """선행과제 방어 섹션 추출"""
+    section = extract_section(content, '선행과제 방어')
+    if not section:
+        return {}
+
+    architecture = extract_subsection(section, '아키텍처 개요')
+    decisions = extract_table(section, '### 핵심 설계 결정')
+    qa = extract_table(section, '### 예상 Q&A')
+
+    production = []
+    prod_section = extract_subsection(section, 'Production 개선')
+    if prod_section:
+        for line in prod_section.split('\n'):
+            line = line.strip()
+            if line.startswith('- '):
+                item = line[2:].strip()
+                item = re.sub(r'\*\*([^*]+)\*\*', r'\1', item)
+                production.append(item)
+
+    return {
+        'architecture': architecture,
+        'decisions': decisions,
+        'qa': qa,
+        'production': production,
+    }
 
 
 def build_cover_page(info: dict, active_pages: list[str] | None = None) -> str:
@@ -288,7 +361,7 @@ def build_goal_exit_page(motivation: str, exit_signals: list[str], active_pages:
 
 <div class="memo-space-large"></div>
 
-<h3>즉시 철수 신호 <span class="red-flag">🚩</span></h3>
+<h3>즉시 철수 신호 <span class="red-flag">[!]</span></h3>
 <div class="warning-box">
 '''
     for signal in exit_signals:
@@ -330,7 +403,7 @@ def build_positioning_page(warnings: dict, qa_list: list[dict], active_pages: li
 
 <h3>표현 가이드</h3>
 <table class="expression-table">
-<tr><th>❌ 금지</th><th>⭕ 허용</th></tr>
+<tr><th>X 금지</th><th>O 허용</th></tr>
 '''
     max_len = max(len(warnings['forbidden']), len(warnings['allowed']), 1)
     for i in range(max_len):
@@ -362,6 +435,111 @@ def build_expected_questions_page(expected_qs: dict[str, list[dict]], active_pag
                     out += '<tr>' + ''.join(f'<td>{html.escape(str(q.get(h, "")))}</td>' for h in headers) + '</tr>\n'
             out += '</table>\n'
     
+    out += '</div>\n'
+    return out
+
+
+def render_architecture_html(text: str) -> str:
+    """아키텍처 텍스트를 HTML로 변환 (코드 블록 → <pre>, 테이블 → <table>)"""
+    lines = text.split('\n')
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if stripped.startswith('```'):
+            # Code block → <pre>
+            i += 1
+            code_lines = []
+            while i < len(lines) and not lines[i].strip().startswith('```'):
+                code_lines.append(html.escape(lines[i].rstrip()))
+                i += 1
+            if code_lines:
+                result.append('<pre class="arch-diagram">' + '\n'.join(code_lines) + '</pre>')
+            i += 1
+            continue
+
+        if stripped.startswith('|') and stripped.endswith('|'):
+            # Markdown table → <table>
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith('|') and lines[i].strip().endswith('|'):
+                table_lines.append(lines[i].strip())
+                i += 1
+            if len(table_lines) >= 2:
+                headers = [h.strip() for h in table_lines[0].split('|')[1:-1]]
+                result.append('<table class="arch-table">')
+                result.append('<tr>' + ''.join(f'<th>{html.escape(h)}</th>' for h in headers) + '</tr>')
+                for tl in table_lines[2:]:
+                    cells = [c.strip() for c in tl.split('|')[1:-1]]
+                    result.append('<tr>' + ''.join(f'<td>{html.escape(c)}</td>' for c in cells) + '</tr>')
+                result.append('</table>')
+            continue
+
+        if stripped:
+            result.append(f'<div class="arch-item">{html.escape(stripped)}</div>')
+        i += 1
+
+    return '\n'.join(result)
+
+
+def build_assignment_page(assignment: dict, active_pages: list[str] | None = None) -> str:
+    """선행과제 방어 2페이지 생성"""
+    if not assignment:
+        return ''
+
+    tab_nav = build_tab_nav('sec-assign', active_pages)
+
+    # Page 1: Architecture + Decisions
+    out = f'''<div id="sec-assign" class="page-assignment page-break">
+{tab_nav}
+<h2>선행과제 방어</h2>
+
+<h3>아키텍처 개요</h3>
+'''
+
+    architecture = assignment.get('architecture', '')
+    if architecture:
+        out += '<div class="arch-overview">\n'
+        out += render_architecture_html(architecture)
+        out += '\n</div>\n'
+
+    out += '<div class="diagram-space-small"></div>\n'
+
+    decisions = assignment.get('decisions', [])
+    if decisions:
+        out += '<h3>핵심 설계 결정</h3>\n<table class="decision-table">\n'
+        headers = list(decisions[0].keys())
+        out += '<tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>\n'
+        for d in decisions:
+            out += '<tr>' + ''.join(f'<td>{html.escape(str(d.get(h, "")))}</td>' for h in headers) + '</tr>\n'
+        out += '</table>\n'
+
+    out += '</div>\n'
+
+    # Page 2: Q&A + Production
+    out += f'''<div id="sec-assign-2" class="page-assignment page-break">
+{tab_nav}
+<h2>선행과제 방어 (계속)</h2>
+
+'''
+
+    qa = assignment.get('qa', [])
+    if qa:
+        out += '<h3>예상 Q&A</h3>\n<table class="qa-table">\n'
+        headers = list(qa[0].keys())
+        out += '<tr>' + ''.join(f'<th>{h}</th>' for h in headers) + '</tr>\n'
+        for q in qa:
+            out += '<tr>' + ''.join(f'<td>{html.escape(str(q.get(h, "")))}</td>' for h in headers) + '</tr>\n'
+        out += '</table>\n'
+
+    production = assignment.get('production', [])
+    if production:
+        out += '<h3>Production 개선</h3>\n<ul>\n'
+        for item in production:
+            out += f'<li>{html.escape(item)}</li>\n'
+        out += '</ul>\n'
+
     out += '</div>\n'
     return out
 
@@ -535,6 +713,13 @@ def build_html(md_content: str, css_path: Path, pages: list[str] | None = None) 
     reverse_questions = extract_reverse_questions(md_content)
     test_type, test_items = extract_technical_test(md_content)
     criteria = extract_decision_criteria(md_content)
+    assignment = extract_assignment_defense(md_content)
+
+    if not assignment:
+        if pages is None:
+            pages = [sec_id for sec_id, _ in SECTIONS if sec_id != 'sec-assign']
+        elif 'sec-assign' in pages:
+            pages = [p for p in pages if p != 'sec-assign']
 
     out_html = f'''<!DOCTYPE html>
 <html lang="ko">
@@ -554,6 +739,8 @@ def build_html(md_content: str, css_path: Path, pages: list[str] | None = None) 
         out_html += build_positioning_page(warnings, positioning_qa, pages)
     if pages is None or 'sec-exp' in pages:
         out_html += build_expected_questions_page(expected_qs, pages)
+    if pages is None or 'sec-assign' in pages:
+        out_html += build_assignment_page(assignment, pages)
     if pages is None or 'sec-q1' in pages:
         out_html += build_questions_page_1(questions, pages)
     if pages is None or 'sec-q2' in pages:
