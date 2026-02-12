@@ -493,18 +493,21 @@ def _normalize_company_name(name: str) -> str:
 
 
 def get_rejected_companies() -> set[str]:
-    """Collect normalized company names from rejected JD files.
+    """Collect normalized company names from rejected/passed JD files.
 
     Sources:
     - All .md files in job_postings/rejected/ (regardless of frontmatter)
+    - All .md files in job_postings/pass/ (regardless of frontmatter)
     - Files in other folders with frontmatter status: rejected
     """
     rejected = set()
-    rejected_dir = JOB_POSTINGS_DIR / "rejected"
 
-    # 1) rejected/ folder — all files
-    if rejected_dir.exists():
-        for f in rejected_dir.glob("*.md"):
+    # 1) rejected/ + pass/ folders — all files
+    for dirname in ("rejected", "pass"):
+        target_dir = JOB_POSTINGS_DIR / dirname
+        if not target_dir.exists():
+            continue
+        for f in target_dir.glob("*.md"):
             content = f.read_text(encoding="utf-8")
             meta = extract_metadata_from_jd(content)
             company = meta.get("company", "")
@@ -513,7 +516,7 @@ def get_rejected_companies() -> set[str]:
 
     # 2) Other folders — status: rejected in frontmatter
     for folder in JOB_POSTINGS_DIR.iterdir():
-        if not folder.is_dir() or folder.name in ("rejected", "unprocessed", "auto_results", "examples"):
+        if not folder.is_dir() or folder.name in ("rejected", "pass", "unprocessed", "auto_results", "examples"):
             continue
         for f in folder.rglob("*.md"):
             content = f.read_text(encoding="utf-8")

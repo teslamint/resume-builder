@@ -506,6 +506,30 @@ class TestGetRejectedCompanies(unittest.TestCase):
         finally:
             jd_utils.JOB_POSTINGS_DIR = original_dir
 
+    def test_collects_from_pass_folder(self):
+        from utils import get_rejected_companies
+        import utils as jd_utils
+
+        original_dir = jd_utils.JOB_POSTINGS_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                jd_utils.JOB_POSTINGS_DIR = tmp_path
+
+                pass_dir = tmp_path / "pass"
+                pass_dir.mkdir()
+
+                jd = pass_dir / "789-passedco-backend.md"
+                jd.write_text(
+                    "# JD\n\n| 회사명 | PassedCo |\n| 포지션 | Backend |",
+                    encoding="utf-8",
+                )
+
+                result = get_rejected_companies()
+                self.assertIn("passedco", result)
+        finally:
+            jd_utils.JOB_POSTINGS_DIR = original_dir
+
     def test_collects_from_status_rejected(self):
         from utils import get_rejected_companies
         import utils as jd_utils

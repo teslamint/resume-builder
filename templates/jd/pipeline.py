@@ -643,9 +643,9 @@ Examples:
 
         if result.result == ProcessResult.NEEDS_MANUAL:
             print("\n💡 추출하려면 Claude Code에서 다음 명령을 실행하세요:")
-            print(f"   /extract-job-posting {args.url}")
-            print("\n   추출 후 스크리닝:")
-            print(f"   /jd-screening job_postings/<filename>.md")
+            print(f"   1. /extract-job-posting {args.url}")
+            print(f"   2. /extract-company-info <회사명>")
+            print(f"   3. /jd-screening job_postings/<filename>.md")
 
     elif args.file:
         results = process_urls_from_file(Path(args.file))
@@ -654,7 +654,10 @@ Examples:
         needs_manual = [r for r in results if r.result == ProcessResult.NEEDS_MANUAL]
         if needs_manual:
             print(f"\n💡 {len(needs_manual)}개 URL을 수동으로 추출해야 합니다.")
-            print("   Claude Code에서 /extract-job-posting 스킬을 사용하세요.")
+            print("   1. /extract-job-posting 으로 JD 추출")
+            print("   2. /extract-company-info 로 회사 정보 추출")
+            print("   3. /jd-screening 으로 스크리닝")
+            print("   또는 /jd-batch 로 일괄 처리")
 
     elif args.rescreen or args.classify:
         action_name = "rescreen" if args.rescreen else "classify"
