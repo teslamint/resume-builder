@@ -310,31 +310,58 @@ def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
     
     # === RISK FLAGS ===
     
-    # 1. Turnover rate
+    # 1. Turnover rate (net-growth-adjusted severity)
     if data.employee_current and data.employee_left_1y:
         turnover_rate = data.employee_left_1y / data.employee_current
-        
+
+        net_positive = False
+        net_info = ""
+        if data.employee_joined_1y is not None:
+            net_change = data.employee_joined_1y - data.employee_left_1y
+            if net_change > 0:
+                net_positive = True
+                net_info = f" (순증 +{net_change}명)"
+            elif net_change < 0:
+                net_info = f" (순감 {net_change}명)"
+
         if turnover_rate >= RISK_THRESHOLDS["turnover_critical"]:
-            result.risk_flags.append(RiskFlag(
-                code="TURNOVER_CRITICAL",
-                severity="critical",
-                message=f"퇴사율 {turnover_rate:.0%} - 1년간 {data.employee_left_1y}명 퇴사 (현재 {data.employee_current}명)",
-                value=f"{turnover_rate:.0%}"
-            ))
+            if net_positive:
+                result.risk_flags.append(RiskFlag(
+                    code="TURNOVER_HIGH",
+                    severity="high",
+                    message=f"퇴사율 {turnover_rate:.0%} - 1년간 {data.employee_left_1y}명 퇴사 (현재 {data.employee_current}명){net_info}",
+                    value=f"{turnover_rate:.0%}"
+                ))
+            else:
+                result.risk_flags.append(RiskFlag(
+                    code="TURNOVER_CRITICAL",
+                    severity="critical",
+                    message=f"퇴사율 {turnover_rate:.0%} - 1년간 {data.employee_left_1y}명 퇴사 (현재 {data.employee_current}명){net_info}",
+                    value=f"{turnover_rate:.0%}"
+                ))
         elif turnover_rate >= RISK_THRESHOLDS["turnover_high"]:
-            result.risk_flags.append(RiskFlag(
-                code="TURNOVER_HIGH",
-                severity="high",
-                message=f"퇴사율 {turnover_rate:.0%} - 조직 불안정 우려",
-                value=f"{turnover_rate:.0%}"
-            ))
+            if net_positive:
+                result.risk_flags.append(RiskFlag(
+                    code="TURNOVER_MEDIUM",
+                    severity="medium",
+                    message=f"퇴사율 {turnover_rate:.0%}{net_info}",
+                    value=f"{turnover_rate:.0%}"
+                ))
+            else:
+                result.risk_flags.append(RiskFlag(
+                    code="TURNOVER_HIGH",
+                    severity="high",
+                    message=f"퇴사율 {turnover_rate:.0%} - 조직 불안정 우려{net_info}",
+                    value=f"{turnover_rate:.0%}"
+                ))
         elif turnover_rate >= RISK_THRESHOLDS["turnover_medium"]:
-            result.risk_flags.append(RiskFlag(
-                code="TURNOVER_MEDIUM",
-                severity="medium",
-                message=f"퇴사율 {turnover_rate:.0%}",
-                value=f"{turnover_rate:.0%}"
-            ))
+            if not net_positive:
+                result.risk_flags.append(RiskFlag(
+                    code="TURNOVER_MEDIUM",
+                    severity="medium",
+                    message=f"퇴사율 {turnover_rate:.0%}{net_info}",
+                    value=f"{turnover_rate:.0%}"
+                ))
     
     # 2. Net headcount change
     if data.employee_joined_1y is not None and data.employee_left_1y is not None:
