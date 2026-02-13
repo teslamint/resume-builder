@@ -31,6 +31,7 @@ class QueueItem:
     query: str
     discovered_at: str
     status: str = "pending"  # pending, processing, done, failed
+    platform: str = "wanted"
 
     def to_dict(self) -> dict:
         return asdict(self)

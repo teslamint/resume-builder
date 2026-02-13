@@ -310,6 +310,161 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     return result
 
 
+def parse_remember_experience(text_lines: list[str]) -> str:
+    """Extract experience string from Remember posting text lines.
+
+    Remember listings show fields like "3년~9년 차", "5년 이상", "경력 무관"
+    after the title and company lines.
+    """
+    exp_pattern = re.compile(r'\d+년|경력\s*무관|리더급')
+    for line in text_lines:
+        if exp_pattern.search(line):
+            return line
+    return ""
+
+
+def search_remember(query: str, config: dict, state: SearchState) -> SearchResult:
+    """
+    Search Remember (career.rememberapp.co.kr) for job postings.
+    Uses Playwright for browser automation.
+    """
+    from playwright.sync_api import sync_playwright
+
+    result = SearchResult(query=query, total_found=0)
+    rejected_companies = get_rejected_companies()
+    config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
+    base_url = config.get("platforms", {}).get("remember", {}).get("base_url", "https://career.rememberapp.co.kr")
+
+    execution = config.get("execution", {})
+    scroll_count = execution.get("scroll_count", 3)
+    request_delay = execution.get("request_delay", 2)
+
+    search_params = json.dumps({
+        "includeAppliedJobPosting": False,
+        "leaderPosition": False,
+        "organizationType": "all",
+        "applicationType": "all",
+        "keywords": [query],
+    }, ensure_ascii=False)
+    search_url = f"{base_url}/job/postings?search={quote(search_params)}"
+
+    print(f"\n🔍 검색 중 (Remember): {query}")
+    print(f"   URL: {search_url}")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+
+            has_results = page.locator('a[href*="/job/posting/"]')
+            no_results = page.locator('text=총 0개 공고')
+
+            try:
+                has_results.first.or_(no_results.first).wait_for(state="attached", timeout=15000)
+            except Exception:
+                print(f"   📊 결과: 0개 (타임아웃)")
+                browser.close()
+                return result
+
+            if no_results.count() > 0 or has_results.count() == 0:
+                print(f"   📊 결과: 0개 (검색 결과 없음)")
+                browser.close()
+                return result
+
+            time.sleep(request_delay + 2)
+
+            for i in range(scroll_count):
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(1)
+
+            job_links = page.query_selector_all('a[href*="/job/posting/"]')
+
+            seen_ids = set()
+            for link in job_links:
+                try:
+                    href = link.get_attribute("href")
+                    if not href or "/job/posting/" not in href:
+                        continue
+
+                    if "jdViewSource=inweb_list" not in href:
+                        continue
+
+                    match = re.search(r"/job/posting/(\d+)", href)
+                    if not match:
+                        continue
+
+                    raw_id = match.group(1)
+                    job_id = f"remember-{raw_id}"
+                    if raw_id in seen_ids:
+                        continue
+                    seen_ids.add(raw_id)
+
+                    text = link.inner_text()
+                    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+                    if len(lines) < 2:
+                        continue
+
+                    company = lines[0]
+                    title = lines[1]
+                    experience = parse_remember_experience(lines[2:])
+
+                    result.total_found += 1
+
+                    filter_result = quick_filter_title(title, config)
+                    if filter_result == "pass":
+                        result.filtered_out += 1
+                        continue
+
+                    if is_rejected_company(company, rejected_companies, config_excludes):
+                        result.filtered_out += 1
+                        continue
+
+                    if job_id in state.seen_job_ids or raw_id in state.seen_job_ids:
+                        result.duplicates += 1
+                        continue
+
+                    is_dup, _ = is_duplicate(job_id)
+                    if is_dup:
+                        result.duplicates += 1
+                        state.seen_job_ids.add(job_id)
+                        continue
+                    is_dup, _ = is_duplicate(raw_id)
+                    if is_dup:
+                        result.duplicates += 1
+                        state.seen_job_ids.add(job_id)
+                        continue
+
+                    full_url = f"{base_url}/job/posting/{raw_id}"
+                    posting = JobPosting(
+                        job_id=job_id,
+                        url=full_url,
+                        title=title,
+                        company=company,
+                        experience=experience,
+                        is_new=True,
+                        quick_filter_result=filter_result,
+                    )
+                    result.new_postings.append(posting)
+                    state.seen_job_ids.add(job_id)
+
+                except Exception:
+                    continue
+
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+        finally:
+            browser.close()
+
+    return result
+
+
 def run_search(
     queries: Optional[List[str]] = None,
     dry_run: bool = False,
@@ -339,29 +494,47 @@ def run_search(
     print(f"   최대 처리: {max_urls}개")
     print("=" * 60)
     
+    platforms_config = config.get("platforms", {})
+    search_funcs = {
+        "wanted": search_wanted,
+        "remember": search_remember,
+    }
+
+    enabled_platforms = [
+        name for name, cfg in platforms_config.items()
+        if cfg.get("enabled", False) and name in search_funcs
+    ]
+
+    if not enabled_platforms:
+        enabled_platforms = ["wanted"]
+
+    print(f"   플랫폼: {', '.join(enabled_platforms)}")
+
     for query in queries:
-        if len(all_new_postings) >= max_urls:
-            print(f"\n⚠️  최대 URL 수 도달 ({max_urls}), 검색 중단")
-            break
-        
-        result = search_wanted(query, config, state)
-        total_found += result.total_found
-        total_duplicates += result.duplicates
-        total_filtered += result.filtered_out
-        
-        # Add new postings (up to limit)
-        remaining = max_urls - len(all_new_postings)
-        new_to_add = result.new_postings[:remaining]
-        all_new_postings.extend(new_to_add)
-        
-        # Print result summary
-        print(f"   📊 결과: 총 {result.total_found}개 발견")
-        print(f"      - 새 공고: {len(result.new_postings)}개")
-        print(f"      - 중복: {result.duplicates}개")
-        print(f"      - 필터링: {result.filtered_out}개")
-        
-        # Rate limiting
-        time.sleep(config.get("execution", {}).get("request_delay", 2))
+        for platform in enabled_platforms:
+            if len(all_new_postings) >= max_urls:
+                print(f"\n⚠️  최대 URL 수 도달 ({max_urls}), 검색 중단")
+                break
+
+            search_func = search_funcs[platform]
+            result = search_func(query, config, state)
+            total_found += result.total_found
+            total_duplicates += result.duplicates
+            total_filtered += result.filtered_out
+
+            remaining = max_urls - len(all_new_postings)
+            new_to_add = result.new_postings[:remaining]
+            all_new_postings.extend(new_to_add)
+
+            print(f"   📊 결과: 총 {result.total_found}개 발견")
+            print(f"      - 새 공고: {len(result.new_postings)}개")
+            print(f"      - 중복: {result.duplicates}개")
+            print(f"      - 필터링: {result.filtered_out}개")
+
+            time.sleep(config.get("execution", {}).get("request_delay", 2))
+        else:
+            continue
+        break
     
     # Summary
     print("\n" + "=" * 60)
