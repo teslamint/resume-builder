@@ -89,10 +89,16 @@ def quick_filter_title(title: str, config: dict) -> bool:
     """
     filters = config.get("quick_filters", {})
     title_lower = title.lower()
-    
+
     for keyword in filters.get("title_exclude", []):
         if keyword.lower() in title_lower:
             return True
+
+    include_keywords = filters.get("title_include", [])
+    if include_keywords:
+        if not any(kw.lower() in title_lower for kw in include_keywords):
+            return True
+
     return False
 
 

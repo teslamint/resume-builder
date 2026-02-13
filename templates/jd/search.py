@@ -153,17 +153,23 @@ def quick_filter_title(title: str, config: dict) -> Optional[str]:
     """
     filters = config.get("quick_filters", {})
     title_lower = title.lower()
-    
-    # Check exclude keywords
+
+    # 1. Exclude 최우선
     for keyword in filters.get("title_exclude", []):
         if keyword.lower() in title_lower:
             return "pass"
-    
-    # Check prefer keywords
+
+    # 2. Include 게이트 (비어있지 않으면 하나 이상 매칭 필요)
+    include_keywords = filters.get("title_include", [])
+    if include_keywords:
+        if not any(kw.lower() in title_lower for kw in include_keywords):
+            return "pass"
+
+    # 3. Prefer 우선 마킹
     for keyword in filters.get("title_prefer", []):
         if keyword.lower() in title_lower:
             return "prefer"
-    
+
     return None
 
 
