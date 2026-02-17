@@ -84,5 +84,25 @@ resume/
 
 ## 다음 단계
 
+- [JD Automation](#jd-automation-optional) - 채용공고 자동 수집/분석 파이프라인
 - [Customization](customization.md) - variant 시스템과 오버라이드 설정
 - [AI Workflow](ai-workflow.md) - Claude Code 스킬 활용
+
+## JD Automation (Optional)
+
+이력서 빌드 외에, 채용공고 자동 처리 파이프라인을 사용할 수 있습니다.
+
+```bash
+# 전체 자동화: 검색 → JD 추출 → 회사정보 → 스크리닝 → 분류
+python3 templates/jd/auto.py
+
+# 검색 없이 URL 파일로 실행
+python3 templates/jd/auto.py --from-urls job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
+
+# 스타트업 투자정보(TheVC) 처리 정책
+python3 templates/jd/auto.py --thevc-mode auto|skip|require
+```
+
+주요 출력:
+- `job_postings/auto_results/auto_<run_id>.json`
+- `job_postings/unprocessed/company_enrichment_thevc.txt`

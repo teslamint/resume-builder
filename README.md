@@ -118,6 +118,11 @@ resume/
 | `/extract-job-posting` | 채용공고 추출 |
 | `/jd-screening` | JD 적합성 분석 |
 
+자동화 스크립트:
+- `python3 templates/jd/auto.py`: 검색 → JD 추출 → 회사정보 추출 → 스크리닝 → 자동 분류
+- `python3 templates/jd/auto.py --from-urls <file>`: URL 파일 기반 배치 실행
+- `python3 templates/jd/auto.py --thevc-mode auto|skip|require`: 스타트업 투자정보(TheVC) 처리 정책 선택
+
 자세한 사용법은 [AI Workflow](docs/ai-workflow.md)를 참고하세요.
 
 ## License

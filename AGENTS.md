@@ -345,7 +345,7 @@ For creating English-language resumes targeting international companies:
 
 | Skill | Purpose | Output |
 |-------|---------|--------|
-| `/extract-company-info` | Extract company info from Wanted pages | `company_info/<company>.md` |
+| `/extract-company-info` | Extract company info from multi-sources (Wanted/Remember/Saramin/TheVC) | `company_info/<company>.md` |
 | `/extract-job-posting` | Extract JD from recruitment sites | `job_postings/<id>-<company>-<position>.md` |
 | `/jd-screening` | Analyze JD fit against criteria | `jd_analysis/screening/<id>-<company>-<position>.md` |
 | `/jd-batch` | Batch process URLs or reclassify files | Auto-classify to folders |
@@ -368,6 +368,22 @@ python3 templates/jd/search.py --reset-state
 
 # 풀 파이프라인 (검색만)
 python3 templates/jd/auto.py --search-only
+
+# 풀 파이프라인 (검색 → JD 추출 → 회사정보 → 스크리닝 → 분류)
+python3 templates/jd/auto.py
+
+# 검색 없이 URL 파일로 실행
+python3 templates/jd/auto.py --from-urls job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
+
+# 기존 JD만 스크리닝/재분류
+python3 templates/jd/auto.py --screening-only --from-urls job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
+
+# TheVC 투자정보 모드
+python3 templates/jd/auto.py --thevc-mode auto      # 기본: 로그인 실패 시 투자정보만 스킵
+python3 templates/jd/auto.py --thevc-mode require   # 로그인 실패 시 해당 항목 실패 처리
+
+# TheVC 보완 큐 재처리
+python3 templates/jd/auto.py --company-enrichment-only --thevc-mode require
 ```
 
 **설정 파일:** `job_postings/search_config.yaml`
@@ -381,8 +397,10 @@ python3 templates/jd/auto.py --search-only
 
 **출력:**
 - 새 URL 목록: `job_postings/unprocessed/search_YYYYMMDD_HHMM.txt`
-- 검색 결과: `job_postings/auto_results/search_YYYYMMDD_HHMM.json`
+- 검색 결과(검색 스크립트): `job_postings/auto_results/search_YYYYMMDD_HHMM.json`
+- 자동 파이프라인 결과: `job_postings/auto_results/auto_<run_id>.json`
 - 상태 파일: `job_postings/.search_state.json`
+- TheVC 보완 큐: `job_postings/unprocessed/company_enrichment_thevc.txt`
 
 ### General Skills
 
@@ -401,6 +419,10 @@ python3 templates/jd/auto.py --search-only
 # Use /extract-company-info or manual research
 # Output: company_info/<company>.md
 ```
+
+> 자동 파이프라인(`templates/jd/auto.py`)은 회사 정보 파일이 없을 때 자동 생성하며,
+> 스타트업 투자정보는 TheVC 추출을 시도합니다. TheVC 로그인 필요 시 `auto` 모드에서는
+> 투자정보만 스킵하고 계속 진행하며, 회사명은 보완 큐(`company_enrichment_thevc.txt`)에 누적됩니다.
 
 #### Company Validation (`templates/jd/company_validator.py`)
 ```bash

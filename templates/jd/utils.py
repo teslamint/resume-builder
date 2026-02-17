@@ -123,6 +123,7 @@ def find_existing_jd(job_id: str) -> Optional[Path]:
     search_dirs = [
         JOB_POSTINGS_DIR,
         JOB_POSTINGS_DIR / "pass",
+        JOB_POSTINGS_DIR / "conditional",
         JOB_POSTINGS_DIR / "conditional" / "high",
         JOB_POSTINGS_DIR / "conditional" / "hold",
         JOB_POSTINGS_DIR / "conditional" / "middle",
