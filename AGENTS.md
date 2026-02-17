@@ -619,3 +619,52 @@ python scripts/sync_dashboard.py --from-obsidian --dry-run
 - `--to-obsidian` prints tables for manual copy-paste (auto-replace not implemented)
 - Files in `conditional/high/`, `conditional/hold/` etc. are properly scanned
 - Safe file move: skips if destination exists, logs errors on failure
+
+---
+
+## SUMMARY.md 유지보수
+
+### 누락 스크리닝 결과 찾기
+
+SUMMARY.md에 없는 스크리닝 파일을 찾아 추가하는 패턴:
+
+```python
+import re, os
+
+# 1. SUMMARY.md에서 언급된 ID 추출
+with open("jd_analysis/screening/SUMMARY.md") as f:
+    content = f.read()
+mentioned_ids = set(re.findall(r'\b(\d{5,6})\b', content))
+
+# 2. 실제 스크리닝 파일 ID 추출
+files = os.listdir("jd_analysis/screening/")
+file_ids = {re.match(r'^(\d+)', f).group(1) for f in files
+            if re.match(r'^\d+', f) and f.endswith('.md')}
+
+# 3. 누락 ID = 파일 있는데 SUMMARY에 없는 것
+missing = file_ids - mentioned_ids
+print(f"누락: {len(missing)}건")
+```
+
+### 판정 배치 추출
+
+```python
+import glob, re
+
+verdicts = {}
+for path in glob.glob("jd_analysis/screening/*.md"):
+    with open(path) as f:
+        text = f.read()
+    for line in text.splitlines():
+        if '판정' in line:
+            if '🟢' in line: verdicts[path] = '🟢'
+            elif '🟡' in line: verdicts[path] = '🟡'
+            elif '🔴' in line: verdicts[path] = '🔴'
+            break
+```
+
+### 주의사항
+
+- **stray rows**: 자동 파이프라인이 SUMMARY.md 말미에 잘못된 형식(파이프 테이블 아닌 별도 포맷)으로 행을 append할 수 있음. 주기적으로 파일 끝부분 검사 필요
+- **통계 업데이트**: 행 추가 후 파일 내 통계 테이블(`| **총합** | ...`)을 실제 카운트와 맞게 수동 갱신
+- SUMMARY.md 테이블 구조: `| 공고 | 회사 | 포지션 | 판정 | 비고 |` (1/2/3순위 섹션 분리)
