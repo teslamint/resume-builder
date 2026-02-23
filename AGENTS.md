@@ -90,6 +90,27 @@ python3 templates/tests/test_jd_status.py -v
 
 - Do not embellish, conflate, or exaggerate technical experience on resumes. Only claim technologies and patterns that are directly evidenced in the codebase. When uncertain, ask the user rather than inventing.
 
+### Override Content Verification (Critical)
+
+Override files can drift from base sources over time. When creating or reviewing overrides:
+
+1. **Cross-reference every claim against base source files** — override content must not add technologies, roles, or achievements that don't exist in the original `companies/` or `profile/` files
+2. **Profile-level vs project-level skills** — a technology used in one specific project (e.g., K8s in a single project) should NOT be listed as a general skill in `skills-*.md` or `profile.md` Key Experience
+3. **Common inflation patterns to reject:**
+   - Role inflation: adding "(매니저)", "리드", "총괄" when actual role is IC
+   - Verb inflation: "재설계" (redesign) when actual work was "분리" (extraction); "전환" (migration) when actual work was "설계" (design)
+   - Scope inflation: "Cluster" when actual infra was managed services (RDS, ElastiCache); "Kubernetes" when actual orchestration was ECS
+   - Architecture inflation: "MSA 아키텍처 전환" when actual work was partial service extraction from monolith
+4. **Verification workflow:**
+   ```bash
+   # After override changes, grep for common inflation signals:
+   grep -i "kubernetes\|k8s" build/resume-job-<target>.md
+   grep "Cluster" build/resume-job-<target>.md
+   grep "재설계\|총괄\|리드\|매니저" build/resume-job-<target>.md
+   # Cross-check: compare override vs base
+   diff overrides/<target>/companies/<company>/profile.md companies/<company>/profile.md
+   ```
+
 ## Resume Build Workflow
 
 - After any resume/document change: verify ALL build targets (English PDF, Korean PDF, markdown, etc.)
