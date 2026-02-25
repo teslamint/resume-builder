@@ -5,8 +5,12 @@ __pycache__/
 # macOS
 .DS_Store
 
-# VSCode
+# IDEs
 .vscode/
+.idea/
+
+# Codex CLI
+.codex/
 
 # Build outputs
 /build/
@@ -40,3 +44,7 @@ scripts/sync_config.yaml
 
 # Serena
 .serena/
+
+# EntireContext (contains PII from conversation history)
+.entire/
+.entirecontext/

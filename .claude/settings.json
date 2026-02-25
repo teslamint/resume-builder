@@ -1,4 +1,140 @@
 {
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code session-start"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/teslamint/.local/share/uv/tools/entirecontext/bin/ec hook handle --type SessionStart",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code session-end"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/teslamint/.local/share/uv/tools/entirecontext/bin/ec hook handle --type SessionEnd",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code user-prompt-submit"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/teslamint/.local/share/uv/tools/entirecontext/bin/ec hook handle --type UserPromptSubmit",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code stop"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/teslamint/.local/share/uv/tools/entirecontext/bin/ec hook handle --type Stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code pre-task"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | grep -E '\\.py$' | xargs -I{} sh -c 'python3 -m py_compile \"{}\" && echo \"Syntax OK: {}\"' 2>&1 | head -5"
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code post-task"
+          }
+        ]
+      },
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "entire hooks claude-code post-todo"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/teslamint/.local/share/uv/tools/entirecontext/bin/ec hook handle --type PostToolUse",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(./build.sh:*)",
@@ -16,6 +152,9 @@
       "Skill(extract-recruitment-info:*)",
       "Skill(jd-screening)",
       "Skill(jd-screening:*)"
+    ],
+    "deny": [
+      "Read(./.entire/metadata/**)"
     ]
   }
 }
