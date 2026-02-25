@@ -80,9 +80,9 @@ resume/
 │   └── <target>/
 │       └── profile/
 ├── templates/            # 빌드 도구
-│   ├── resume_builder.py
-│   ├── style.css
-│   └── style-short.css
+│   ├── build/            # 빌드 스크립트 (resume_builder.py 등)
+│   ├── jd/               # JD 파이프라인 스크립트
+│   └── themes/           # CSS 스타일
 ├── example/              # 예제 데이터
 ├── docs/                 # 상세 문서
 └── build/                # 생성된 파일 (gitignored)
@@ -117,6 +117,7 @@ resume/
 | `/extract-company-info` | 회사 정보 추출 |
 | `/extract-job-posting` | 채용공고 추출 |
 | `/jd-screening` | JD 적합성 분석 |
+| `/jd-batch` | 여러 채용공고 배치 처리 및 재분류 |
 
 자동화 스크립트:
 - `python3 templates/jd/auto.py`: 검색 → JD 추출 → 회사정보 추출 → 스크리닝 → 자동 분류

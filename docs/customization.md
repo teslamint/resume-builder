@@ -36,9 +36,15 @@
 ```
 overrides/
 └── <target>/
-    ├── config.json       # 설정 오버라이드
-    └── profile/
-        └── summary-job.md  # 파일 오버라이드
+    ├── config.json         # 설정 오버라이드
+    ├── style.css           # 타겟별 CSS (선택사항)
+    ├── profile/
+    │   └── summary-job.md  # 파일 오버라이드
+    └── companies/
+        └── <company>/
+            ├── profile.md
+            └── projects/   # 디렉토리 오버라이드 (전체 교체)
+                └── *.md
 ```
 
 ### config.json 예시
@@ -66,6 +72,12 @@ profile/summary-job.md
 # 오버라이드 (targetco 지원 시)
 overrides/targetco/profile/summary-job.md
 ```
+
+### 디렉토리 오버라이드
+
+`projects/` 또는 `achievements/` 디렉토리 전체를 오버라이드할 수 있습니다. `overrides/<target>/companies/<company>/projects/` 디렉토리가 존재하면, 해당 회사의 원본 `projects/` 전체를 대체합니다 (개별 파일 오버라이드가 아닌 디렉토리 단위 교체).
+
+> **주의**: `full` 모드 회사는 모든 프로젝트 파일을 오버라이드해야 합니다. 일부 파일만 오버라이드하면 나머지는 원본(한국어 등)에서 그대로 가져옵니다.
 
 ### 빌드
 
