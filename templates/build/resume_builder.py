@@ -88,6 +88,23 @@ def resolve_path(base_path: Path, target: str | None) -> Path:
     return base_path
 
 
+def resolve_glob(base_dir: Path, pattern: str, target: str | None = None) -> list[str]:
+    """target override 디렉토리에 파일이 있으면 그쪽에서 glob, 없으면 base에서 glob"""
+    t = target if target is not None else _GLOBAL_TARGET
+    if t:
+        try:
+            relpath = base_dir.relative_to(BASE_DIR)
+        except ValueError:
+            relpath = None
+        if relpath:
+            override_dir = BASE_DIR / 'overrides' / t / relpath
+            if override_dir.is_dir():
+                override_files = sorted(glob.glob(str(override_dir / pattern)))
+                if override_files:
+                    return override_files
+    return sorted(glob.glob(str(base_dir / pattern)))
+
+
 def read_file(path, target=None):
     t = target if target is not None else _GLOBAL_TARGET
     resolved = resolve_path(Path(path), t)
@@ -264,12 +281,12 @@ def build_company(company_dir, variant, target=None):
     else:
         if profile.exists():
             parts.append(filter_content(read_file(profile), variant))
-        for p in sorted(glob.glob(str(company_dir / 'projects' / '*.md'))):
+        for p in resolve_glob(company_dir / 'projects', '*.md'):
             if not p.endswith('CLAUDE.md'):
                 content = filter_content(read_file(p), variant)
                 if content.strip():
                     parts.append(content)
-        for a in sorted(glob.glob(str(company_dir / 'achievements' / '*.md'))):
+        for a in resolve_glob(company_dir / 'achievements', '*.md'):
             if not a.endswith('CLAUDE.md'):
                 content = filter_content(read_file(a), variant)
                 if content.strip():
@@ -523,7 +540,7 @@ def build_wanted(variant):
         # Projects
         detail_level = config.get('company_detail', {}).get(company_name, 'full')
         if detail_level == 'full':
-            for p in sorted(glob.glob(str(company_dir / 'projects' / '*.md'))):
+            for p in resolve_glob(company_dir / 'projects', '*.md'):
                 if p.endswith('CLAUDE.md'):
                     continue
                 proj_content = filter_content(read_file(p), variant)
