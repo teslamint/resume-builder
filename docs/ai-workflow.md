@@ -46,6 +46,35 @@ python3 templates/jd/auto.py --thevc-mode require
 python3 templates/jd/auto.py --company-enrichment-only --thevc-mode require
 ```
 
+추가 옵션:
+
+```bash
+# 기존 회사정보 completeness가 60% 미만이면 재수집
+python3 templates/jd/auto.py --min-completeness 60
+
+# 검색 스크립트
+python3 templates/jd/search.py --query "백엔드 시니어" --dry-run
+python3 templates/jd/search.py --status
+```
+
+#### `--min-completeness N`
+
+기존 `company_info/` 파일의 completeness 점수가 N% 미만일 때만 회사 정보를 재수집합니다 (0~100, 기본값 0).
+TheVC 보완 큐 재처리(`--company-enrichment-only`)와 함께 사용하면, 이미 충분한 정보가 있는 회사는 건너뛰고 부족한 회사만 보강합니다.
+
+#### 헤드헌팅 회사 자동 감지
+
+회사명에 헤드헌팅 키워드(써치, 서치펌, 헤드헌팅, 리크루팅, 인력파견, 헤드헌터)가 포함되면 자동으로 감지하여 회사 정보 수집을 건너뜁니다. 최소한의 stub 파일만 생성되며, completeness는 0으로 설정됩니다.
+
+#### 중복 JD 검색 범위
+
+`find_existing_jd()`는 다음 디렉토리를 모두 검색하여 중복을 확인합니다:
+- `job_postings/` (루트)
+- `job_postings/pass/`
+- `job_postings/conditional/` 및 하위: `high/`, `hold/`, `middle/`, `low/`
+- `job_postings/applied/`, `rejected/`
+- `job_postings/high_priority/`, `on_going/`
+
 출력 파일:
 - 실행 결과: `job_postings/auto_results/auto_<run_id>.json`
 - TheVC 보완 큐: `job_postings/unprocessed/company_enrichment_thevc.txt`
