@@ -8,12 +8,12 @@ Resume builder & job search automation system. Markdown source → PDF/HTML/TXT 
 
 | Skill | Purpose | Output |
 |-------|---------|--------|
-| `/extract-company-info` | Company info from Wanted/Remember/Saramin/TheVC | `company_info/<company>.md` |
-| `/extract-recruitment-info` | Combined company + JD extraction | `company_info/` + `job_postings/` |
-| `/extract-job-posting` | JD extraction from recruitment sites | `job_postings/<id>-<company>-<position>.md` |
-| `/jd-screening` | JD fit analysis against screening rules | `jd_analysis/screening/<id>-<company>-<position>.md` |
+| `/extract-company-info` | Company info from Wanted/Remember/Saramin/TheVC | `private/company_info/<company>.md` |
+| `/extract-recruitment-info` | Combined company + JD extraction | `private/company_info/` + `private/job_postings/` |
+| `/extract-job-posting` | JD extraction from recruitment sites | `private/job_postings/<id>-<company>-<position>.md` |
+| `/jd-screening` | JD fit analysis against screening rules | `private/jd_analysis/screening/<id>-<company>-<position>.md` |
 | `/jd-batch` | Batch process URLs or reclassify files | Auto-classify to folders |
-| `/resume-build` | Build resume with variant/target options | `build/` |
+| `/resume-build` | Build resume with variant/target options | `private/build/` |
 | `/commit` | Smart commit (Conventional Commits) | — |
 
 ## Auto Pipeline CLI
@@ -50,7 +50,7 @@ Override is file-level. If a company is in full mode, ALL files under `companies
 `config.json` keys must match directory names exactly: `"CompanyB"` not `"companyb"`.
 
 ### 5. variant_config.json is Gitignored
-Must be created manually: `cp variant_config.example.json variant_config.json`
+Must be created manually: `cp variant_config.example.json private/variant_config.json`
 
 ## Resume Content Integrity
 
@@ -64,9 +64,9 @@ Override content must not add technologies, roles, or achievements absent from b
 
 ```bash
 # Verify after override edits:
-grep -i "kubernetes\|k8s" build/resume-job-<target>.md
-grep "재설계\|총괄\|리드\|매니저" build/resume-job-<target>.md
-diff overrides/<target>/companies/<company>/profile.md companies/<company>/profile.md
+grep -i "kubernetes\|k8s" private/build/resume-job-<target>.md
+grep "재설계\|총괄\|리드\|매니저" private/build/resume-job-<target>.md
+diff private/overrides/<target>/companies/<company>/profile.md private/companies/<company>/profile.md
 ```
 
 ## Build Verification

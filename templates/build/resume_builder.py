@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 _BASE_DIR = Path(__file__).parent.parent.parent
-BASE_DIR = _BASE_DIR  # Will be updated if --example is used
+BASE_DIR = _BASE_DIR / "private"  # Will be updated if --example is used
 _GLOBAL_TARGET: str | None = None
 _EXAMPLE_MODE: bool = False
 
@@ -23,7 +23,7 @@ def get_variant_config():
     if _EXAMPLE_MODE:
         config_path = BASE_DIR / 'variant_config.json'
     else:
-        config_path = _BASE_DIR / 'variant_config.json'
+        config_path = _BASE_DIR / 'private' / 'variant_config.json'
 
     if not config_path.exists():
         example_path = _BASE_DIR / 'variant_config.example.json'
@@ -679,7 +679,9 @@ def extract_contact_links(variant):
     lines = [line for line in content.splitlines()
              if line.strip() and not line.strip().startswith('#')
              and not line.strip().lower().startswith('- name:')]
-    return '\n'.join(lines) if lines else None
+    if not lines:
+        return None
+    return '# Links\n\n' + '\n'.join(lines)
 
 
 def build_full_pdf(variant):
@@ -695,10 +697,6 @@ def build_full_pdf(variant):
         content = filter_content(read_file(summary), variant)
         if content.strip():
             parts.append(content)
-
-    contact_links = extract_contact_links(variant)
-    if contact_links:
-        parts.append(contact_links)
 
     skills = BASE_DIR / 'profile' / f'skills-{variant}.md'
     if skills.exists():
@@ -735,6 +733,10 @@ def build_full_pdf(variant):
             content = filter_content(read_file(awards), variant)
             if content.strip():
                 parts.append(content)
+
+    contact_links = extract_contact_links(variant)
+    if contact_links:
+        parts.append(contact_links)
 
     return "\n\n".join(parts)
 

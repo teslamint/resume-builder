@@ -35,9 +35,9 @@ pip3 install weasyprint
 ```
 
 생성된 파일:
-- `build/resume-example.pdf` - 전체 이력서
-- `build/resume-example-short.pdf` - 1페이지 요약
-- `build/resume-example-wanted.txt` - 채용 사이트용 텍스트
+- `private/build/resume-example.pdf` - 전체 이력서
+- `private/build/resume-example-short.pdf` - 1페이지 요약
+- `private/build/resume-example-wanted.txt` - 채용 사이트용 텍스트
 
 ### 2. 개인 데이터 설정
 
@@ -45,11 +45,11 @@ pip3 install weasyprint
 
 ```bash
 # 프로필 디렉토리 생성
-mkdir -p profile
+mkdir -p private/profile
 
 # 예제에서 복사하여 수정
-cp example/profile/*.md profile/
-# 이후 profile/*.md 파일들을 개인 정보로 수정
+cp example/profile/*.md private/profile/
+# 이후 private/profile/*.md 파일들을 개인 정보로 수정
 ```
 
 자세한 설정 방법은 [USER_DATA.md](../USER_DATA.md)를 참고하세요.
@@ -68,18 +68,20 @@ cp example/profile/*.md profile/
 
 ```
 resume/
-├── profile/              # 개인 프로필 (연락처, 요약, 기술스택)
-├── companies/            # 경력 정보
-│   └── <company>/
-│       ├── profile.md
-│       └── projects/
-├── overrides/            # 타겟별 오버라이드
-│   └── <target>/
+├── private/              # 개인 데이터 (gitignored)
+│   ├── profile/          # 개인 프로필 (연락처, 요약, 기술스택)
+│   ├── companies/        # 경력 정보
+│   │   └── <company>/
+│   │       ├── profile.md
+│   │       └── projects/
+│   ├── overrides/        # 타겟별 오버라이드
+│   │   └── <target>/
+│   └── build/            # 생성된 파일
 ├── templates/            # 빌드 도구
-│   ├── resume_builder.py
-│   └── style.css
+│   ├── build/            # resume_builder.py 등
+│   └── themes/           # CSS 스타일
 ├── example/              # 예제 데이터
-└── build/                # 생성된 파일 (gitignored)
+└── docs/                 # 문서
 ```
 
 ## 다음 단계
@@ -97,12 +99,12 @@ resume/
 python3 templates/jd/auto.py
 
 # 검색 없이 URL 파일로 실행
-python3 templates/jd/auto.py --from-urls job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
+python3 templates/jd/auto.py --from-urls private/job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
 
 # 스타트업 투자정보(TheVC) 처리 정책
 python3 templates/jd/auto.py --thevc-mode auto|skip|require
 ```
 
 주요 출력:
-- `job_postings/auto_results/auto_<run_id>.json`
-- `job_postings/unprocessed/company_enrichment_thevc.txt`
+- `private/job_postings/auto_results/auto_<run_id>.json`
+- `private/job_postings/unprocessed/company_enrichment_thevc.txt`

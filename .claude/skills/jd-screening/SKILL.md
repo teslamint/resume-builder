@@ -10,10 +10,10 @@ description: This skill should be used when the user asks to "스크리닝", "JD
 ## 사전 요구사항
 
 1. **스크리닝 규칙 파일** (필수)
-   - 기본 경로: `job_postings/jd-screening-rules.md`
+   - 기본 경로: `private/job_postings/jd-screening-rules.md`
    - 사용자가 다른 경로 지정 가능
-   - 템플릿: `job_postings/jd-screening-rules-template.md`
-   - 예시: `job_postings/examples/jd-screening-rules-sample.md`
+   - 템플릿: `example/job_postings/jd-screening-rules-template.md`
+   - 예시: `example/job_postings/examples/jd-screening-rules-sample.md`
 
 2. 분석 대상: 채용공고 파일 또는 URL
 
@@ -21,14 +21,14 @@ description: This skill should be used when the user asks to "스크리닝", "JD
 
 ### 1. 입력 확인
 
-- 채용공고 파일 경로 (예: `job_postings/active/*.md`)
+- 채용공고 파일 경로 (예: `private/job_postings/active/*.md`)
 - 채용공고 URL (Wanted, Remember 등)
 - URL인 경우: `extract-job-posting` 스킬로 먼저 추출
 
 ### 2. 스크리닝 규칙 로드
 
 ```
-Read: job_postings/jd-screening-rules.md (또는 사용자 지정 경로)
+Read: private/job_postings/jd-screening-rules.md (또는 사용자 지정 경로)
 ```
 
 규칙 파일에서 추출할 정보:
@@ -42,7 +42,7 @@ Read: job_postings/jd-screening-rules.md (또는 사용자 지정 경로)
 ### 3. 기업 정보 로드 및 리스크 체크
 
 ```
-company_info/{company}.md 파일 확인
+private/company_info/{company}.md 파일 확인
 - 회사 개요, 재무 정보, 복지 등 참고
 ```
 
@@ -52,7 +52,7 @@ company_info/{company}.md 파일 확인
 
 ```bash
 # 기업 리스크 검증 (파일이 있으면)
-python3 templates/jd/company_validator.py --file company_info/{company}.md
+python3 templates/jd/company_validator.py --file private/company_info/{company}.md
 ```
 
 | 리스크 코드 | 스크리닝 영향 | 대응 |
@@ -88,7 +88,7 @@ python3 templates/jd/company_validator.py --file company_info/{company}.md
 ### 5. 결과 파일 저장
 
 ```
-jd_analysis/screening/{id}-{company}-{position}.md
+private/jd_analysis/screening/{id}-{company}-{position}.md
 ```
 
 ### 6. 자동 분류 (파일 이동)
@@ -101,9 +101,9 @@ python3 templates/jd/pipeline.py --classify <jd_file_folder>
 
 | 판정 | 대상 폴더 |
 |------|----------|
-| 지원 추천 | `job_postings/conditional/high/` |
-| 지원 보류 | `job_postings/conditional/hold/` |
-| 지원 비추천 | `job_postings/pass/` |
+| 지원 추천 | `private/job_postings/conditional/high/` |
+| 지원 보류 | `private/job_postings/conditional/hold/` |
+| 지원 비추천 | `private/job_postings/pass/` |
 
 ## 출력 템플릿
 
@@ -180,15 +180,15 @@ python3 templates/jd/pipeline.py --classify <jd_file_folder>
 
 ### 템플릿 및 예시
 
-- 빈 템플릿: `job_postings/jd-screening-rules-template.md`
-- 작성 예시: `job_postings/examples/jd-screening-rules-sample.md`
+- 빈 템플릿: `example/job_postings/jd-screening-rules-template.md`
+- 작성 예시: `example/job_postings/examples/jd-screening-rules-sample.md`
 
 ## 사용 예시
 
 ### 파일 기반 분석
 
 ```
-사용자: "이 채용공고 스크리닝해줘: job_postings/active/254599-wanted.md"
+사용자: "이 채용공고 스크리닝해줘: private/job_postings/active/254599-wanted.md"
 ```
 
 ### URL 기반 분석
@@ -204,7 +204,7 @@ python3 templates/jd/pipeline.py --classify <jd_file_folder>
 ### 일괄 분석
 
 ```
-사용자: "job_postings/active/ 폴더의 모든 공고 스크리닝해줘"
+사용자: "private/job_postings/active/ 폴더의 모든 공고 스크리닝해줘"
 
 1. 폴더 내 모든 .md 파일 목록 조회
 2. 각 파일에 대해 스크리닝 분석

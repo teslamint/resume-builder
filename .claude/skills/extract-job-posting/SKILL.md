@@ -77,7 +77,7 @@ mcp__claude-in-chrome__navigate 호출
 
 ### 5. 파일 저장
 
-추출된 정보를 `job_postings/` 디렉토리에 저장:
+추출된 정보를 `private/job_postings/` 디렉토리에 저장:
 - 파일명: `{job_id}-{company}-{position}.md`
 - 예: `254599-deepsearch-ai-backend-engineer.md`
 
@@ -122,4 +122,4 @@ mcp__claude-in-chrome__navigate 호출
 1. Chrome MCP로 URL 접근
 2. 페이지 텍스트 추출
 3. 정규화된 형식으로 출력
-4. job_postings/ 디렉토리에 저장
+4. private/job_postings/ 디렉토리에 저장

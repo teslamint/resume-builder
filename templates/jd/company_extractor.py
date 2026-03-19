@@ -33,7 +33,7 @@ REQUEST_DELAY = 1.5  # seconds between page navigations
 ALL_PLATFORMS = ("wanted", "saramin", "thevc")
 
 BASE_DIR = Path(__file__).parent.parent.parent
-JOB_POSTINGS_DIR = BASE_DIR / "job_postings"
+JOB_POSTINGS_DIR = BASE_DIR / "private" / "job_postings"
 
 
 @dataclass

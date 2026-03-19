@@ -34,7 +34,7 @@
 ### 구조
 
 ```
-overrides/
+private/overrides/
 └── <target>/
     ├── config.json         # 설정 오버라이드
     ├── style.css           # 타겟별 CSS (선택사항)
@@ -67,10 +67,10 @@ overrides/
 
 ```
 # 원본
-profile/summary-job.md
+private/profile/summary-job.md
 
 # 오버라이드 (targetco 지원 시)
-overrides/targetco/profile/summary-job.md
+private/overrides/targetco/profile/summary-job.md
 ```
 
 ### 디렉토리 오버라이드
@@ -124,7 +124,7 @@ VARIANT_CONFIG = {
 
 ### 타겟별 스타일
 
-`overrides/<target>/style.css`를 생성하면 해당 타겟 빌드 시 적용됩니다.
+`private/overrides/<target>/style.css`를 생성하면 해당 타겟 빌드 시 적용됩니다.
 
 ## 빌드 포맷
 

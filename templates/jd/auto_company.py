@@ -19,7 +19,7 @@ except ImportError:
 
 
 THEVC_MODES = {"auto", "skip", "require"}
-ENRICHMENT_QUEUE_PATH = Path("job_postings/unprocessed/company_enrichment_thevc.txt")
+ENRICHMENT_QUEUE_PATH = Path("private/job_postings/unprocessed/company_enrichment_thevc.txt")
 
 HEADHUNTING_KEYWORDS = ["써치", "서치펌", "헤드헌팅", "리크루팅", "인력파견", "헤드헌터"]
 

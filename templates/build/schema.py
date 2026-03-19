@@ -5,7 +5,8 @@ import re
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.parent.parent
+_PROJECT_DIR = Path(__file__).parent.parent.parent
+BASE_DIR = _PROJECT_DIR / "private"
 
 SCHEMAS = {
     'contact': {
@@ -187,7 +188,7 @@ def validate_file(file_path: Path) -> list[ValidationError]:
 def validate_all(base_dir: Path | None = None, example: bool = False) -> list[ValidationError]:
     """Validate all markdown files in the project."""
     if base_dir is None:
-        base_dir = BASE_DIR / 'example' if example else BASE_DIR
+        base_dir = _PROJECT_DIR / 'example' if example else BASE_DIR
 
     errors = []
 

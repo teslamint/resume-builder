@@ -2,7 +2,7 @@
 set -e
 
 cd "$(dirname "$0")"
-mkdir -p build
+mkdir -p private/build
 
 check_deps() {
     local missing=()
@@ -21,14 +21,14 @@ build_full() {
     local suffix=${2:-}
     local build_target=${3:-}
     local example_opt=${4:-}
-    local output_name="build/resume-${variant}${suffix}"
+    local output_name="private/build/resume-${variant}${suffix}"
     if [[ -n "$example_opt" ]]; then
-        output_name="build/resume-example${suffix}"
+        output_name="private/build/resume-example${suffix}"
     fi
     local css_path="$(pwd)/templates/themes/default/style.css"
     # Use target-specific style if exists
-    if [[ -n "$build_target" && -f "overrides/${build_target}/style.css" ]]; then
-        css_path="$(pwd)/overrides/${build_target}/style.css"
+    if [[ -n "$build_target" && -f "private/overrides/${build_target}/style.css" ]]; then
+        css_path="$(pwd)/private/overrides/${build_target}/style.css"
     fi
     echo "Building full resume (${variant}${suffix})..."
     python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt} > "${output_name}.md"
@@ -44,9 +44,9 @@ build_short() {
     local variant=$1
     local build_target=${2:-}
     local example_opt=${3:-}
-    local output_name="build/resume-${variant}-short"
+    local output_name="private/build/resume-${variant}-short"
     if [[ -n "$example_opt" ]]; then
-        output_name="build/resume-example-short"
+        output_name="private/build/resume-example-short"
     fi
     local css_path="$(pwd)/templates/themes/default/style-short.css"
     echo "Building short resume (${variant})..."
@@ -62,9 +62,9 @@ build_wanted() {
     local variant=$1
     local build_target=${2:-}
     local example_opt=${3:-}
-    local output_name="build/resume-${variant}-wanted.txt"
+    local output_name="private/build/resume-${variant}-wanted.txt"
     if [[ -n "$example_opt" ]]; then
-        output_name="build/resume-example-wanted.txt"
+        output_name="private/build/resume-example-wanted.txt"
     fi
     echo "Building wanted resume (${variant})..."
     python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt} --format wanted > "${output_name}"
@@ -80,16 +80,16 @@ generate_notes() {
     local target=${1:-TBD}
     local clean_flag=${2:-}
     local suffix=${3:-}
-    local current_file="build/resume-job${suffix}.md"
-    if [[ -f "build/resume-job-base.md" ]]; then
+    local current_file="private/build/resume-job${suffix}.md"
+    if [[ -f "private/build/resume-job-base.md" ]]; then
         echo "Generating notes..."
         python3 templates/build/generate_notes.py \
-            --base "build/resume-job-base.md" \
+            --base "private/build/resume-job-base.md" \
             --current "$current_file" \
             --target "$target" \
             $clean_flag
     else
-        echo "Warning: build/resume-job-base.md not found. Run './build.sh job base' first to enable notes."
+        echo "Warning: private/build/resume-job-base.md not found. Run './build.sh job base' first to enable notes."
     fi
 }
 

@@ -57,7 +57,7 @@ def apply_quick_filter(batch_result, config):
     return True, "통과"
 
 def main():
-    batch_file = Path("job_postings/unprocessed/batch_results.json")
+    batch_file = Path("private/job_postings/unprocessed/batch_results.json")
     if not batch_file.exists():
         print("batch_results.json not found")
         sys.exit(1)
@@ -85,9 +85,9 @@ def main():
     # 필터된 파일 이동
     if filtered:
         print(f"필터된 {len(filtered)}건을 pass/로 이동:")
-        pass_dir = Path("job_postings/pass")
+        pass_dir = Path("private/job_postings/pass")
         pass_dir.mkdir(exist_ok=True)
-        unprocessed_dir = Path("job_postings/unprocessed")
+        unprocessed_dir = Path("private/job_postings/unprocessed")
 
         for item in filtered:
             src = unprocessed_dir / item["file"]
@@ -102,7 +102,7 @@ def main():
         print(f"  - {item['id']}: {item['company']} - {item['title']}")
 
     # 통과한 파일 목록 저장
-    passed_file = Path("job_postings/unprocessed/passed.json")
+    passed_file = Path("private/job_postings/unprocessed/passed.json")
     with open(passed_file, "w") as f:
         json.dump(passed, f, ensure_ascii=False, indent=2)
 

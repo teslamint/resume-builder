@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple, Union
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent.parent.parent
-QUEUE_PATH = BASE_DIR / "job_postings" / "queue.json"
+QUEUE_PATH = BASE_DIR / "private" / "job_postings" / "queue.json"
 
 
 @dataclass

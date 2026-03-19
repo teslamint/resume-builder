@@ -266,7 +266,7 @@ mcp__claude-in-chrome__tabs_context_mcp 호출
 
 ### Phase 7: 파일 저장
 
-추출된 정보를 `company_info/` 디렉토리에 저장:
+추출된 정보를 `private/company_info/` 디렉토리에 저장:
 - 파일명: `{company_slug}.md` (소문자, 영문, 하이픈)
 - 예: `deepsearch.md`, `musinsa.md`, `lbox.md`
 
@@ -339,7 +339,7 @@ tabs_context_mcp 재호출 후 createIfEmpty: true로 새 탭 생성
 1. Wanted 검색 → 회사 페이지 발견 → 데이터 추출
 2. Remember 검색 → 회사 페이지 발견 → 데이터 추출
 3. TheVC 검색 → 스타트업 확인 → 투자 정보 추출
-4. 데이터 병합 → company_info/lbox.md 저장
+4. 데이터 병합 → private/company_info/lbox.md 저장
 ```
 
 ### 예시 2: URL 직접 제공
@@ -349,7 +349,7 @@ tabs_context_mcp 재호출 후 createIfEmpty: true로 새 탭 생성
 
 1. Wanted 회사 페이지 직접 접근 → 데이터 추출
 2. 회사명으로 TheVC 검색 → 투자 정보 추가 (스타트업인 경우)
-3. company_info/{company_slug}.md 저장
+3. private/company_info/{company_slug}.md 저장
 ```
 
 ### 예시 3: 멀티 URL 제공
@@ -362,7 +362,7 @@ tabs_context_mcp 재호출 후 createIfEmpty: true로 새 탭 생성
 
 1. 각 URL 순차 접근
 2. 각 소스에서 데이터 추출
-3. 데이터 병합 → company_info/lbox.md 저장
+3. 데이터 병합 → private/company_info/lbox.md 저장
 ```
 
 ## 플랫폼별 특이사항
@@ -408,13 +408,13 @@ tabs_context_mcp 재호출 후 createIfEmpty: true로 새 탭 생성
 파일 저장 후 **반드시** 검증 스크립트 실행:
 
 ```bash
-python3 templates/jd/company_validator.py --file company_info/{company_slug}.md --fix
+python3 templates/jd/company_validator.py --file private/company_info/{company_slug}.md --fix
 ```
 
 자동화/스크립트 연동 시 JSON 출력 사용:
 
 ```bash
-python3 templates/jd/company_validator.py --file company_info/{company_slug}.md --json
+python3 templates/jd/company_validator.py --file private/company_info/{company_slug}.md --json
 ```
 
 - `--json` 출력에는 `summary`, `results`, `errors`, `fixed_files`, `report_path` 포함
@@ -453,7 +453,7 @@ python3 templates/jd/company_validator.py --file company_info/{company_slug}.md 
 
 ```
 📊 {회사명} 기업정보 추출 완료
-- 파일: company_info/{slug}.md
+- 파일: private/company_info/{slug}.md
 - 완성도: 86%
 - 스타트업: Yes
 
@@ -468,4 +468,4 @@ python3 templates/jd/company_validator.py --file company_info/{company_slug}.md 
 
 ### 스키마 참조
 
-상세 필드 정의: `company_info/_schema.md`
+상세 필드 정의: `private/company_info/_schema.md`

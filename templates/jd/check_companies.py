@@ -13,11 +13,11 @@ def slugify(company_name):
 
 def main():
     # Remember 통과 목록
-    with open("job_postings/unprocessed/passed.json") as f:
+    with open("private/job_postings/unprocessed/passed.json") as f:
         remember_passed = json.load(f)
 
     # Wanted 목록
-    with open("job_postings/unprocessed/wanted_batch.json") as f:
+    with open("private/job_postings/unprocessed/wanted_batch.json") as f:
         wanted_jobs = json.load(f)
 
     # 전체 회사 목록 (중복 제거)
@@ -26,7 +26,7 @@ def main():
         companies.add(job["company"])
 
     # company_info 디렉토리 확인
-    company_info_dir = Path("company_info")
+    company_info_dir = Path("private/company_info")
     existing_companies = set()
 
     if company_info_dir.exists():
@@ -53,7 +53,7 @@ def main():
         print("모든 회사 정보가 존재합니다!")
 
     # 누락 목록 저장
-    with open("job_postings/unprocessed/missing_companies.json", "w") as f:
+    with open("private/job_postings/unprocessed/missing_companies.json", "w") as f:
         json.dump(missing_companies, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":

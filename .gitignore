@@ -12,19 +12,8 @@ __pycache__/
 # Codex CLI
 .codex/
 
-# Build outputs
-/build/
-
-# Personal data (fork users should add their own data here)
-/variant_config.json
-/profile/
-/companies/
-/overrides/
-/company_info/
-/job_postings/*
-!/job_postings/jd-screening-rules-template.md
-!/job_postings/examples/
-/jd_analysis/
+# Personal data (all private data lives under /private/)
+/private/
 
 # Keep example data
 !/example/

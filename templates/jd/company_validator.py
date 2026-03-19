@@ -21,8 +21,8 @@ from typing import Dict, List, Optional, Tuple
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent.parent
-COMPANY_INFO_DIR = BASE_DIR / "company_info"
-REPORT_PATH = BASE_DIR / "company_info" / "_validation_report.md"
+COMPANY_INFO_DIR = BASE_DIR / "private" / "company_info"
+REPORT_PATH = BASE_DIR / "private" / "company_info" / "_validation_report.md"
 
 
 @dataclass

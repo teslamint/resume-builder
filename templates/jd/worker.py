@@ -27,7 +27,7 @@ import yaml
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent.parent
-JOB_POSTINGS_DIR = BASE_DIR / "job_postings"
+JOB_POSTINGS_DIR = BASE_DIR / "private" / "job_postings"
 UNPROCESSED_DIR = JOB_POSTINGS_DIR / "unprocessed"
 CONFIG_PATH = JOB_POSTINGS_DIR / "search_config.yaml"
 

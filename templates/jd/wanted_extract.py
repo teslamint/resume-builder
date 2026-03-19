@@ -105,7 +105,7 @@ url: https://www.wanted.co.kr/wd/{job_id}
 """
 
         # 저장
-        output_dir = Path("job_postings/unprocessed")
+        output_dir = Path("private/job_postings/unprocessed")
         output_dir.mkdir(exist_ok=True, parents=True)
         output_path = output_dir / filename
 

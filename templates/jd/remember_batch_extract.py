@@ -136,7 +136,7 @@ def main():
         sys.exit(1)
 
     urls = Path(url_file).read_text().strip().splitlines()
-    unprocessed_dir = PROJECT_ROOT / 'job_postings' / 'unprocessed'
+    unprocessed_dir = PROJECT_ROOT / 'private' / 'job_postings' / 'unprocessed'
     unprocessed_dir.mkdir(parents=True, exist_ok=True)
 
     results = []

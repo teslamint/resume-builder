@@ -343,7 +343,7 @@ class TestDryRunReport(unittest.TestCase):
 
         results = [
             ProcessedItem(
-                url_or_path="job_postings/conditional/hold/1-a.md",
+                url_or_path="private/job_postings/conditional/hold/1-a.md",
                 job_id="1",
                 result=ProcessResult.SUCCESS,
                 message="[DRY-RUN] 지원 비추천 → pass",
@@ -353,7 +353,7 @@ class TestDryRunReport(unittest.TestCase):
                 verdict_source="screening:1-a.md",
             ),
             ProcessedItem(
-                url_or_path="job_postings/conditional/hold/2-b.md",
+                url_or_path="private/job_postings/conditional/hold/2-b.md",
                 job_id="2",
                 result=ProcessResult.SKIPPED,
                 message="보호된 상태 (패스 → rejected): 재분류 스킵",
@@ -362,7 +362,7 @@ class TestDryRunReport(unittest.TestCase):
                 protected_status="패스 → rejected",
             ),
         ]
-        report = build_dry_run_report(results, Path("job_postings/conditional/hold"), "rescreen")
+        report = build_dry_run_report(results, Path("private/job_postings/conditional/hold"), "rescreen")
 
         self.assertEqual(report["summary"]["total"], 2)
         self.assertEqual(report["summary"]["success"], 1)
@@ -378,7 +378,7 @@ class TestDryRunReport(unittest.TestCase):
         report = {
             "generated_at": "2026-02-04T00:00:00",
             "action": "rescreen",
-            "folder": "job_postings/conditional/hold",
+            "folder": "private/job_postings/conditional/hold",
             "summary": {
                 "total": 1,
                 "success": 1,
@@ -391,7 +391,7 @@ class TestDryRunReport(unittest.TestCase):
             },
             "target_folders": {"pass": 1},
             "skip_reasons": {},
-            "recommendations": {"next_command": "python3 templates/jd/pipeline.py --rescreen job_postings/conditional/hold"},
+            "recommendations": {"next_command": "python3 templates/jd/pipeline.py --rescreen private/job_postings/conditional/hold"},
             "move_candidates": ["1"],
             "skipped_job_ids": [],
             "items": [],
@@ -401,7 +401,7 @@ class TestDryRunReport(unittest.TestCase):
             output_dir = Path(tmp) / "reports"
             paths = write_dry_run_report(
                 report,
-                Path("job_postings/conditional/hold"),
+                Path("private/job_postings/conditional/hold"),
                 str(output_dir),
                 "both",
             )

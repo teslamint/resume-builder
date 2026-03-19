@@ -13,7 +13,7 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "jd_analysis" / "interview"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "example" / "interview"))
 
 from importlib import import_module
 
@@ -21,7 +21,7 @@ from importlib import import_module
 import importlib.util
 _spec = importlib.util.spec_from_file_location(
     "build_sheet",
-    Path(__file__).parent.parent.parent / "jd_analysis" / "interview" / "build-sheet.py"
+    Path(__file__).parent.parent.parent / "example" / "interview" / "build-sheet.py"
 )
 build_sheet = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(build_sheet)

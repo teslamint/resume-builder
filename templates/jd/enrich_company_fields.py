@@ -24,7 +24,7 @@ from recollect_company_info import (
 from company_validator import parse_company_file, validate_company
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-BUILD_DIR = BASE_DIR / "build"
+BUILD_DIR = BASE_DIR / "private" / "build"
 REPORT_PATH = BUILD_DIR / "empty_company_targets.md"
 
 EMPTY_MARKER = "정보 없음"

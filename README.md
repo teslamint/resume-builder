@@ -30,19 +30,19 @@ pip3 install weasyprint
 ./build.sh example all
 
 # 생성된 파일 확인
-ls build/resume-example*
+ls private/build/resume-example*
 ```
 
 ### 개인 데이터 설정
 
 ```bash
 # 프로필 디렉토리 생성 후 예제 복사
-mkdir -p profile companies
-cp -r example/profile/* profile/
-cp -r example/companies/* companies/
+mkdir -p private/profile private/companies
+cp -r example/profile/* private/profile/
+cp -r example/companies/* private/companies/
 
 # 파일들을 개인 정보로 수정
-# profile/contact.md, profile/summary-*.md 등
+# private/profile/contact.md, private/profile/summary-*.md 등
 ```
 
 ### 빌드
@@ -62,30 +62,22 @@ cp -r example/companies/* companies/
 
 ```
 resume/
-├── profile/              # 개인 프로필 (연락처, 요약, 기술스택)
-│   ├── contact.md
-│   ├── summary-public.md # 포트폴리오용 요약
-│   ├── summary-job.md    # 지원용 요약
-│   ├── skills-public.md
-│   ├── skills-job.md
-│   ├── education.md
-│   ├── awards.md
-│   └── languages.md
-├── companies/            # 경력 정보
-│   └── <company>/
-│       ├── profile.md
-│       └── projects/
-│           └── *.md
-├── overrides/            # 타겟별 오버라이드
-│   └── <target>/
-│       └── profile/
+├── private/              # 개인 데이터 (gitignored)
+│   ├── profile/          # 개인 프로필 (연락처, 요약, 기술스택)
+│   ├── companies/        # 경력 정보
+│   │   └── <company>/
+│   │       ├── profile.md
+│   │       └── projects/
+│   ├── overrides/        # 타겟별 오버라이드
+│   │   └── <target>/
+│   ├── build/            # 생성된 파일
+│   └── variant_config.json
 ├── templates/            # 빌드 도구
 │   ├── build/            # 빌드 스크립트 (resume_builder.py 등)
 │   ├── jd/               # JD 파이프라인 스크립트
 │   └── themes/           # CSS 스타일
 ├── example/              # 예제 데이터
-├── docs/                 # 상세 문서
-└── build/                # 생성된 파일 (gitignored)
+└── docs/                 # 상세 문서
 ```
 
 ## Variant 시스템

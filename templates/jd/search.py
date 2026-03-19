@@ -30,8 +30,8 @@ except ImportError:
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent.parent
-CONFIG_PATH = BASE_DIR / "job_postings" / "search_config.yaml"
-STATE_PATH = BASE_DIR / "job_postings" / ".search_state.json"
+CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
+STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 
 @dataclass

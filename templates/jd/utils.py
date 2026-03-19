@@ -12,9 +12,10 @@ PROTECTED_STATUSES = {"rejected", "applied", "interview", "offer"}
 
 # Base paths
 BASE_DIR = Path(__file__).parent.parent.parent
-JOB_POSTINGS_DIR = BASE_DIR / "job_postings"
-JD_ANALYSIS_DIR = BASE_DIR / "jd_analysis"
-COMPANY_INFO_DIR = BASE_DIR / "company_info"
+PRIVATE_DIR = BASE_DIR / "private"
+JOB_POSTINGS_DIR = PRIVATE_DIR / "job_postings"
+JD_ANALYSIS_DIR = PRIVATE_DIR / "jd_analysis"
+COMPANY_INFO_DIR = PRIVATE_DIR / "company_info"
 SCREENING_DIR = JD_ANALYSIS_DIR / "screening"
 
 # Verdict to folder mapping

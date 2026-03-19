@@ -12,8 +12,8 @@ from typing import Iterable
 from urllib.parse import parse_qs, quote_plus, unquote_plus, urlparse
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-COMPANY_INFO_DIR = BASE_DIR / "company_info"
-BUILD_DIR = BASE_DIR / "build"
+COMPANY_INFO_DIR = BASE_DIR / "private" / "company_info"
+BUILD_DIR = BASE_DIR / "private" / "build"
 TARGETS_PATH = BUILD_DIR / "company_info_recollect_targets.txt"
 REPORT_PATH = BUILD_DIR / "company_info_recollect_report.md"
 REFINE_REPORT_PATH = BUILD_DIR / "company_info_refine_direct_report.md"

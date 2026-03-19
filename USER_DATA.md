@@ -4,22 +4,25 @@
 
 ## 개요
 
-이 프로젝트는 `example/` 디렉토리에 예제 데이터를 제공합니다. 개인 이력서를 만들려면 `profile/`과 `companies/` 디렉토리에 자신의 데이터를 생성해야 합니다.
+이 프로젝트는 `example/` 디렉토리에 예제 데이터를 제공합니다. 개인 이력서를 만들려면 `private/profile/`과 `private/companies/` 디렉토리에 자신의 데이터를 생성해야 합니다.
 
 ## 디렉토리 구조
 
 ```
 resume/
-├── profile/              # 개인 프로필 (생성 필요)
-├── companies/            # 경력 정보 (생성 필요)
-├── overrides/            # 타겟별 오버라이드 (선택)
+├── private/              # 개인 데이터 (gitignored)
+│   ├── profile/          # 개인 프로필 (생성 필요)
+│   ├── companies/        # 경력 정보 (생성 필요)
+│   ├── overrides/        # 타겟별 오버라이드 (선택)
+│   ├── build/            # 생성된 파일
+│   └── variant_config.json
 └── example/              # 예제 (참고용)
 ```
 
 ## Step 1: 프로필 생성
 
 ```bash
-mkdir -p profile
+mkdir -p private/profile
 ```
 
 ### 필수 파일
@@ -93,7 +96,7 @@ Backend Engineer
 ## Step 2: 경력 정보 생성
 
 ```bash
-mkdir -p companies/<company>/projects
+mkdir -p private/companies/<company>/projects
 ```
 
 ### profile.md
@@ -214,20 +217,10 @@ VARIANT_CONFIG = {
 
 ## Git 설정
 
-개인 데이터를 Git에서 제외하려면 `.gitignore`에 추가:
+개인 데이터는 `/private/` 디렉토리에 저장되며, `.gitignore`에 이미 포함되어 있습니다:
 
 ```gitignore
-/profile/
-/companies/
-/overrides/
-```
-
-또는 private 브랜치에서 관리:
-
-```bash
-git checkout -b private
-# 개인 데이터 작업
-git add -A && git commit -m "Add personal data"
+/private/
 ```
 
 ## 팁

@@ -39,7 +39,7 @@ except ImportError:
     from utils import JOB_POSTINGS_DIR, extract_job_id, find_existing_jd, move_to_folder
 
 BASE_DIR = Path(__file__).parent.parent.parent
-RESULTS_DIR = BASE_DIR / "job_postings" / "auto_results"
+RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
 
 
 @dataclass
