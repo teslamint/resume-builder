@@ -78,9 +78,9 @@ build_base() {
 
 build_career() {
     local example_opt=${1:-}
-    local output_name="build/career-description"
+    local output_name="private/build/career-description"
     if [[ -n "$example_opt" ]]; then
-        output_name="build/career-description-example"
+        output_name="private/build/career-description-example"
     fi
     local css_path="$(pwd)/templates/themes/default/style-career.css"
     echo "Building career description..."
