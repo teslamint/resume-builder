@@ -76,6 +76,22 @@ build_base() {
     build_full "job" "-base"
 }
 
+build_career() {
+    local example_opt=${1:-}
+    local output_name="build/career-description"
+    if [[ -n "$example_opt" ]]; then
+        output_name="build/career-description-example"
+    fi
+    local css_path="$(pwd)/templates/themes/default/style-career.css"
+    echo "Building career description..."
+    python3 templates/build/career_builder.py ${example_opt} > "${output_name}.md"
+    python3 templates/build/career_builder.py ${example_opt} --format pdf > "${output_name}-pdf.md"
+    pandoc "${output_name}-pdf.md" -o "${output_name}.html" --standalone --css="${css_path}"
+    weasyprint "${output_name}.html" "${output_name}.pdf"
+    rm "${output_name}-pdf.md"
+    echo "Generated: ${output_name}.pdf"
+}
+
 generate_notes() {
     local target=${1:-TBD}
     local clean_flag=${2:-}
@@ -105,6 +121,7 @@ usage() {
     echo "  full    - Build full resume only" >&2
     echo "  short   - Build 1-page resume only" >&2
     echo "  wanted  - Build Wanted site format" >&2
+    echo "  career  - Build detailed career description" >&2
     echo "  base    - Build base resume for diff (job only)" >&2
     echo "  all     - Build all formats (default)" >&2
     echo "" >&2
@@ -171,6 +188,9 @@ case "$format" in
         ;;
     wanted)
         build_wanted "$variant" "$target" "$example_flag"
+        ;;
+    career)
+        build_career "$example_flag"
         ;;
     base)
         if [[ "$variant" != "job" ]]; then
