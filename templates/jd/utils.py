@@ -51,6 +51,13 @@ STATUS_ALIASES = {
 }
 
 
+def slugify_company(name: str) -> str:
+    """Normalize company name to filesystem-safe slug."""
+    text = re.sub(r"\(주\)|\(주 \)", "", name or "").strip()
+    text = re.sub(r"[^a-zA-Z0-9가-힣]", " ", text).strip()
+    return "-".join(text.lower().split())[:60] or "unknown-company"
+
+
 def extract_job_id(url: str) -> Optional[str]:
     """Extract job ID from various recruitment platform URLs.
 

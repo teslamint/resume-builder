@@ -33,14 +33,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install test dependencies
+        run: pip install pytest
+
       - name: Run unit tests
         working-directory: templates
-        run: |
-          python3 test_jd_status.py -v
-          python3 test_schema.py -v
+        run: python3 -m pytest tests/ -v
 
       - name: Validate schema
-        run: python3 templates/schema.py --validate-all --example
+        run: python3 templates/build/schema.py --validate-all --example
 
   build:
     runs-on: ubuntu-latest

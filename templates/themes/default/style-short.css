@@ -54,6 +54,8 @@ li::before {
   content: "• ";
 }
 
+li > p { display: inline; margin: 0; }
+
 table {
   width: 100%;
   border-collapse: collapse;

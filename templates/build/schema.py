@@ -50,7 +50,7 @@ class ValidationError:
 
 def extract_field(content: str, field: str) -> str | None:
     """Extract field value from markdown content."""
-    pattern = rf'^-\s*{field}:\s*(.+)$'
+    pattern = rf'^-\s*{re.escape(field)}:\s*(.+)$'
     match = re.search(pattern, content, re.MULTILINE)
     return match.group(1).strip() if match else None
 

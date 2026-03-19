@@ -21,8 +21,10 @@ from urllib.parse import quote
 
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from .utils import slugify_company as _slugify_company
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from utils import slugify_company as _slugify_company
 
 
 USER_AGENT = (
@@ -937,12 +939,6 @@ def _build_enriched_markdown(merged: dict, company_name: str, source_urls: list[
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
-
-def _slugify_company(name: str) -> str:
-    text = re.sub(r"\(주\)|\(주 \)", "", name or "").strip()
-    text = re.sub(r"[^a-zA-Z0-9가-힣]", " ", text).strip()
-    return "-".join(text.lower().split())[:60] or "unknown-company"
-
 
 def extract_company_info(
     company_name: str,

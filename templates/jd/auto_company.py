@@ -12,10 +12,10 @@ from typing import Optional
 
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from .utils import extract_metadata_from_jd
+    from .utils import extract_metadata_from_jd, slugify_company
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from utils import extract_metadata_from_jd
+    from utils import extract_metadata_from_jd, slugify_company
 
 
 THEVC_MODES = {"auto", "skip", "require"}
@@ -38,12 +38,6 @@ class CompanyInfoResult:
     thevc_attempted: bool
     thevc_status: str
     investment_data_source: str
-
-
-def slugify_company(name: str) -> str:
-    text = re.sub(r"\(주\)|\(주 \)", "", name or "").strip()
-    text = re.sub(r"[^a-zA-Z0-9가-힣]", " ", text).strip()
-    return "-".join(text.lower().split())[:60] or "unknown-company"
 
 
 def _extract_company_name_from_jd(jd_path: Path) -> Optional[str]:
@@ -101,6 +95,8 @@ def _looks_startup(jd_text: str) -> bool:
 
 
 def _fetch_url_text(url: str, timeout: int = 15) -> str:
+    if not url.startswith(("https://", "http://")):
+        raise ValueError(f"Unsupported URL scheme: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="ignore")

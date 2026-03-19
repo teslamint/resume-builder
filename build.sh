@@ -123,7 +123,7 @@ usage() {
     echo "  wanted  - Build Wanted site format" >&2
     echo "  career  - Build detailed career description" >&2
     echo "  base    - Build base resume for diff (job only)" >&2
-    echo "  all     - Build all formats (default)" >&2
+    echo "  all     - Build full + short + wanted (default)" >&2
     echo "" >&2
     echo "Options (job full only):" >&2
     echo "  --target <name>  - Target company/job posting name for notes" >&2
@@ -159,6 +159,10 @@ clean_flag=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --target requires a value" >&2
+                usage
+            fi
             target="$2"
             shift 2
             ;;
