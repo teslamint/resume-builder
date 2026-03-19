@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Paths
 RESUME_ROOT = Path(__file__).parent.parent
-JOB_POSTINGS = RESUME_ROOT / "job_postings"
+JOB_POSTINGS = RESUME_ROOT / "private" / "job_postings"
 SYNC_CONFIG_PATH = Path(__file__).parent / "sync_config.yaml"
 
 
@@ -503,12 +503,16 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
 def to_obsidian(dry_run: bool = False, force: bool = False, dashboard_path: Optional[Path] = None):
     """Generate Obsidian dashboard from job_postings."""
     print("📤 Syncing: resume → Obsidian")
-    
+
+    if dashboard_path is None:
+        print("   ❌ Dashboard path not provided")
+        return
+
     jobs = scan_job_postings()
     print(f"   Found {len(jobs)} job postings")
-    
+
     applied_table, reviewing_table = generate_dashboard_tables(jobs)
-    
+
     # Read current dashboard
     if not dashboard_path.exists():
         print(f"   ❌ Dashboard not found: {dashboard_path}")
@@ -587,8 +591,8 @@ def to_obsidian(dry_run: bool = False, force: bool = False, dashboard_path: Opti
 def from_obsidian(dry_run: bool = False, dashboard_path: Optional[Path] = None):
     """Update job_postings from Obsidian dashboard changes."""
     print("📥 Syncing: Obsidian → resume")
-    
-    if not dashboard_path.exists():
+
+    if dashboard_path is None or not dashboard_path.exists():
         print(f"   ❌ Dashboard not found: {dashboard_path}")
         return
     

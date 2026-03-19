@@ -118,7 +118,7 @@ def send_notification(message: str, config: dict) -> bool:
         print(f"   ⚠️  알림 전송 실패: {error_output}")
         return False
     except FileNotFoundError:
-        print("   ⚠️  clawdbot 명령 없음 - 알림 스킵")
+        print("   ⚠️  openclaw 명령 없음 - 알림 스킵")
         return False
     except Exception as exc:
         print(f"   ⚠️  알림 오류: {exc}")
@@ -235,12 +235,11 @@ def _build_results_from_enrichment(
     for company in companies:
         summary.new += 1
         temp_jd = JOB_POSTINGS_DIR / "unprocessed" / f"private-{company}-enrichment.md"
-        if not dry_run:
-            temp_jd.parent.mkdir(parents=True, exist_ok=True)
-            temp_jd.write_text(
-                f"# Company Enrichment\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | {company} |\n| 출처 | [manual](https://thevc.kr) |\n",
-                encoding="utf-8",
-            )
+        temp_jd.parent.mkdir(parents=True, exist_ok=True)
+        temp_jd.write_text(
+            f"# Company Enrichment\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | {company} |\n| 출처 | [manual](https://thevc.kr) |\n",
+            encoding="utf-8",
+        )
 
         try:
             info = ensure_company_info(

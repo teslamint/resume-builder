@@ -95,7 +95,7 @@ def fallback_sources(company_name: str) -> list[str]:
         f"https://www.wanted.co.kr/search?query={q}&tab=company",
         f"https://www.saramin.co.kr/zf_user/search/company?searchword={q}",
         f"https://www.jobkorea.co.kr/Search/?stext={q}",
-        f"https://thevc.kr/search?query={q}",
+        f"https://thevc.kr/integrated-search/overview?keyword={q}",
     ]
 
 
@@ -104,6 +104,7 @@ def is_search_url(url: str) -> bool:
         "wanted.co.kr/search" in url
         or "saramin.co.kr/zf_user/search/company" in url
         or "jobkorea.co.kr/Search/" in url
+        or "thevc.kr/integrated-search/overview?keyword=" in url
         or "thevc.kr/search?query=" in url
     )
 

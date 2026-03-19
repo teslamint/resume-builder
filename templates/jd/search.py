@@ -300,6 +300,7 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
                     state.seen_job_ids.add(job_id)
                     
                 except Exception as e:
+                    print(f"   ⚠️  Skipping posting: {e}")
                     continue
             
         except Exception as e:

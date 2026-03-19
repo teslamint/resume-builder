@@ -11,13 +11,22 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from resume_builder import (
-    _BASE_DIR,
-    filter_content,
-    extract_company_info_full,
-    extract_section,
-    calculate_tenure,
-)
+try:
+    from resume_builder import (
+        _BASE_DIR,
+        filter_content,
+        extract_company_info_full,
+        extract_section,
+        calculate_tenure,
+    )
+except ImportError:
+    from templates.build.resume_builder import (
+        _BASE_DIR,
+        filter_content,
+        extract_company_info_full,
+        extract_section,
+        calculate_tenure,
+    )
 
 VARIANT = 'public'
 

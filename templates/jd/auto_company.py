@@ -19,7 +19,7 @@ except ImportError:
 
 
 THEVC_MODES = {"auto", "skip", "require"}
-ENRICHMENT_QUEUE_PATH = Path("private/job_postings/unprocessed/company_enrichment_thevc.txt")
+ENRICHMENT_QUEUE_PATH = Path(__file__).parent.parent.parent / "private" / "job_postings" / "unprocessed" / "company_enrichment_thevc.txt"
 
 HEADHUNTING_KEYWORDS = ["써치", "서치펌", "헤드헌팅", "리크루팅", "인력파견", "헤드헌터"]
 
@@ -112,7 +112,7 @@ def _strip_html(html: str) -> str:
 def _extract_thevc_investment(company: str) -> tuple[str, Optional[dict]]:
     """Return (status, investment_data)."""
     query = urllib.parse.quote(company)
-    search_url = f"https://thevc.kr/search?query={query}"
+    search_url = f"https://thevc.kr/integrated-search/overview?keyword={query}"
 
     try:
         html = _fetch_url_text(search_url)

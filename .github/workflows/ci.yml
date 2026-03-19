@@ -34,7 +34,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install test dependencies
-        run: pip install pytest
+        run: pip install pytest pyyaml
 
       - name: Run unit tests
         working-directory: templates
