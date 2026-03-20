@@ -140,7 +140,11 @@ def check_company_risks(company_name: str) -> Optional[dict]:
                     "risks": critical_risks,
                     "incomplete": result.completeness_score < 70,
                 }
-            except Exception:
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "check_company_risks failed for %s: %s", company_lower, exc
+                )
                 return None
     
     return None
