@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for schema validation."""
-import sys
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "build"))
 
 from schema import (
     extract_field,

@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Tests for search quick_filter_title() in search.py and search_quick.py."""
 
-import sys
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "jd"))
 
 from search import quick_filter_title as search_filter
 from search_quick import quick_filter_title as quick_filter

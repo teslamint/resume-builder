@@ -164,6 +164,10 @@ while [[ $# -gt 0 ]]; do
                 usage
             fi
             target="$2"
+            if [[ ! "$target" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                echo "Error: Invalid target name. Only alphanumeric, hyphen, underscore." >&2
+                exit 1
+            fi
             shift 2
             ;;
         --clean)

@@ -9,12 +9,8 @@ Or with pytest (if installed):
     pytest templates/tests/test_build_sheet.py -v
 """
 
-import sys
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "example" / "interview"))
-
 from importlib import import_module
 
 # build-sheet.py has a hyphen, need importlib

@@ -29,6 +29,7 @@ try:
         extract_job_id,
         find_existing_jd,
         move_to_folder,
+        slugify_company,
     )
 except ImportError:
     from auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
@@ -36,7 +37,7 @@ except ImportError:
     from auto_screening import run_screening
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
-    from utils import JOB_POSTINGS_DIR, extract_job_id, find_existing_jd, move_to_folder
+    from utils import JOB_POSTINGS_DIR, extract_job_id, find_existing_jd, move_to_folder, slugify_company
 
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
@@ -181,9 +182,9 @@ def _classify(jd_path: Path, dry_run: bool) -> tuple[str, str]:
     # Missing verdict or other non-fatal case -> default hold
     if result.result in {ProcessResult.SKIPPED, ProcessResult.ERROR}:
         if dry_run:
-            return "지원 보류", "conditional/hold"
+            return "", "conditional/hold"
         moved = move_to_folder(jd_path, "conditional/hold")
-        return "지원 보류", str(moved.parent.relative_to(JOB_POSTINGS_DIR))
+        return "", str(moved.parent.relative_to(JOB_POSTINGS_DIR))
 
     return "", ""
 
@@ -234,7 +235,8 @@ def _build_results_from_enrichment(
     ]
     for company in companies:
         summary.new += 1
-        temp_jd = JOB_POSTINGS_DIR / "unprocessed" / f"private-{company}-enrichment.md"
+        slug = slugify_company(company)
+        temp_jd = JOB_POSTINGS_DIR / "unprocessed" / f"private-{slug}-enrichment.md"
         temp_jd.parent.mkdir(parents=True, exist_ok=True)
         temp_jd.write_text(
             f"# Company Enrichment\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | {company} |\n| 출처 | [manual](https://thevc.kr) |\n",
@@ -275,9 +277,9 @@ def _build_results_from_enrichment(
                     error_reason=str(exc),
                 )
             )
-
-        if temp_jd.exists() and not dry_run:
-            temp_jd.unlink()
+        finally:
+            if temp_jd.exists() and not dry_run:
+                temp_jd.unlink()
 
     return results, summary
 

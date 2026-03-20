@@ -99,7 +99,7 @@ def _fetch_url_text(url: str, timeout: int = 15) -> str:
         raise ValueError(f"Unsupported URL scheme: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="ignore")
+        return resp.read(2 * 1024 * 1024).decode("utf-8", errors="ignore")
 
 
 def _strip_html(html: str) -> str:
@@ -116,8 +116,10 @@ def _extract_thevc_investment(company: str) -> tuple[str, Optional[dict]]:
 
     try:
         html = _fetch_url_text(search_url)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return "network_error", None
     except Exception:
-        return "failed", None
+        return "parse_error", None
 
     text = _strip_html(html)
 
@@ -242,15 +244,18 @@ def ensure_company_info(
 
     existing = _find_existing_company_file(company)
     if existing:
-        completeness = 0.0
+        completeness = -1.0
         try:
             data = parse_company_file(existing)
             result = validate_company(data, existing)
             completeness = result.completeness_score
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "completeness 파싱 실패 (%s): %s — re-collection 진행", existing, exc
+            )
 
-        if completeness >= min_completeness:
+        if completeness >= 0 and completeness >= min_completeness:
             return CompanyInfoResult(
                 company=company,
                 file_path=existing,

@@ -5,14 +5,11 @@ Run:
     python3 templates/tests/test_jd_auto.py -v
 """
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "jd"))
 
 
 class TestAutoCompany(unittest.TestCase):

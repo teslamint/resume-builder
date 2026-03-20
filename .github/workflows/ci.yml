@@ -61,19 +61,25 @@ jobs:
       - name: Build example resume
         run: ./build.sh example all
 
+      - name: Build example career description
+        run: ./build.sh example career
+
       - name: Verify outputs
         run: |
           test -f private/build/resume-example.md
           test -f private/build/resume-example.pdf
           test -f private/build/resume-example-short.pdf
           test -f private/build/resume-example-wanted.txt
+          test -f private/build/career-description-example.pdf
           echo "✅ All outputs generated successfully"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: resume-example
-          path: private/build/resume-example*
+          path: |
+            private/build/resume-example*
+            private/build/career-description-example*
           retention-days: 7
 
   docker-build:
@@ -87,10 +93,14 @@ jobs:
       - name: Build example resume in Docker
         run: docker compose run --rm resume example all
 
+      - name: Build example career description in Docker
+        run: docker compose run --rm resume example career
+
       - name: Verify outputs
         run: |
           test -f private/build/resume-example.md
           test -f private/build/resume-example.pdf
           test -f private/build/resume-example-short.pdf
           test -f private/build/resume-example-wanted.txt
+          test -f private/build/career-description-example.pdf
           echo "✅ Docker build outputs generated successfully"
