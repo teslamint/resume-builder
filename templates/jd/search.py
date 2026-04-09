@@ -26,11 +26,13 @@ try:
     from .constants import JOB_POSTINGS_DIR
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import extract_job_id, is_duplicate
+    from .search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from constants import JOB_POSTINGS_DIR
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import extract_job_id, is_duplicate
+    from search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -184,23 +186,31 @@ def quick_filter_title(title: str, config: dict) -> Optional[str]:
 def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     """
     Search Wanted for job postings.
-    Uses Playwright for browser automation.
+    Uses Playwright for browser automation via search_helpers.
     """
     from playwright.sync_api import sync_playwright
-    
+
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()
     config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
     base_url = config.get("platforms", {}).get("wanted", {}).get("base_url", "https://www.wanted.co.kr")
     search_url = f"{base_url}/search?query={quote(query)}&tab=position"
-    
+
     execution = config.get("execution", {})
     scroll_count = execution.get("scroll_count", 3)
     request_delay = execution.get("request_delay", 2)
-    
+
     print(f"\n🔍 검색 중: {query}")
     print(f"   URL: {search_url}")
-    
+
+    page_config = SearchPageConfig(
+        base_url=base_url,
+        timeout_ms=15000,
+        post_load_delay=request_delay + 2,
+        scroll_count=scroll_count,
+        scroll_sleep=1.0,
+    )
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -208,114 +218,61 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         )
         page = context.new_page()
-        
+
         try:
-            page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+            outcome = load_and_scrape_wanted(page, search_url, page_config)
 
-            has_results = page.locator('a[href*="/wd/"]')
-            no_results = page.locator('text=검색 결과가 없습니다').or_(
-                page.locator('[class*="EmptyContent"]')
-            ).or_(page.locator('text=일치하는 결과가 없'))
-
-            try:
-                has_results.first.or_(no_results.first).wait_for(state="attached", timeout=15000)
-            except Exception:
+            if outcome.timed_out:
                 print(f"   📊 결과: 0개 (타임아웃)")
-                browser.close()
                 return result
 
-            if no_results.count() > 0 or has_results.count() == 0:
+            if outcome.no_results:
                 print(f"   📊 결과: 0개 (검색 결과 없음)")
-                browser.close()
                 return result
 
-            time.sleep(request_delay + 2)
-            
-            # Scroll to load more results
-            for i in range(scroll_count):
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                time.sleep(1)
-            
-            # Extract job listings
-            # Selector: links containing /wd/{id} pattern
-            job_links = page.query_selector_all('a[href*="/wd/"]')
-            
-            seen_ids = set()
-            for link in job_links:
-                try:
-                    href = link.get_attribute("href")
-                    if not href or "/wd/" not in href:
-                        continue
-                    
-                    # Extract job ID
-                    match = re.search(r"/wd/(\d+)", href)
-                    if not match:
-                        continue
-                    
-                    job_id = match.group(1)
-                    if job_id in seen_ids:
-                        continue
-                    seen_ids.add(job_id)
-                    
-                    # Get text content
-                    text = link.inner_text()
-                    lines = [l.strip() for l in text.split("\n") if l.strip()]
-                    
-                    if len(lines) < 2:
-                        continue
-                    
-                    title = lines[0]
-                    company = lines[1] if len(lines) > 1 else "Unknown"
-                    experience = lines[2] if len(lines) > 2 else ""
-                    
-                    result.total_found += 1
-                    
-                    # Quick filter
-                    filter_result = quick_filter_title(title, config)
-                    if filter_result == "pass":
-                        result.filtered_out += 1
-                        continue
+            if outcome.error:
+                print(f"   ❌ Error: {outcome.error}")
+                return result
 
-                    # Company filter - skip rejected companies
-                    if is_rejected_company(company, rejected_companies, config_excludes):
-                        result.filtered_out += 1
-                        continue
+            for raw in outcome.results:
+                result.total_found += 1
 
-                    # Check if already seen in this session's state
-                    if job_id in state.seen_job_ids:
-                        result.duplicates += 1
-                        continue
-                    
-                    # Check if already exists in job_postings
-                    is_dup, existing_path = is_duplicate(job_id)
-                    if is_dup:
-                        result.duplicates += 1
-                        state.seen_job_ids.add(job_id)
-                        continue
-                    
-                    # New posting found
-                    full_url = urljoin(base_url, href)
-                    posting = JobPosting(
-                        job_id=job_id,
-                        url=full_url,
-                        title=title,
-                        company=company,
-                        experience=experience,
-                        is_new=True,
-                        quick_filter_result=filter_result,
-                    )
-                    result.new_postings.append(posting)
-                    state.seen_job_ids.add(job_id)
-                    
-                except Exception as e:
-                    print(f"   ⚠️  Skipping posting: {e}")
+                filter_result = quick_filter_title(raw.title, config)
+                if filter_result == "pass":
+                    result.filtered_out += 1
                     continue
-            
+
+                if is_rejected_company(raw.company, rejected_companies, config_excludes):
+                    result.filtered_out += 1
+                    continue
+
+                if raw.canonical_id in state.seen_job_ids:
+                    result.duplicates += 1
+                    continue
+
+                is_dup, _ = is_duplicate(raw.canonical_id)
+                if is_dup:
+                    result.duplicates += 1
+                    state.seen_job_ids.add(raw.canonical_id)
+                    continue
+
+                posting = JobPosting(
+                    job_id=raw.canonical_id,
+                    url=raw.url,
+                    title=raw.title,
+                    company=raw.company,
+                    experience=raw.experience,
+                    is_new=True,
+                    quick_filter_result=filter_result,
+                )
+                result.new_postings.append(posting)
+                state.seen_job_ids.add(raw.canonical_id)
+
         except Exception as e:
             print(f"   ❌ Error: {e}")
         finally:
             browser.close()
-    
+
     return result
 
 
@@ -323,7 +280,7 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
 def search_remember(query: str, config: dict, state: SearchState) -> SearchResult:
     """
     Search Remember (career.rememberapp.co.kr) for job postings.
-    Uses Playwright for browser automation.
+    Uses Playwright for browser automation via search_helpers.
     """
     from playwright.sync_api import sync_playwright
 
@@ -348,6 +305,14 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     print(f"\n🔍 검색 중 (Remember): {query}")
     print(f"   URL: {search_url}")
 
+    page_config = SearchPageConfig(
+        base_url=base_url,
+        timeout_ms=15000,
+        post_load_delay=request_delay + 2,
+        scroll_count=scroll_count,
+        scroll_sleep=1.0,
+    )
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -357,102 +322,59 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
         page = context.new_page()
 
         try:
-            page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+            outcome = load_and_scrape_remember(page, search_url, page_config)
 
-            has_results = page.locator('a[href*="/job/posting/"]')
-            no_results = page.locator('text=총 0개 공고')
-
-            try:
-                has_results.first.or_(no_results.first).wait_for(state="attached", timeout=15000)
-            except Exception:
+            if outcome.timed_out:
                 print(f"   📊 결과: 0개 (타임아웃)")
-                browser.close()
                 return result
 
-            if no_results.count() > 0 or has_results.count() == 0:
+            if outcome.no_results:
                 print(f"   📊 결과: 0개 (검색 결과 없음)")
-                browser.close()
                 return result
 
-            time.sleep(request_delay + 2)
+            if outcome.error:
+                print(f"   ❌ Error: {outcome.error}")
+                return result
 
-            for i in range(scroll_count):
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                time.sleep(1)
+            for raw in outcome.results:
+                result.total_found += 1
 
-            job_links = page.query_selector_all('a[href*="/job/posting/"]')
-
-            seen_ids = set()
-            for link in job_links:
-                try:
-                    href = link.get_attribute("href")
-                    if not href or "/job/posting/" not in href:
-                        continue
-
-                    if "jdViewSource=inweb_list" not in href:
-                        continue
-
-                    match = re.search(r"/job/posting/(\d+)", href)
-                    if not match:
-                        continue
-
-                    raw_id = match.group(1)
-                    job_id = f"remember-{raw_id}"
-                    if raw_id in seen_ids:
-                        continue
-                    seen_ids.add(raw_id)
-
-                    text = link.inner_text()
-                    lines = [l.strip() for l in text.split("\n") if l.strip()]
-
-                    if len(lines) < 2:
-                        continue
-
-                    company = lines[0]
-                    title = lines[1]
-                    experience = parse_remember_experience(lines[2:])
-
-                    result.total_found += 1
-
-                    filter_result = quick_filter_title(title, config)
-                    if filter_result == "pass":
-                        result.filtered_out += 1
-                        continue
-
-                    if is_rejected_company(company, rejected_companies, config_excludes):
-                        result.filtered_out += 1
-                        continue
-
-                    if job_id in state.seen_job_ids or raw_id in state.seen_job_ids:
-                        result.duplicates += 1
-                        continue
-
-                    is_dup, _ = is_duplicate(job_id)
-                    if is_dup:
-                        result.duplicates += 1
-                        state.seen_job_ids.add(job_id)
-                        continue
-                    is_dup, _ = is_duplicate(raw_id)
-                    if is_dup:
-                        result.duplicates += 1
-                        state.seen_job_ids.add(job_id)
-                        continue
-
-                    full_url = f"{base_url}/job/posting/{raw_id}"
-                    posting = JobPosting(
-                        job_id=job_id,
-                        url=full_url,
-                        title=title,
-                        company=company,
-                        experience=experience,
-                        is_new=True,
-                        quick_filter_result=filter_result,
-                    )
-                    result.new_postings.append(posting)
-                    state.seen_job_ids.add(job_id)
-
-                except Exception:
+                filter_result = quick_filter_title(raw.title, config)
+                if filter_result == "pass":
+                    result.filtered_out += 1
                     continue
+
+                if is_rejected_company(raw.company, rejected_companies, config_excludes):
+                    result.filtered_out += 1
+                    continue
+
+                # Remember dual-key dedup
+                if raw.canonical_id in state.seen_job_ids or raw.raw_id in state.seen_job_ids:
+                    result.duplicates += 1
+                    continue
+
+                is_dup, _ = is_duplicate(raw.canonical_id)
+                if is_dup:
+                    result.duplicates += 1
+                    state.seen_job_ids.add(raw.canonical_id)
+                    continue
+                is_dup, _ = is_duplicate(raw.raw_id)
+                if is_dup:
+                    result.duplicates += 1
+                    state.seen_job_ids.add(raw.canonical_id)
+                    continue
+
+                posting = JobPosting(
+                    job_id=raw.canonical_id,
+                    url=raw.url,
+                    title=raw.title,
+                    company=raw.company,
+                    experience=raw.experience,
+                    is_new=True,
+                    quick_filter_result=filter_result,
+                )
+                result.new_postings.append(posting)
+                state.seen_job_ids.add(raw.canonical_id)
 
         except Exception as e:
             print(f"   ❌ Error: {e}")
