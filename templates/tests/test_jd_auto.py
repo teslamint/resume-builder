@@ -143,7 +143,7 @@ class TestAutoScreening(unittest.TestCase):
 
 class TestAutoNotifications(unittest.TestCase):
     def test_send_notification_uses_openclaw_send_with_target(self):
-        from auto import send_notification
+        from notifications import send_notification
 
         config = {
             "notifications": {
@@ -154,7 +154,7 @@ class TestAutoNotifications(unittest.TestCase):
         }
 
         with patch(
-            "auto.subprocess.run",
+            "notifications.subprocess.run",
             return_value=CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
         ) as mock_run:
             ok = send_notification("hello", config)
@@ -180,11 +180,11 @@ class TestAutoNotifications(unittest.TestCase):
         )
 
     def test_send_notification_skips_without_target(self):
-        from auto import send_notification
+        from notifications import send_notification
 
         config = {"notifications": {"channel": "slack"}}
 
-        with patch("auto.subprocess.run") as mock_run:
+        with patch("notifications.subprocess.run") as mock_run:
             ok = send_notification("hello", config)
 
         self.assertFalse(ok)

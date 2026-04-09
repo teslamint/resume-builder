@@ -11,8 +11,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
-import subprocess
+import os
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +29,7 @@ try:
     from .path_utils import extract_job_id, find_existing_jd
     from .pipeline import ProcessResult, classify_file
     from .search import JobPosting, load_config, run_search
+    from .notifications import format_notification, send_notification
     from .verdict import move_to_folder
 except ImportError:
     from auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
@@ -34,6 +37,7 @@ except ImportError:
     from auto_screening import run_screening
     from constants import JOB_POSTINGS_DIR
     from naming import slugify_company
+    from notifications import format_notification, send_notification
     from path_utils import extract_job_id, find_existing_jd
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
@@ -49,10 +53,29 @@ def _state_path(run_id: str) -> Path:
 
 
 def _save_state(run_id: str, items: dict) -> None:
+    """Atomically save pipeline state using temp file + os.replace."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     path = _state_path(run_id)
     payload = {"run_id": run_id, "updated_at": datetime.now().isoformat(), "items": items}
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    fd, tmp_path = tempfile.mkstemp(dir=str(STATE_DIR), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, str(path))
+        dir_fd = os.open(str(STATE_DIR), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _load_state(run_id: str) -> dict:
@@ -60,7 +83,12 @@ def _load_state(run_id: str) -> dict:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        with open(path, "r", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         return data.get("items", {})
     except (json.JSONDecodeError, KeyError):
         return {}
@@ -72,7 +100,12 @@ def _find_latest_state() -> Optional[str]:
     state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), reverse=True)
     for sf in state_files:
         try:
-            data = json.loads(sf.read_text(encoding="utf-8"))
+            with open(sf, "r", encoding="utf-8") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                try:
+                    data = json.load(f)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             items = data.get("items", {})
             if any(v.get("status") != "done" for v in items.values()):
                 return data.get("run_id")
@@ -124,78 +157,6 @@ class RunSummary:
         return asdict(self)
 
 
-def send_notification(message: str, config: dict) -> bool:
-    notifications = config.get("notifications", {})
-    channel = notifications.get("channel")
-    target = notifications.get("target")
-    account = notifications.get("account")
-    if not channel:
-        print("   ⚠️  알림 채널 미설정")
-        return False
-    if not target:
-        print("   ⚠️  알림 대상 미설정 (notifications.target)")
-        return False
-
-    try:
-        command = [
-            "openclaw",
-            "message",
-            "send",
-            "--channel",
-            channel,
-            "--target",
-            str(target),
-            "--message",
-            message,
-        ]
-        if account:
-            command.extend(["--account", str(account)])
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            print(f"   ✅ 알림 전송 완료 ({channel}:{target})")
-            return True
-        error_output = result.stderr.strip() or result.stdout.strip() or "unknown error"
-        print(f"   ⚠️  알림 전송 실패: {error_output}")
-        return False
-    except FileNotFoundError:
-        print("   ⚠️  openclaw 명령 없음 - 알림 스킵")
-        return False
-    except Exception as exc:
-        print(f"   ⚠️  알림 오류: {exc}")
-        return False
-
-
-def format_notification(results: List[AutoTaskResult], summary: RunSummary) -> str:
-    lines = [
-        "🔔 **JD 자동 파이프라인 결과**",
-        f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        "",
-        f"✨ 신규 URL: {summary.new}개",
-        f"✅ 처리 완료: {summary.processed}개",
-        f"🟢 추천: {summary.recommended}개",
-        f"🟡 보류: {summary.hold}개",
-        f"🔴 패스: {summary.passed}개",
-        "",
-    ]
-
-    recommended = [r for r in results if r.verdict == "지원 추천"]
-    if recommended:
-        lines.append("**🟢 지원 추천 공고:**")
-        for row in recommended[:5]:
-            title = row.title or row.job_id
-            company = row.company or "unknown"
-            lines.append(f"• [{company}] {title}")
-            lines.append(f"  {row.url}")
-        if len(recommended) > 5:
-            lines.append(f"  ... 외 {len(recommended) - 5}개")
-
-    return "\n".join(lines)
-
 
 def _load_urls_from_file(path: Path, max_urls: Optional[int] = None) -> List[str]:
     if not path.exists():
@@ -222,6 +183,10 @@ def _classify(jd_path: Path, dry_run: bool) -> tuple[str, str]:
     result = classify_file(jd_path, dry_run=dry_run)
     if result.result == ProcessResult.SUCCESS:
         return result.verdict or "", result.target_folder or ""
+
+    # Protected status — don't move, keep in current location
+    if result.result == ProcessResult.SKIPPED and result.protected_status:
+        return "", str(jd_path.parent.relative_to(JOB_POSTINGS_DIR)) if not dry_run else ""
 
     # Missing verdict or other non-fatal case -> default hold
     if result.result in {ProcessResult.SKIPPED, ProcessResult.ERROR}:
@@ -404,28 +369,60 @@ def run_auto(
     for idx, url in enumerate(urls, 1):
         job_id = extract_job_id(url) or f"unknown-{idx}"
         row = AutoTaskResult(url=url, job_id=job_id, status="pending")
-        state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
+
+        # Preserve existing state on resume (don't overwrite saved jd_path/screening_path)
+        if job_id not in state_items or state_items[job_id].get("status") == "done":
+            state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
+
+        saved = state_items[job_id]
+        saved_stage = saved.get("stage", "pending")
 
         print(f"\n[{idx}/{len(urls)}] {url}")
+        if resume and saved_stage != "pending":
+            print(f"   ♻️  Resume: stage={saved_stage}")
 
-        existing = find_existing_jd(job_id)
-        if existing and not screening_only:
+        # Resolve jd_path from state or filesystem
+        saved_jd_path = saved.get("jd_path", "")
+        if saved_jd_path and Path(saved_jd_path).exists():
+            resolved_jd_path = Path(saved_jd_path)
+        else:
+            resolved_jd_path = find_existing_jd(job_id)
+
+        # Duplicate/protection skip logic:
+        # - New items (not in state): skip if JD already exists anywhere
+        # - Resume items (in state with incomplete status): continue processing,
+        #   UNLESS file has been moved to a non-reprocessable folder
+        # - Done items: should not appear (filtered out when building URL list)
+        is_resume_item = resume and saved_stage not in ("pending",) and saved.get("status") != "done"
+
+        # Even resume items should not be reprocessed if they've been moved
+        # to a non-conditional folder (pass, applied, rejected, on_going, high_priority)
+        if is_resume_item and resolved_jd_path:
+            non_reprocessable = {"pass", "applied", "rejected", "on_going", "high_priority"}
+            if any(part in non_reprocessable for part in resolved_jd_path.parts):
+                is_resume_item = False
+
+        if resolved_jd_path and not screening_only and not is_resume_item:
             summary.duplicates += 1
             row.status = "duplicate"
-            row.jd_path = str(existing)
+            row.jd_path = str(resolved_jd_path)
             state_items[job_id].update(stage="done", status="skipped")
             _save_state(run_id, state_items)
             results.append(row)
-            print(f"   ⏭️ 중복 스킵: {existing.name}")
+            print(f"   ⏭️ 중복 스킵: {resolved_jd_path.name}")
             continue
 
         try:
-            # 1) JD extraction
-            state_items[job_id].update(stage="extracting", status="in_progress")
-            _save_state(run_id, state_items)
-
             jd_path: Optional[Path] = None
-            if screening_only:
+
+            # 1) JD extraction — skip if already done (resume or screening_only)
+            if saved_stage in ("company_info", "screening", "classifying") and resolved_jd_path:
+                jd_path = resolved_jd_path
+                row.jd_path = str(jd_path)
+                print(f"   ⏩ Extraction 스킵 (이미 완료)")
+            elif screening_only:
+                state_items[job_id].update(stage="extracting", status="in_progress")
+                _save_state(run_id, state_items)
                 jd_path = _resolve_jd_path_for_screening(url)
                 if not jd_path:
                     raise RuntimeError(
@@ -434,6 +431,8 @@ def run_auto(
                 row.jd_path = str(jd_path)
                 row.status = "existing_jd"
             else:
+                state_items[job_id].update(stage="extracting", status="in_progress")
+                _save_state(run_id, state_items)
                 extracted = extract_jd_from_url(url) if not dry_run else None
                 if extracted:
                     jd_path = extracted.output_path
@@ -449,7 +448,10 @@ def run_auto(
             if not jd_path:
                 raise RuntimeError("JD 파일 경로를 확보하지 못했습니다")
 
-            # 2) company info
+            # Persist jd_path in state
+            state_items[job_id]["jd_path"] = str(jd_path)
+
+            # 2) company info (idempotent — reuses existing file)
             state_items[job_id].update(stage="company_info", status="in_progress")
             _save_state(run_id, state_items)
 
@@ -467,20 +469,37 @@ def run_auto(
             row.thevc_status = company_info.thevc_status
             row.investment_data_source = company_info.investment_data_source
 
-            # 3) screening
-            state_items[job_id].update(stage="screening", status="in_progress")
-            _save_state(run_id, state_items)
+            # 3) screening — skip if already done and saved in state
+            saved_screening_path = saved.get("screening_path", "")
+            saved_verdict = saved.get("verdict", "")
+            if (
+                saved_stage == "classifying"
+                and saved_screening_path
+                and Path(saved_screening_path).exists()
+                and saved_verdict
+            ):
+                row.screening_path = saved_screening_path
+                row.verdict = saved_verdict
+                summary.screened += 1
+                print(f"   ⏩ Screening 스킵 (이미 완료: {saved_verdict})")
+            else:
+                state_items[job_id].update(stage="screening", status="in_progress")
+                _save_state(run_id, state_items)
 
-            screening = run_screening(
-                jd_path=jd_path,
-                company_file=Path(company_info.file_path) if row.company_file else None,
-                llm_timeout=llm_timeout,
-                dry_run=dry_run,
-            )
-            row.screening_path = str(screening.screening_path)
-            row.verdict = screening.verdict
-            row.used_fallback = screening.used_fallback
-            summary.screened += 1
+                screening = run_screening(
+                    jd_path=jd_path,
+                    company_file=Path(company_info.file_path) if row.company_file else None,
+                    llm_timeout=llm_timeout,
+                    dry_run=dry_run,
+                )
+                row.screening_path = str(screening.screening_path)
+                row.verdict = screening.verdict
+                row.used_fallback = screening.used_fallback
+                summary.screened += 1
+
+                # Persist screening results in state
+                state_items[job_id]["screening_path"] = row.screening_path
+                state_items[job_id]["verdict"] = row.verdict
 
             # 4) classify
             state_items[job_id].update(stage="classifying", status="in_progress")
