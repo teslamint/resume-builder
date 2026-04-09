@@ -3,8 +3,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ce_types import PlatformData
-from constants import JOB_POSTINGS_DIR
+try:
+    from .ce_types import PlatformData
+    from .constants import JOB_POSTINGS_DIR
+except ImportError:
+    from ce_types import PlatformData
+    from constants import JOB_POSTINGS_DIR
 
 
 def normalize_company_name(name: str) -> str:

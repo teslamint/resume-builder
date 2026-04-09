@@ -27,7 +27,7 @@ from naming import slugify_company as naming_slugify
 from wanted_extract import slugify as wanted_slugify
 from remember_batch_extract import slugify as remember_slugify
 from check_companies import slugify as check_slugify
-from company_extractor import _normalize_company_name as ce_normalize
+from ce_jd_files import normalize_company_name as ce_normalize
 from recollect_company_info import normalize_name_key
 
 

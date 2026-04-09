@@ -5,7 +5,10 @@ import re
 import time
 from urllib.parse import quote
 
-from ce_types import PlatformData
+try:
+    from .ce_types import PlatformData
+except ImportError:
+    from ce_types import PlatformData
 
 REQUEST_DELAY = 1.5
 
