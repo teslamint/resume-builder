@@ -69,6 +69,25 @@ grep "재설계\|총괄\|리드\|매니저" private/build/resume-job-<target>.md
 diff private/overrides/<target>/companies/<company>/profile.md private/companies/<company>/profile.md
 ```
 
+### Generated Content Integrity (interview sheets, mock interviews, etc.)
+
+When writing company-specific technical experience in AI-generated content:
+- State ONLY what `private/build/resume-job-base.md` explicitly says as fact
+- Do NOT infer specific technical experiences from general statements (e.g., "used Spring Boot" ≠ "solved JPA N+1 with fetch join")
+- When experience is absent, write: "직접 경험은 없지만 ~로 접근하겠다"
+- Derived documents (`resume-based-qa.md` etc.) must also be verified against the resume source
+
+**Inference patterns to reject:**
+- ❌ "Used Spring Boot → therefore experienced JPA N+1"
+- ❌ "Commerce service → therefore designed product-category relationships"
+- ❌ "Used JPA → therefore applied fetch join and DTO projection"
+- ⭕ "Spring Boot 3/Kotlin 기반 커머스 API 설계·개발" (resume verbatim)
+
+```bash
+# Verify generated content against resume:
+python3 templates/build/verify_content.py private/jd_analysis/interview/<file>.md
+```
+
 ## Build Verification
 
 ```bash
@@ -77,3 +96,7 @@ diff private/overrides/<target>/companies/<company>/profile.md private/companies
 ./build.sh public all                   # public variant
 python3 templates/tests/test_jd_status.py -v  # unit tests
 ```
+
+## JD Screening
+
+JD screening analyses should follow the user's custom screening rules and output format exactly. Use Korean for verdict labels (e.g., 지원 비추천). Do not truncate or abbreviate the structured output.
