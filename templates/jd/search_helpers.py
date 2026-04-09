@@ -97,43 +97,46 @@ def load_and_scrape_wanted(page, search_url: str, config: SearchPageConfig) -> S
         seen_in_page: set[str] = set()
 
         for link in job_links:
-            href = link.get_attribute("href")
-            if not href or "/wd/" not in href:
+            try:
+                href = link.get_attribute("href")
+                if not href or "/wd/" not in href:
+                    continue
+
+                match = re.search(r"/wd/(\d+)", href)
+                if not match:
+                    continue
+
+                job_id = match.group(1)
+                if job_id in seen_in_page:
+                    continue
+                seen_in_page.add(job_id)
+
+                outcome.candidate_count += 1
+
+                text = link.inner_text()
+                lines = [l.strip() for l in text.split("\n") if l.strip()]
+                if len(lines) < 2:
+                    continue
+
+                title = lines[0]
+                company = lines[1] if len(lines) > 1 else "Unknown"
+                experience = lines[2] if len(lines) > 2 else ""
+
+                from urllib.parse import urljoin
+                full_url = urljoin(config.base_url, href)
+
+                outcome.results.append(RawJobResult(
+                    raw_id=job_id,
+                    canonical_id=job_id,
+                    title=title,
+                    company=company,
+                    experience=experience,
+                    url=full_url,
+                    href=href,
+                    platform="wanted",
+                ))
+            except Exception:
                 continue
-
-            match = re.search(r"/wd/(\d+)", href)
-            if not match:
-                continue
-
-            job_id = match.group(1)
-            if job_id in seen_in_page:
-                continue
-            seen_in_page.add(job_id)
-
-            outcome.candidate_count += 1
-
-            text = link.inner_text()
-            lines = [l.strip() for l in text.split("\n") if l.strip()]
-            if len(lines) < 2:
-                continue
-
-            title = lines[0]
-            company = lines[1] if len(lines) > 1 else "Unknown"
-            experience = lines[2] if len(lines) > 2 else ""
-
-            from urllib.parse import urljoin
-            full_url = urljoin(config.base_url, href)
-
-            outcome.results.append(RawJobResult(
-                raw_id=job_id,
-                canonical_id=job_id,
-                title=title,
-                company=company,
-                experience=experience,
-                url=full_url,
-                href=href,
-                platform="wanted",
-            ))
 
     except Exception as e:
         outcome.error = e
@@ -179,46 +182,49 @@ def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) ->
         seen_in_page: set[str] = set()
 
         for link in job_links:
-            href = link.get_attribute("href")
-            if not href or "/job/posting/" not in href:
+            try:
+                href = link.get_attribute("href")
+                if not href or "/job/posting/" not in href:
+                    continue
+
+                if "jdViewSource=inweb_list" not in href:
+                    continue
+
+                match = re.search(r"/job/posting/(\d+)", href)
+                if not match:
+                    continue
+
+                raw_id = match.group(1)
+                if raw_id in seen_in_page:
+                    continue
+                seen_in_page.add(raw_id)
+
+                outcome.candidate_count += 1
+
+                text = link.inner_text()
+                lines = [l.strip() for l in text.split("\n") if l.strip()]
+                if len(lines) < 2:
+                    continue
+
+                company = lines[0]
+                title = lines[1]
+                experience = parse_remember_experience(lines[2:])
+
+                canonical_id = f"remember-{raw_id}"
+                full_url = f"{config.base_url}/job/posting/{raw_id}"
+
+                outcome.results.append(RawJobResult(
+                    raw_id=raw_id,
+                    canonical_id=canonical_id,
+                    title=title,
+                    company=company,
+                    experience=experience,
+                    url=full_url,
+                    href=href,
+                    platform="remember",
+                ))
+            except Exception:
                 continue
-
-            if "jdViewSource=inweb_list" not in href:
-                continue
-
-            match = re.search(r"/job/posting/(\d+)", href)
-            if not match:
-                continue
-
-            raw_id = match.group(1)
-            if raw_id in seen_in_page:
-                continue
-            seen_in_page.add(raw_id)
-
-            outcome.candidate_count += 1
-
-            text = link.inner_text()
-            lines = [l.strip() for l in text.split("\n") if l.strip()]
-            if len(lines) < 2:
-                continue
-
-            company = lines[0]
-            title = lines[1]
-            experience = parse_remember_experience(lines[2:])
-
-            canonical_id = f"remember-{raw_id}"
-            full_url = f"{config.base_url}/job/posting/{raw_id}"
-
-            outcome.results.append(RawJobResult(
-                raw_id=raw_id,
-                canonical_id=canonical_id,
-                title=title,
-                company=company,
-                experience=experience,
-                url=full_url,
-                href=href,
-                platform="remember",
-            ))
 
     except Exception as e:
         outcome.error = e

@@ -231,8 +231,7 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
                 return result
 
             if outcome.error:
-                print(f"   ❌ Error: {outcome.error}")
-                return result
+                print(f"   ⚠️  Partial error: {outcome.error}")
 
             for raw in outcome.results:
                 result.total_found += 1
@@ -333,8 +332,7 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
                 return result
 
             if outcome.error:
-                print(f"   ❌ Error: {outcome.error}")
-                return result
+                print(f"   ⚠️  Partial error: {outcome.error}")
 
             for raw in outcome.results:
                 result.total_found += 1

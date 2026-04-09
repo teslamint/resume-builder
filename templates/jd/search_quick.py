@@ -245,10 +245,10 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             stats["errors"] += 1
                         elif outcome.no_results:
                             print(f"   📊 결과: 0개 (검색 결과 없음)")
-                        elif outcome.error:
-                            print(f"   ❌ Error: {outcome.error}")
-                            stats["errors"] += 1
                         else:
+                            if outcome.error:
+                                print(f"   ⚠️  Partial error: {outcome.error}")
+                                stats["errors"] += 1
                             for raw in outcome.results:
                                 query_found += 1
 
@@ -334,10 +334,10 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             stats["errors"] += 1
                         elif outcome.no_results:
                             print(f"   📊 결과: 0개 (검색 결과 없음)")
-                        elif outcome.error:
-                            print(f"   ❌ Error: {outcome.error}")
-                            stats["errors"] += 1
                         else:
+                            if outcome.error:
+                                print(f"   ⚠️  Partial error: {outcome.error}")
+                                stats["errors"] += 1
                             for raw in outcome.results:
                                 query_found += 1
 
