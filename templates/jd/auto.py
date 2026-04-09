@@ -65,6 +65,11 @@ def _save_state(run_id: str, items: dict) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, str(path))
+        dir_fd = os.open(str(STATE_DIR), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     except Exception:
         try:
             os.unlink(tmp_path)
