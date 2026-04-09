@@ -11,7 +11,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -50,10 +53,24 @@ def _state_path(run_id: str) -> Path:
 
 
 def _save_state(run_id: str, items: dict) -> None:
+    """Atomically save pipeline state using temp file + os.replace."""
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     path = _state_path(run_id)
     payload = {"run_id": run_id, "updated_at": datetime.now().isoformat(), "items": items}
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    fd, tmp_path = tempfile.mkstemp(dir=str(STATE_DIR), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _load_state(run_id: str) -> dict:
@@ -61,7 +78,12 @@ def _load_state(run_id: str) -> dict:
     if not path.exists():
         return {}
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        with open(path, "r", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         return data.get("items", {})
     except (json.JSONDecodeError, KeyError):
         return {}
@@ -73,7 +95,12 @@ def _find_latest_state() -> Optional[str]:
     state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), reverse=True)
     for sf in state_files:
         try:
-            data = json.loads(sf.read_text(encoding="utf-8"))
+            with open(sf, "r", encoding="utf-8") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                try:
+                    data = json.load(f)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             items = data.get("items", {})
             if any(v.get("status") != "done" for v in items.values()):
                 return data.get("run_id")
