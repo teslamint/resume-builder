@@ -9,21 +9,23 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from .utils import JOB_POSTINGS_DIR, extract_job_id, get_platform_from_url
-    from .wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
+    from .constants import JOB_POSTINGS_DIR
+    from .path_utils import extract_job_id, get_platform_from_url
     from .remember_batch_extract import fetch_posting as fetch_remember_posting
+    from .remember_batch_extract import format_address as format_remember_address
     from .remember_batch_extract import format_experience as format_remember_experience
     from .remember_batch_extract import format_salary as format_remember_salary
-    from .remember_batch_extract import format_address as format_remember_address
     from .remember_batch_extract import slugify as remember_slugify
+    from .wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
 except ImportError:
-    from utils import JOB_POSTINGS_DIR, extract_job_id, get_platform_from_url
-    from wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
+    from constants import JOB_POSTINGS_DIR
+    from path_utils import extract_job_id, get_platform_from_url
     from remember_batch_extract import fetch_posting as fetch_remember_posting
+    from remember_batch_extract import format_address as format_remember_address
     from remember_batch_extract import format_experience as format_remember_experience
     from remember_batch_extract import format_salary as format_remember_salary
-    from remember_batch_extract import format_address as format_remember_address
     from remember_batch_extract import slugify as remember_slugify
+    from wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
 
 
 @dataclass

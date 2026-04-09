@@ -12,10 +12,12 @@ from typing import Optional
 
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from .utils import extract_metadata_from_jd, slugify_company
+    from .jd_content import extract_metadata_from_jd
+    from .naming import slugify_company
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from utils import extract_metadata_from_jd, slugify_company
+    from jd_content import extract_metadata_from_jd
+    from naming import slugify_company
 
 
 THEVC_MODES = {"auto", "skip", "require"}

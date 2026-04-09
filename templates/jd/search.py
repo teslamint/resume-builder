@@ -22,11 +22,15 @@ from urllib.parse import quote, urljoin
 import yaml
 
 try:
-    from .utils import is_duplicate, extract_job_id, JOB_POSTINGS_DIR, get_rejected_companies, is_rejected_company
-    from .company_validator import parse_company_file, validate_company, COMPANY_INFO_DIR
+    from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from .constants import JOB_POSTINGS_DIR
+    from .jd_content import get_rejected_companies, is_rejected_company
+    from .path_utils import extract_job_id, is_duplicate
 except ImportError:
-    from utils import is_duplicate, extract_job_id, JOB_POSTINGS_DIR, get_rejected_companies, is_rejected_company
-    from company_validator import parse_company_file, validate_company, COMPANY_INFO_DIR
+    from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from constants import JOB_POSTINGS_DIR
+    from jd_content import get_rejected_companies, is_rejected_company
+    from path_utils import extract_job_id, is_duplicate
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent.parent

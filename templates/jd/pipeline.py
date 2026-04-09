@@ -21,47 +21,45 @@ from dataclasses import dataclass
 from enum import Enum
 
 try:
-    from .utils import (
-        extract_job_id,
-        extract_job_id_from_filename,
-        get_platform_from_url,
-        is_duplicate,
-        find_existing_jd,
-        load_screening_rules,
-        load_company_info,
-        classify_by_verdict,
-        move_to_folder,
-        parse_verdict_from_screening,
-        update_summary,
+    from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
+    from .jd_content import (
+        add_frontmatter_status,
         extract_metadata_from_jd,
         get_user_status,
-        normalize_status,
         is_protected_status,
-        add_frontmatter_status,
-        JOB_POSTINGS_DIR,
-        SCREENING_DIR,
+        load_company_info,
+        load_screening_rules,
+        normalize_status,
+        update_summary,
     )
+    from .path_utils import (
+        extract_job_id,
+        extract_job_id_from_filename,
+        find_existing_jd,
+        get_platform_from_url,
+        is_duplicate,
+    )
+    from .verdict import classify_by_verdict, move_to_folder, parse_verdict_from_screening
 except ImportError:
-    from utils import (
-        extract_job_id,
-        extract_job_id_from_filename,
-        get_platform_from_url,
-        is_duplicate,
-        find_existing_jd,
-        load_screening_rules,
-        load_company_info,
-        classify_by_verdict,
-        move_to_folder,
-        parse_verdict_from_screening,
-        update_summary,
+    from constants import JOB_POSTINGS_DIR, SCREENING_DIR
+    from jd_content import (
+        add_frontmatter_status,
         extract_metadata_from_jd,
         get_user_status,
-        normalize_status,
         is_protected_status,
-        add_frontmatter_status,
-        JOB_POSTINGS_DIR,
-        SCREENING_DIR,
+        load_company_info,
+        load_screening_rules,
+        normalize_status,
+        update_summary,
     )
+    from path_utils import (
+        extract_job_id,
+        extract_job_id_from_filename,
+        find_existing_jd,
+        get_platform_from_url,
+        is_duplicate,
+    )
+    from verdict import classify_by_verdict, move_to_folder, parse_verdict_from_screening
 
 
 class ProcessResult(Enum):

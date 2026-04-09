@@ -33,11 +33,13 @@ CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 try:
-    from .utils import is_duplicate, get_rejected_companies, is_rejected_company
-    from .queue_utils import load_queue, save_queue, QueueItem, QUEUE_PATH
+    from .jd_content import get_rejected_companies, is_rejected_company
+    from .path_utils import is_duplicate
+    from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
 except ImportError:
-    from utils import is_duplicate, get_rejected_companies, is_rejected_company
-    from queue_utils import load_queue, save_queue, QueueItem, QUEUE_PATH
+    from jd_content import get_rejected_companies, is_rejected_company
+    from path_utils import is_duplicate
+    from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
 
 logger = logging.getLogger(__name__)
 

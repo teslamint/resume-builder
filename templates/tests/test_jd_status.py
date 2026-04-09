@@ -19,7 +19,7 @@ class TestParseFrontmatter(unittest.TestCase):
     """Step 2: parse_frontmatter tests."""
 
     def test_parse_frontmatter_with_status(self):
-        from utils import parse_frontmatter
+        from jd_content import parse_frontmatter
 
         content = """---
 status: rejected
@@ -31,14 +31,14 @@ status_updated: 2026-01-24
         self.assertEqual(result["status_updated"], "2026-01-24")
 
     def test_parse_frontmatter_empty(self):
-        from utils import parse_frontmatter
+        from jd_content import parse_frontmatter
 
         content = "# JD 내용 (frontmatter 없음)"
         result = parse_frontmatter(content)
         self.assertEqual(result, {})
 
     def test_parse_frontmatter_with_reason(self):
-        from utils import parse_frontmatter
+        from jd_content import parse_frontmatter
 
         content = """---
 status: rejected
@@ -50,7 +50,7 @@ status_reason: 채용 프로세스 부담
         self.assertEqual(result["status_reason"], "채용 프로세스 부담")
 
     def test_parse_frontmatter_partial(self):
-        from utils import parse_frontmatter
+        from jd_content import parse_frontmatter
 
         content = """---
 status: applied
@@ -65,19 +65,19 @@ class TestGetUserStatus(unittest.TestCase):
     """Step 3: get_user_status tests."""
 
     def test_get_user_status_exists(self):
-        from utils import get_user_status
+        from jd_content import get_user_status
 
         content = "---\nstatus: applied\n---\n# JD"
         self.assertEqual(get_user_status(content), "applied")
 
     def test_get_user_status_none(self):
-        from utils import get_user_status
+        from jd_content import get_user_status
 
         content = "# JD without frontmatter"
         self.assertIsNone(get_user_status(content))
 
     def test_get_user_status_pending(self):
-        from utils import get_user_status
+        from jd_content import get_user_status
 
         content = "---\nstatus: pending\n---\n# JD"
         self.assertEqual(get_user_status(content), "pending")
@@ -87,42 +87,42 @@ class TestIsProtectedStatus(unittest.TestCase):
     """Step 4: is_protected_status tests."""
 
     def test_protected_rejected(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertTrue(is_protected_status("rejected"))
 
     def test_protected_applied(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertTrue(is_protected_status("applied"))
 
     def test_protected_interview(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertTrue(is_protected_status("interview"))
 
     def test_protected_offer(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertTrue(is_protected_status("offer"))
 
     def test_not_protected_pending(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertFalse(is_protected_status("pending"))
 
     def test_not_protected_none(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertFalse(is_protected_status(None))
 
     def test_protected_legacy_pass_alias(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertTrue(is_protected_status("패스"))
 
     def test_not_protected_legacy_hold_alias(self):
-        from utils import is_protected_status
+        from jd_content import is_protected_status
 
         self.assertFalse(is_protected_status("조건부(하)"))
 
@@ -131,13 +131,13 @@ class TestVerdictParsing(unittest.TestCase):
     """Verdict parser/mapping regression tests."""
 
     def test_parse_heading_colon(self):
-        from utils import parse_verdict_from_screening
+        from verdict import parse_verdict_from_screening
 
         content = "### 최종 판정: 🟢 지원 추천"
         self.assertEqual(parse_verdict_from_screening(content), "지원 추천")
 
     def test_parse_section_pass_heading(self):
-        from utils import parse_verdict_from_screening
+        from verdict import parse_verdict_from_screening
 
         content = """## 판정
 
@@ -146,7 +146,7 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertEqual(parse_verdict_from_screening(content), "지원 비추천")
 
     def test_parse_section_table_worst_case(self):
-        from utils import parse_verdict_from_screening
+        from verdict import parse_verdict_from_screening
 
         content = """## 최종 판정
 
@@ -158,7 +158,7 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertEqual(parse_verdict_from_screening(content), "지원 비추천")
 
     def test_parse_ignores_table_header(self):
-        from utils import parse_verdict_from_screening
+        from verdict import parse_verdict_from_screening
 
         content = """## 최종 판정
 
@@ -168,7 +168,7 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertIsNone(parse_verdict_from_screening(content))
 
     def test_classify_by_verdict_handles_legacy(self):
-        from utils import classify_by_verdict
+        from verdict import classify_by_verdict
 
         self.assertEqual(classify_by_verdict("조건부(상)"), "conditional/hold")
         self.assertEqual(classify_by_verdict("강력 추천"), "conditional/high")
@@ -179,7 +179,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
     """Step 5: add_frontmatter_status tests."""
 
     def test_add_frontmatter_to_new(self):
-        from utils import add_frontmatter_status
+        from jd_content import add_frontmatter_status
 
         content = "# JD 내용"
         result = add_frontmatter_status(content, "rejected")
@@ -188,7 +188,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
         self.assertIn("# JD 내용", result)
 
     def test_add_frontmatter_update_existing(self):
-        from utils import add_frontmatter_status
+        from jd_content import add_frontmatter_status
 
         content = "---\nstatus: pending\n---\n# JD"
         result = add_frontmatter_status(content, "rejected", "면접 거절")
@@ -197,7 +197,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
         self.assertNotIn("status: pending", result)
 
     def test_add_frontmatter_preserves_other_fields(self):
-        from utils import add_frontmatter_status
+        from jd_content import add_frontmatter_status
 
         content = "---\nstatus: pending\ncustom_field: value\n---\n# JD"
         result = add_frontmatter_status(content, "applied")
@@ -205,7 +205,7 @@ class TestAddFrontmatterStatus(unittest.TestCase):
         self.assertIn("custom_field: value", result)
 
     def test_add_frontmatter_adds_timestamp(self):
-        from utils import add_frontmatter_status
+        from jd_content import add_frontmatter_status
 
         content = "# JD 내용"
         result = add_frontmatter_status(content, "rejected")
@@ -413,27 +413,27 @@ class TestNormalizeCompanyName(unittest.TestCase):
     """_normalize_company_name tests."""
 
     def test_removes_legal_suffixes_korean(self):
-        from utils import _normalize_company_name
+        from naming import normalize_company_name as _normalize_company_name
 
         self.assertEqual(_normalize_company_name("(주)크몽"), "크몽")
         self.assertEqual(_normalize_company_name("주식회사 컬리"), "컬리")
         self.assertEqual(_normalize_company_name("㈜무신사"), "무신사")
 
     def test_removes_legal_suffixes_english(self):
-        from utils import _normalize_company_name
+        from naming import normalize_company_name as _normalize_company_name
 
         self.assertEqual(_normalize_company_name("ACME Corp."), "acme")
         self.assertEqual(_normalize_company_name("Foo Inc"), "foo")
         self.assertEqual(_normalize_company_name("Bar Co., Ltd."), "bar")
 
     def test_strips_and_lowercases(self):
-        from utils import _normalize_company_name
+        from naming import normalize_company_name as _normalize_company_name
 
         self.assertEqual(_normalize_company_name("  MyCompany  "), "mycompany")
         self.assertEqual(_normalize_company_name("ABC"), "abc")
 
     def test_empty_string(self):
-        from utils import _normalize_company_name
+        from naming import normalize_company_name as _normalize_company_name
 
         self.assertEqual(_normalize_company_name(""), "")
 
@@ -442,32 +442,32 @@ class TestIsRejectedCompany(unittest.TestCase):
     """is_rejected_company tests."""
 
     def test_exact_match(self):
-        from utils import is_rejected_company
+        from jd_content import is_rejected_company
 
         rejected = {"크몽", "컬리", "무신사"}
         self.assertTrue(is_rejected_company("크몽", rejected))
         self.assertTrue(is_rejected_company("(주)크몽", rejected))
 
     def test_no_substring_match(self):
-        from utils import is_rejected_company
+        from jd_content import is_rejected_company
 
         rejected = {"무신사"}
         self.assertFalse(is_rejected_company("무신사페이먼츠", rejected))
 
     def test_config_excludes(self):
-        from utils import is_rejected_company
+        from jd_content import is_rejected_company
 
         rejected = set()
         self.assertTrue(is_rejected_company("BadCo", rejected, ["BadCo"]))
         self.assertFalse(is_rejected_company("GoodCo", rejected, ["BadCo"]))
 
     def test_empty_company(self):
-        from utils import is_rejected_company
+        from jd_content import is_rejected_company
 
         self.assertFalse(is_rejected_company("", {"크몽"}))
 
     def test_combined_sources(self):
-        from utils import is_rejected_company
+        from jd_content import is_rejected_company
 
         rejected = {"크몽"}
         config_excludes = ["엘박스"]
@@ -480,14 +480,14 @@ class TestGetRejectedCompanies(unittest.TestCase):
     """get_rejected_companies integration test with temp directory."""
 
     def test_collects_from_rejected_folder(self):
-        from utils import get_rejected_companies, JOB_POSTINGS_DIR
-        import utils as jd_utils
+        from jd_content import get_rejected_companies
+        import constants as jd_constants
 
-        original_dir = jd_utils.JOB_POSTINGS_DIR
+        original_dir = jd_constants.JOB_POSTINGS_DIR
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
-                jd_utils.JOB_POSTINGS_DIR = tmp_path
+                jd_constants.JOB_POSTINGS_DIR = tmp_path
 
                 rejected_dir = tmp_path / "rejected"
                 rejected_dir.mkdir()
@@ -501,17 +501,17 @@ class TestGetRejectedCompanies(unittest.TestCase):
                 result = get_rejected_companies()
                 self.assertIn("testco", result)
         finally:
-            jd_utils.JOB_POSTINGS_DIR = original_dir
+            jd_constants.JOB_POSTINGS_DIR = original_dir
 
     def test_collects_from_pass_folder(self):
-        from utils import get_rejected_companies
-        import utils as jd_utils
+        from jd_content import get_rejected_companies
+        import constants as jd_constants
 
-        original_dir = jd_utils.JOB_POSTINGS_DIR
+        original_dir = jd_constants.JOB_POSTINGS_DIR
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
-                jd_utils.JOB_POSTINGS_DIR = tmp_path
+                jd_constants.JOB_POSTINGS_DIR = tmp_path
 
                 pass_dir = tmp_path / "pass"
                 pass_dir.mkdir()
@@ -525,17 +525,17 @@ class TestGetRejectedCompanies(unittest.TestCase):
                 result = get_rejected_companies()
                 self.assertIn("passedco", result)
         finally:
-            jd_utils.JOB_POSTINGS_DIR = original_dir
+            jd_constants.JOB_POSTINGS_DIR = original_dir
 
     def test_collects_from_status_rejected(self):
-        from utils import get_rejected_companies
-        import utils as jd_utils
+        from jd_content import get_rejected_companies
+        import constants as jd_constants
 
-        original_dir = jd_utils.JOB_POSTINGS_DIR
+        original_dir = jd_constants.JOB_POSTINGS_DIR
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
-                jd_utils.JOB_POSTINGS_DIR = tmp_path
+                jd_constants.JOB_POSTINGS_DIR = tmp_path
 
                 hold_dir = tmp_path / "conditional" / "hold"
                 hold_dir.mkdir(parents=True)
@@ -549,7 +549,7 @@ class TestGetRejectedCompanies(unittest.TestCase):
                 result = get_rejected_companies()
                 self.assertIn("otherco", result)
         finally:
-            jd_utils.JOB_POSTINGS_DIR = original_dir
+            jd_constants.JOB_POSTINGS_DIR = original_dir
 
 
 if __name__ == "__main__":

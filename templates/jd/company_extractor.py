@@ -21,10 +21,10 @@ from urllib.parse import quote
 
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from .utils import slugify_company as _slugify_company
+    from .naming import slugify_company as _slugify_company
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from utils import slugify_company as _slugify_company
+    from naming import slugify_company as _slugify_company
 
 
 USER_AGENT = (
