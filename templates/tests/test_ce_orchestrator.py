@@ -3,11 +3,14 @@
 These tests monkeypatch platform extractors to verify the orchestrator's
 error handling, platform ordering, and JD-always-attempted behavior
 without needing a real browser.
+
+Note: BROWSER_EXTRACTORS is a dict that captures function references at
+module load time, so we must patch the dict itself (not module-level names).
 """
 from unittest.mock import MagicMock, patch
 
 from ce_types import PlatformData
-from company_extractor import extract_company_info
+from company_extractor import BROWSER_EXTRACTORS, extract_company_info
 
 
 def _make_platform_data(platform: str) -> PlatformData:
@@ -18,21 +21,17 @@ def _make_platform_data(platform: str) -> PlatformData:
     )
 
 
-def _patch_all(wanted=None, saramin=None, thevc=None, jd=None):
-    """Create a combined context manager that patches all 4 extractors."""
-    def _to_mock(val):
-        if callable(val) and isinstance(val, type) and issubclass(val, Exception):
-            return MagicMock(side_effect=val("error"))
-        if isinstance(val, Exception):
-            return MagicMock(side_effect=val)
-        return MagicMock(return_value=val)
+def _make_mock(val):
+    if isinstance(val, Exception):
+        return MagicMock(side_effect=val)
+    return MagicMock(return_value=val)
 
-    return (
-        patch("company_extractor._extract_wanted", _to_mock(wanted)),
-        patch("company_extractor._extract_saramin", _to_mock(saramin)),
-        patch("company_extractor._extract_thevc", _to_mock(thevc)),
-        patch("company_extractor._extract_from_jd_files", _to_mock(jd)),
-    )
+
+class TestBrowserExtractorsOrder:
+    """Verify BROWSER_EXTRACTORS dict maintains expected insertion order."""
+
+    def test_platform_order(self):
+        assert list(BROWSER_EXTRACTORS.keys()) == ["wanted", "saramin", "thevc"]
 
 
 class TestExtractCompanyInfoOrchestration:
@@ -40,9 +39,14 @@ class TestExtractCompanyInfoOrchestration:
 
     def test_success_case(self):
         wanted_data = _make_platform_data("wanted")
-        p1, p2, p3, p4 = _patch_all(wanted=wanted_data, jd=None)
+        mock_extractors = {
+            "wanted": _make_mock(wanted_data),
+            "saramin": _make_mock(None),
+            "thevc": _make_mock(None),
+        }
 
-        with p1, p2, p3, p4:
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
                 browser_context=MagicMock(),
@@ -54,9 +58,14 @@ class TestExtractCompanyInfoOrchestration:
         assert "wanted" not in result.platforms_failed
 
     def test_none_result_goes_to_failed(self):
-        p1, p2, p3, p4 = _patch_all(wanted=None, jd=None)
+        mock_extractors = {
+            "wanted": _make_mock(None),
+            "saramin": _make_mock(None),
+            "thevc": _make_mock(None),
+        }
 
-        with p1, p2, p3, p4:
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
                 browser_context=MagicMock(),
@@ -68,11 +77,14 @@ class TestExtractCompanyInfoOrchestration:
         assert result.completeness == 0.0
 
     def test_exception_goes_to_failed_no_crash(self):
-        p1, p2, p3, p4 = _patch_all(
-            wanted=RuntimeError("network error"), jd=None
-        )
+        mock_extractors = {
+            "wanted": _make_mock(RuntimeError("network error")),
+            "saramin": _make_mock(None),
+            "thevc": _make_mock(None),
+        }
 
-        with p1, p2, p3, p4:
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
                 browser_context=MagicMock(),
@@ -84,14 +96,14 @@ class TestExtractCompanyInfoOrchestration:
 
     def test_jd_always_attempted_even_when_all_browser_fail(self):
         jd_data = _make_platform_data("jd")
-        p1, p2, p3, p4 = _patch_all(
-            wanted=RuntimeError("fail"),
-            saramin=RuntimeError("fail"),
-            thevc=RuntimeError("fail"),
-            jd=jd_data,
-        )
+        mock_extractors = {
+            "wanted": _make_mock(RuntimeError("fail")),
+            "saramin": _make_mock(RuntimeError("fail")),
+            "thevc": _make_mock(RuntimeError("fail")),
+        }
 
-        with p1, p2, p3, p4:
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+             patch("company_extractor.extract_from_jd_files", return_value=jd_data):
             result = extract_company_info(
                 "테스트회사",
                 browser_context=MagicMock(),
@@ -106,9 +118,17 @@ class TestExtractCompanyInfoOrchestration:
         """When platforms list contains no known browser platforms,
         none of the browser extractors should be called."""
         jd_data = _make_platform_data("jd")
-        p1, p2, p3, p4 = _patch_all(jd=jd_data)
+        m_wanted = _make_mock(None)
+        m_saramin = _make_mock(None)
+        m_thevc = _make_mock(None)
+        mock_extractors = {
+            "wanted": m_wanted,
+            "saramin": m_saramin,
+            "thevc": m_thevc,
+        }
 
-        with p1 as m1, p2 as m2, p3 as m3, p4:
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+             patch("company_extractor.extract_from_jd_files", return_value=jd_data):
             result = extract_company_info(
                 "테스트회사",
                 browser_context=MagicMock(),
@@ -117,6 +137,6 @@ class TestExtractCompanyInfoOrchestration:
             )
 
         assert "jd" in result.platforms_used
-        m1.assert_not_called()
-        m2.assert_not_called()
-        m3.assert_not_called()
+        m_wanted.assert_not_called()
+        m_saramin.assert_not_called()
+        m_thevc.assert_not_called()
