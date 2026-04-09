@@ -22,25 +22,69 @@ try:
     from .auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
     from .auto_extractors import extract_jd_from_url
     from .auto_screening import run_screening
+    from .constants import JOB_POSTINGS_DIR
+    from .naming import slugify_company
+    from .path_utils import extract_job_id, find_existing_jd
     from .pipeline import ProcessResult, classify_file
     from .search import JobPosting, load_config, run_search
-    from .utils import (
-        JOB_POSTINGS_DIR,
-        extract_job_id,
-        find_existing_jd,
-        move_to_folder,
-        slugify_company,
-    )
+    from .verdict import move_to_folder
 except ImportError:
     from auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
     from auto_extractors import extract_jd_from_url
     from auto_screening import run_screening
+    from constants import JOB_POSTINGS_DIR
+    from naming import slugify_company
+    from path_utils import extract_job_id, find_existing_jd
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
-    from utils import JOB_POSTINGS_DIR, extract_job_id, find_existing_jd, move_to_folder, slugify_company
+    from verdict import move_to_folder
 
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
+STATE_DIR = RESULTS_DIR
+
+
+def _state_path(run_id: str) -> Path:
+    return STATE_DIR / f".auto_state_{run_id}.json"
+
+
+def _save_state(run_id: str, items: dict) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _state_path(run_id)
+    payload = {"run_id": run_id, "updated_at": datetime.now().isoformat(), "items": items}
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _load_state(run_id: str) -> dict:
+    path = _state_path(run_id)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("items", {})
+    except (json.JSONDecodeError, KeyError):
+        return {}
+
+
+def _find_latest_state() -> Optional[str]:
+    if not STATE_DIR.exists():
+        return None
+    state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), reverse=True)
+    for sf in state_files:
+        try:
+            data = json.loads(sf.read_text(encoding="utf-8"))
+            items = data.get("items", {})
+            if any(v.get("status") != "done" for v in items.values()):
+                return data.get("run_id")
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return None
+
+
+def _cleanup_state(run_id: str) -> None:
+    path = _state_path(run_id)
+    if path.exists():
+        path.unlink()
 
 
 @dataclass
@@ -298,6 +342,7 @@ def run_auto(
     thevc_mode: str = "auto",
     company_enrichment_only: bool = False,
     min_completeness: float = 0.0,
+    resume: bool = False,
 ) -> tuple[List[AutoTaskResult], RunSummary]:
     config = load_config()
 
@@ -305,6 +350,14 @@ def run_auto(
         return _build_results_from_enrichment(
             thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
         )
+
+    prev_state: dict = {}
+    if resume:
+        prev_run_id = _find_latest_state()
+        if prev_run_id:
+            prev_state = _load_state(prev_run_id)
+            run_id = prev_run_id
+            print(f"🔄 이전 실행 재개: run_id={prev_run_id}, 미완료 {sum(1 for v in prev_state.values() if v.get('status') != 'done')}건")
 
     run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     summary = RunSummary(run_id=run_id)
@@ -315,10 +368,14 @@ def run_auto(
     print("=" * 70)
 
     results: List[AutoTaskResult] = []
+    state_items: dict = dict(prev_state)
 
     if from_urls:
         urls = _load_urls_from_file(from_urls, max_urls=max_urls)
         postings: List[JobPosting] = []
+    elif resume and prev_state:
+        urls = [v["url"] for v in prev_state.values() if v.get("status") != "done"]
+        postings = []
     else:
         postings = run_search(dry_run=dry_run, max_urls=max_urls)
         urls = [p.url for p in postings]
@@ -347,6 +404,7 @@ def run_auto(
     for idx, url in enumerate(urls, 1):
         job_id = extract_job_id(url) or f"unknown-{idx}"
         row = AutoTaskResult(url=url, job_id=job_id, status="pending")
+        state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
 
         print(f"\n[{idx}/{len(urls)}] {url}")
 
@@ -355,12 +413,17 @@ def run_auto(
             summary.duplicates += 1
             row.status = "duplicate"
             row.jd_path = str(existing)
+            state_items[job_id].update(stage="done", status="skipped")
+            _save_state(run_id, state_items)
             results.append(row)
             print(f"   ⏭️ 중복 스킵: {existing.name}")
             continue
 
         try:
             # 1) JD extraction
+            state_items[job_id].update(stage="extracting", status="in_progress")
+            _save_state(run_id, state_items)
+
             jd_path: Optional[Path] = None
             if screening_only:
                 jd_path = _resolve_jd_path_for_screening(url)
@@ -387,6 +450,9 @@ def run_auto(
                 raise RuntimeError("JD 파일 경로를 확보하지 못했습니다")
 
             # 2) company info
+            state_items[job_id].update(stage="company_info", status="in_progress")
+            _save_state(run_id, state_items)
+
             company_info = ensure_company_info(
                 jd_path=jd_path,
                 jd_url=url,
@@ -402,6 +468,9 @@ def run_auto(
             row.investment_data_source = company_info.investment_data_source
 
             # 3) screening
+            state_items[job_id].update(stage="screening", status="in_progress")
+            _save_state(run_id, state_items)
+
             screening = run_screening(
                 jd_path=jd_path,
                 company_file=Path(company_info.file_path) if row.company_file else None,
@@ -414,6 +483,9 @@ def run_auto(
             summary.screened += 1
 
             # 4) classify
+            state_items[job_id].update(stage="classifying", status="in_progress")
+            _save_state(run_id, state_items)
+
             if no_classify:
                 classified = ""
             else:
@@ -426,6 +498,8 @@ def run_auto(
 
             row.status = "processed"
             summary.processed += 1
+            state_items[job_id].update(stage="done", status="done")
+            _save_state(run_id, state_items)
             results.append(row)
             print(
                 f"   ✅ 완료: verdict={row.verdict or 'N/A'} folder={row.classified_folder or '-'}"
@@ -437,10 +511,15 @@ def run_auto(
                 row.error_stage = "pipeline"
             row.error_reason = str(exc)
             summary.failed += 1
+            state_items[job_id].update(status="failed", error=str(exc))
+            _save_state(run_id, state_items)
             results.append(row)
             print(f"   ❌ 실패: {exc}")
             if not continue_on_error:
                 break
+
+    if summary.failed == 0:
+        _cleanup_state(run_id)
 
     notifications = config.get("notifications", {})
     if notifications.get("on_recommended") and summary.recommended > 0 and not dry_run:
@@ -492,6 +571,9 @@ def main() -> None:
         help="기존 파일 completeness가 이 값 미만이면 재수집 (0~100, 기본 0.0)",
     )
     parser.add_argument("--notify-test", action="store_true", help="알림 테스트")
+    parser.add_argument(
+        "--resume", action="store_true", help="마지막 실행에서 미완료 항목만 재처리"
+    )
 
     args = parser.parse_args()
 
@@ -517,6 +599,7 @@ def main() -> None:
         thevc_mode=args.thevc_mode,
         company_enrichment_only=args.company_enrichment_only,
         min_completeness=args.min_completeness,
+        resume=args.resume,
     )
 
     result_file = save_results(results, summary, dry_run=args.dry_run)
