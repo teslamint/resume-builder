@@ -14,6 +14,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+try:
+    from .models import DiscoveredJob
+except ImportError:
+    from models import DiscoveredJob
+
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -21,13 +26,8 @@ QUEUE_PATH = BASE_DIR / "private" / "job_postings" / "queue.json"
 
 
 @dataclass
-class QueueItem:
+class QueueItem(DiscoveredJob):
     """Item in the processing queue."""
-    job_id: str
-    url: str
-    title: str
-    company: str
-    experience: str
     query: str
     discovered_at: str
     status: str = "pending"  # pending, processing, done, failed

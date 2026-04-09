@@ -25,12 +25,14 @@ try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .constants import JOB_POSTINGS_DIR
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
+    from .models import DiscoveredJob
     from .path_utils import extract_job_id, is_duplicate
     from .search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from constants import JOB_POSTINGS_DIR
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
+    from models import DiscoveredJob
     from path_utils import extract_job_id, is_duplicate
     from search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 
@@ -41,13 +43,8 @@ STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 
 @dataclass
-class JobPosting:
-    """Represents a discovered job posting."""
-    job_id: str
-    url: str
-    title: str
-    company: str
-    experience: str
+class JobPosting(DiscoveredJob):
+    """Represents a discovered job posting from search."""
     is_new: bool = True
     quick_filter_result: Optional[str] = None  # 'pass', 'prefer', None
 
