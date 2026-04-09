@@ -5,17 +5,15 @@ Captures the semantic divergence between the two implementations:
   - search.py quick_filter_title() -> Optional[str]: "pass" | "prefer" | None
   - search_quick.py quick_filter_title() -> bool: True (skip) | False (keep)
 
-Also captures identical functions that should be unified:
-  - parse_remember_experience() vs _parse_remember_experience()
-  - load_config() vs load_config()
+Also verifies shared functions (unified in jd_content.py):
+  - parse_remember_experience() — was duplicated, now single source
 """
 
 import pytest
 
 from search import quick_filter_title as search_filter
-from search import parse_remember_experience
 from search_quick import quick_filter_title as quick_filter
-from search_quick import _parse_remember_experience
+from jd_content import parse_remember_experience
 
 
 CONFIG = {
@@ -116,11 +114,11 @@ class TestFilterAgreement:
 
 
 # ---------------------------------------------------------------------------
-# parse_remember_experience: identical implementations
+# parse_remember_experience: unified in jd_content.py
 # ---------------------------------------------------------------------------
 
 class TestParseRememberExperience:
-    """Both implementations use identical regex and logic."""
+    """Now a single shared function in jd_content.py (was duplicated in search.py and search_quick.py)."""
 
     CASES = [
         (["Company", "3\ub144~9\ub144 \ucc28"], "3\ub144~9\ub144 \ucc28"),  # 3년~9년 차
@@ -132,15 +130,9 @@ class TestParseRememberExperience:
     ]
 
     @pytest.mark.parametrize("lines,expected", CASES)
-    def test_identical_output(self, lines, expected):
-        """Both functions must return the same result for all inputs."""
+    def test_output(self, lines, expected):
+        """Shared function returns expected results."""
         assert parse_remember_experience(lines) == expected
-        assert _parse_remember_experience(lines) == expected
-
-    @pytest.mark.parametrize("lines,expected", CASES)
-    def test_functions_agree(self, lines, expected):
-        """Cross-check: outputs always match."""
-        assert parse_remember_experience(lines) == _parse_remember_experience(lines)
 
 
 # ---------------------------------------------------------------------------

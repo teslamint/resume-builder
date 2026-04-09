@@ -24,12 +24,12 @@ import yaml
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .constants import JOB_POSTINGS_DIR
-    from .jd_content import get_rejected_companies, is_rejected_company
+    from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import extract_job_id, is_duplicate
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from constants import JOB_POSTINGS_DIR
-    from jd_content import get_rejected_companies, is_rejected_company
+    from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import extract_job_id, is_duplicate
 
 # Paths
@@ -318,18 +318,6 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     
     return result
 
-
-def parse_remember_experience(text_lines: list[str]) -> str:
-    """Extract experience string from Remember posting text lines.
-
-    Remember listings show fields like "3년~9년 차", "5년 이상", "경력 무관"
-    after the title and company lines.
-    """
-    exp_pattern = re.compile(r'\d+년|경력\s*무관|리더급')
-    for line in text_lines:
-        if exp_pattern.search(line):
-            return line
-    return ""
 
 
 def search_remember(query: str, config: dict, state: SearchState) -> SearchResult:

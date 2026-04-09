@@ -33,11 +33,11 @@ CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 try:
-    from .jd_content import get_rejected_companies, is_rejected_company
+    from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import is_duplicate
     from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
 except ImportError:
-    from jd_content import get_rejected_companies, is_rejected_company
+    from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import is_duplicate
     from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
 
@@ -152,14 +152,6 @@ def filter_experience(exp_str: str, config: dict) -> bool:
     
     return False
 
-
-def _parse_remember_experience(text_lines: list[str]) -> str:
-    """Extract experience string from Remember posting text lines."""
-    exp_pattern = re.compile(r'\d+년|경력\s*무관|리더급')
-    for line in text_lines:
-        if exp_pattern.search(line):
-            return line
-    return ""
 
 
 def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
@@ -426,7 +418,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
 
                                 company = lines[0]
                                 title = lines[1]
-                                experience = _parse_remember_experience(lines[2:])
+                                experience = parse_remember_experience(lines[2:])
 
                                 if quick_filter_title(title, config):
                                     query_filtered += 1
