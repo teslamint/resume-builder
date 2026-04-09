@@ -9,11 +9,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
+try:
+    from .naming import slugify_company as _slugify
+except ImportError:
+    from naming import slugify_company as _slugify
+
 def slugify(text):
-    text = re.sub(r'\(주\)|\(주 \)', '', text).strip()
-    text = re.sub(r'[^a-zA-Z0-9가-힣]', ' ', text).strip()
-    parts = text.lower().split()
-    return '-'.join(parts)[:50]
+    return _slugify(text, max_len=50, fallback="")
 
 def fetch_posting(posting_id):
     url = f'https://career.rememberapp.co.kr/job/posting/{posting_id}'

@@ -6,11 +6,13 @@ import sys
 import urllib.request
 from pathlib import Path
 
+try:
+    from .naming import slugify_company as _slugify
+except ImportError:
+    from naming import slugify_company as _slugify
+
 def slugify(text):
-    text = re.sub(r'\(주\)|\(주 \)', '', text).strip()
-    text = re.sub(r'[^a-zA-Z0-9가-힣]', ' ', text).strip()
-    parts = text.lower().split()
-    return '-'.join(parts)[:50]
+    return _slugify(text, max_len=50, fallback="")
 
 def fetch_wanted_posting(job_id):
     """Wanted 채용공고 API 호출"""

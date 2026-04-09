@@ -3,13 +3,13 @@
 import json
 from pathlib import Path
 
+try:
+    from .naming import slugify_company as _slugify
+except ImportError:
+    from naming import slugify_company as _slugify
+
 def slugify(company_name):
-    """회사명을 파일명 슬러그로 변환"""
-    import re
-    text = re.sub(r'\(주\)|\(주 \)', '', company_name).strip()
-    text = re.sub(r'[^a-zA-Z0-9가-힣]', ' ', text).strip()
-    parts = text.lower().split()
-    return '-'.join(parts)[:50]
+    return _slugify(company_name, max_len=50, fallback="")
 
 def main():
     # Remember 통과 목록
