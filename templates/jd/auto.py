@@ -360,28 +360,47 @@ def run_auto(
     for idx, url in enumerate(urls, 1):
         job_id = extract_job_id(url) or f"unknown-{idx}"
         row = AutoTaskResult(url=url, job_id=job_id, status="pending")
-        state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
+
+        # Preserve existing state on resume (don't overwrite saved jd_path/screening_path)
+        if job_id not in state_items or state_items[job_id].get("status") == "done":
+            state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
+
+        saved = state_items[job_id]
+        saved_stage = saved.get("stage", "pending")
 
         print(f"\n[{idx}/{len(urls)}] {url}")
+        if resume and saved_stage != "pending":
+            print(f"   ♻️  Resume: stage={saved_stage}")
 
-        existing = find_existing_jd(job_id)
-        if existing and not screening_only:
+        # Resolve jd_path from state or filesystem
+        saved_jd_path = saved.get("jd_path", "")
+        if saved_jd_path and Path(saved_jd_path).exists():
+            resolved_jd_path = Path(saved_jd_path)
+        else:
+            resolved_jd_path = find_existing_jd(job_id)
+
+        # Duplicate skip — but not for same-run incomplete items
+        if resolved_jd_path and not screening_only and saved_stage in ("pending",):
             summary.duplicates += 1
             row.status = "duplicate"
-            row.jd_path = str(existing)
+            row.jd_path = str(resolved_jd_path)
             state_items[job_id].update(stage="done", status="skipped")
             _save_state(run_id, state_items)
             results.append(row)
-            print(f"   ⏭️ 중복 스킵: {existing.name}")
+            print(f"   ⏭️ 중복 스킵: {resolved_jd_path.name}")
             continue
 
         try:
-            # 1) JD extraction
-            state_items[job_id].update(stage="extracting", status="in_progress")
-            _save_state(run_id, state_items)
-
             jd_path: Optional[Path] = None
-            if screening_only:
+
+            # 1) JD extraction — skip if already done (resume or screening_only)
+            if saved_stage in ("company_info", "screening", "classifying") and resolved_jd_path:
+                jd_path = resolved_jd_path
+                row.jd_path = str(jd_path)
+                print(f"   ⏩ Extraction 스킵 (이미 완료)")
+            elif screening_only:
+                state_items[job_id].update(stage="extracting", status="in_progress")
+                _save_state(run_id, state_items)
                 jd_path = _resolve_jd_path_for_screening(url)
                 if not jd_path:
                     raise RuntimeError(
@@ -390,6 +409,8 @@ def run_auto(
                 row.jd_path = str(jd_path)
                 row.status = "existing_jd"
             else:
+                state_items[job_id].update(stage="extracting", status="in_progress")
+                _save_state(run_id, state_items)
                 extracted = extract_jd_from_url(url) if not dry_run else None
                 if extracted:
                     jd_path = extracted.output_path
@@ -405,7 +426,10 @@ def run_auto(
             if not jd_path:
                 raise RuntimeError("JD 파일 경로를 확보하지 못했습니다")
 
-            # 2) company info
+            # Persist jd_path in state
+            state_items[job_id]["jd_path"] = str(jd_path)
+
+            # 2) company info (idempotent — reuses existing file)
             state_items[job_id].update(stage="company_info", status="in_progress")
             _save_state(run_id, state_items)
 
@@ -423,20 +447,37 @@ def run_auto(
             row.thevc_status = company_info.thevc_status
             row.investment_data_source = company_info.investment_data_source
 
-            # 3) screening
-            state_items[job_id].update(stage="screening", status="in_progress")
-            _save_state(run_id, state_items)
+            # 3) screening — skip if already done and saved in state
+            saved_screening_path = saved.get("screening_path", "")
+            saved_verdict = saved.get("verdict", "")
+            if (
+                saved_stage == "classifying"
+                and saved_screening_path
+                and Path(saved_screening_path).exists()
+                and saved_verdict
+            ):
+                row.screening_path = saved_screening_path
+                row.verdict = saved_verdict
+                summary.screened += 1
+                print(f"   ⏩ Screening 스킵 (이미 완료: {saved_verdict})")
+            else:
+                state_items[job_id].update(stage="screening", status="in_progress")
+                _save_state(run_id, state_items)
 
-            screening = run_screening(
-                jd_path=jd_path,
-                company_file=Path(company_info.file_path) if row.company_file else None,
-                llm_timeout=llm_timeout,
-                dry_run=dry_run,
-            )
-            row.screening_path = str(screening.screening_path)
-            row.verdict = screening.verdict
-            row.used_fallback = screening.used_fallback
-            summary.screened += 1
+                screening = run_screening(
+                    jd_path=jd_path,
+                    company_file=Path(company_info.file_path) if row.company_file else None,
+                    llm_timeout=llm_timeout,
+                    dry_run=dry_run,
+                )
+                row.screening_path = str(screening.screening_path)
+                row.verdict = screening.verdict
+                row.used_fallback = screening.used_fallback
+                summary.screened += 1
+
+                # Persist screening results in state
+                state_items[job_id]["screening_path"] = row.screening_path
+                state_items[job_id]["verdict"] = row.verdict
 
             # 4) classify
             state_items[job_id].update(stage="classifying", status="in_progress")
