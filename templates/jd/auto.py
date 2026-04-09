@@ -179,6 +179,10 @@ def _classify(jd_path: Path, dry_run: bool) -> tuple[str, str]:
     if result.result == ProcessResult.SUCCESS:
         return result.verdict or "", result.target_folder or ""
 
+    # Protected status — don't move, keep in current location
+    if result.result == ProcessResult.SKIPPED and result.protected_status:
+        return "", str(jd_path.parent.relative_to(JOB_POSTINGS_DIR)) if not dry_run else ""
+
     # Missing verdict or other non-fatal case -> default hold
     if result.result in {ProcessResult.SKIPPED, ProcessResult.ERROR}:
         if dry_run:
@@ -379,8 +383,21 @@ def run_auto(
         else:
             resolved_jd_path = find_existing_jd(job_id)
 
-        # Duplicate skip — but not for same-run incomplete items
-        if resolved_jd_path and not screening_only and saved_stage in ("pending",):
+        # Duplicate/protection skip logic:
+        # - New items (not in state): skip if JD already exists anywhere
+        # - Resume items (in state with incomplete status): continue processing,
+        #   UNLESS file has been moved to a non-reprocessable folder
+        # - Done items: should not appear (filtered out when building URL list)
+        is_resume_item = resume and saved_stage not in ("pending",) and saved.get("status") != "done"
+
+        # Even resume items should not be reprocessed if they've been moved
+        # to a non-conditional folder (pass, applied, rejected, on_going, high_priority)
+        if is_resume_item and resolved_jd_path:
+            non_reprocessable = {"pass", "applied", "rejected", "on_going", "high_priority"}
+            if any(part in non_reprocessable for part in resolved_jd_path.parts):
+                is_resume_item = False
+
+        if resolved_jd_path and not screening_only and not is_resume_item:
             summary.duplicates += 1
             row.status = "duplicate"
             row.jd_path = str(resolved_jd_path)
