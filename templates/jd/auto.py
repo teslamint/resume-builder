@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +26,7 @@ try:
     from .path_utils import extract_job_id, find_existing_jd
     from .pipeline import ProcessResult, classify_file
     from .search import JobPosting, load_config, run_search
+    from .notifications import format_notification, send_notification
     from .verdict import move_to_folder
 except ImportError:
     from auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
@@ -34,6 +34,7 @@ except ImportError:
     from auto_screening import run_screening
     from constants import JOB_POSTINGS_DIR
     from naming import slugify_company
+    from notifications import format_notification, send_notification
     from path_utils import extract_job_id, find_existing_jd
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
@@ -123,78 +124,6 @@ class RunSummary:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
-def send_notification(message: str, config: dict) -> bool:
-    notifications = config.get("notifications", {})
-    channel = notifications.get("channel")
-    target = notifications.get("target")
-    account = notifications.get("account")
-    if not channel:
-        print("   ⚠️  알림 채널 미설정")
-        return False
-    if not target:
-        print("   ⚠️  알림 대상 미설정 (notifications.target)")
-        return False
-
-    try:
-        command = [
-            "openclaw",
-            "message",
-            "send",
-            "--channel",
-            channel,
-            "--target",
-            str(target),
-            "--message",
-            message,
-        ]
-        if account:
-            command.extend(["--account", str(account)])
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            print(f"   ✅ 알림 전송 완료 ({channel}:{target})")
-            return True
-        error_output = result.stderr.strip() or result.stdout.strip() or "unknown error"
-        print(f"   ⚠️  알림 전송 실패: {error_output}")
-        return False
-    except FileNotFoundError:
-        print("   ⚠️  openclaw 명령 없음 - 알림 스킵")
-        return False
-    except Exception as exc:
-        print(f"   ⚠️  알림 오류: {exc}")
-        return False
-
-
-def format_notification(results: List[AutoTaskResult], summary: RunSummary) -> str:
-    lines = [
-        "🔔 **JD 자동 파이프라인 결과**",
-        f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        "",
-        f"✨ 신규 URL: {summary.new}개",
-        f"✅ 처리 완료: {summary.processed}개",
-        f"🟢 추천: {summary.recommended}개",
-        f"🟡 보류: {summary.hold}개",
-        f"🔴 패스: {summary.passed}개",
-        "",
-    ]
-
-    recommended = [r for r in results if r.verdict == "지원 추천"]
-    if recommended:
-        lines.append("**🟢 지원 추천 공고:**")
-        for row in recommended[:5]:
-            title = row.title or row.job_id
-            company = row.company or "unknown"
-            lines.append(f"• [{company}] {title}")
-            lines.append(f"  {row.url}")
-        if len(recommended) > 5:
-            lines.append(f"  ... 외 {len(recommended) - 5}개")
-
-    return "\n".join(lines)
 
 
 def _load_urls_from_file(path: Path, max_urls: Optional[int] = None) -> List[str]:
