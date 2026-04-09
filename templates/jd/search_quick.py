@@ -33,13 +33,15 @@ CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 try:
-    from .jd_content import get_rejected_companies, is_rejected_company
+    from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import is_duplicate
     from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
+    from .search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 except ImportError:
-    from jd_content import get_rejected_companies, is_rejected_company
+    from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import is_duplicate
     from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
+    from search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 
 logger = logging.getLogger(__name__)
 
@@ -153,14 +155,6 @@ def filter_experience(exp_str: str, config: dict) -> bool:
     return False
 
 
-def _parse_remember_experience(text_lines: list[str]) -> str:
-    """Extract experience string from Remember posting text lines."""
-    exp_pattern = re.compile(r'\d+년|경력\s*무관|리더급')
-    for line in text_lines:
-        if exp_pattern.search(line):
-            return line
-    return ""
-
 
 def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
     """
@@ -237,115 +231,70 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                     query_filtered = 0
 
                     try:
-                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                        wanted_config = SearchPageConfig(
+                            base_url=wanted_base_url,
+                            timeout_ms=8000,
+                            post_load_delay=request_delay,
+                            scroll_count=scroll_count,
+                            scroll_sleep=0.5,
+                        )
+                        outcome = load_and_scrape_wanted(page, search_url, wanted_config)
 
-                        has_results = page.locator('a[href*="/wd/"]')
-                        no_results = page.locator('text=검색 결과가 없습니다').or_(
-                            page.locator('[class*="EmptyContent"]')
-                        ).or_(page.locator('text=일치하는 결과가 없'))
-
-                        try:
-                            has_results.first.or_(no_results.first).wait_for(state="attached", timeout=8000)
-                        except Exception:
+                        if outcome.timed_out:
                             print(f"   📊 결과: 0개 (타임아웃)")
-                            page.close()
-                            # Skip to Remember search for this query
                             stats["errors"] += 1
-                            goto_remember = True
+                        elif outcome.no_results:
+                            print(f"   📊 결과: 0개 (검색 결과 없음)")
                         else:
-                            goto_remember = False
+                            if outcome.error:
+                                print(f"   ⚠️  Partial error: {outcome.error}")
+                                stats["errors"] += 1
+                            for raw in outcome.results:
+                                query_found += 1
 
-                        if not goto_remember:
-                            if no_results.count() > 0 or has_results.count() == 0:
-                                print(f"   📊 결과: 0개 (검색 결과 없음)")
-                                page.close()
-                            else:
-                                time.sleep(request_delay)
+                                if quick_filter_title(raw.title, config):
+                                    query_filtered += 1
+                                    continue
 
-                                for _ in range(scroll_count):
-                                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                                    time.sleep(0.5)
+                                if is_rejected_company(raw.company, rejected_companies, config_excludes):
+                                    query_filtered += 1
+                                    continue
 
-                                job_links = page.query_selector_all('a[href*="/wd/"]')
-                                seen_in_page = set()
+                                if filter_experience(raw.experience, config):
+                                    query_filtered += 1
+                                    continue
 
-                                for link in job_links:
-                                    try:
-                                        href = link.get_attribute("href")
-                                        if not href or "/wd/" not in href:
-                                            continue
+                                if raw.canonical_id in seen_ids or raw.canonical_id in queued_ids:
+                                    query_dup += 1
+                                    continue
 
-                                        match = re.search(r"/wd/(\d+)", href)
-                                        if not match:
-                                            continue
+                                is_dup, _ = is_duplicate(raw.canonical_id)
+                                if is_dup:
+                                    query_dup += 1
+                                    seen_ids.add(raw.canonical_id)
+                                    continue
 
-                                        job_id = match.group(1)
-                                        if job_id in seen_in_page:
-                                            continue
-                                        seen_in_page.add(job_id)
+                                item = QueueItem(
+                                    job_id=raw.canonical_id,
+                                    url=raw.url,
+                                    title=raw.title,
+                                    company=raw.company,
+                                    experience=raw.experience,
+                                    query=query,
+                                    discovered_at=datetime.now().isoformat(),
+                                )
+                                new_items.append(item)
+                                seen_ids.add(raw.canonical_id)
+                                queued_ids.add(raw.canonical_id)
+                                query_new += 1
 
-                                        query_found += 1
-
-                                        text = link.inner_text()
-                                        lines = [l.strip() for l in text.split("\n") if l.strip()]
-                                        if len(lines) < 2:
-                                            continue
-
-                                        title = lines[0]
-                                        company = lines[1] if len(lines) > 1 else "Unknown"
-                                        experience = lines[2] if len(lines) > 2 else ""
-
-                                        if quick_filter_title(title, config):
-                                            query_filtered += 1
-                                            continue
-
-                                        if is_rejected_company(company, rejected_companies, config_excludes):
-                                            query_filtered += 1
-                                            continue
-
-                                        if filter_experience(experience, config):
-                                            query_filtered += 1
-                                            continue
-
-                                        if job_id in seen_ids or job_id in queued_ids:
-                                            query_dup += 1
-                                            continue
-
-                                        is_dup, _ = is_duplicate(job_id)
-                                        if is_dup:
-                                            query_dup += 1
-                                            seen_ids.add(job_id)
-                                            continue
-
-                                        full_url = urljoin(wanted_base_url, href)
-                                        item = QueueItem(
-                                            job_id=job_id,
-                                            url=full_url,
-                                            title=title,
-                                            company=company,
-                                            experience=experience,
-                                            query=query,
-                                            discovered_at=datetime.now().isoformat(),
-                                        )
-                                        new_items.append(item)
-                                        seen_ids.add(job_id)
-                                        queued_ids.add(job_id)
-                                        query_new += 1
-
-                                    except Exception as e:
-                                        logger.debug(f"Failed to parse job link: {e}")
-                                        continue
-
-                                print(f"   📊 결과: {query_found}개 (새: {query_new}, 중복: {query_dup}, 필터: {query_filtered})")
-                                page.close()
+                            print(f"   📊 결과: {query_found}개 (새: {query_new}, 중복: {query_dup}, 필터: {query_filtered})")
 
                     except Exception as e:
                         print(f"   ❌ Error: {e}")
                         stats["errors"] += 1
-                        try:
-                            page.close()
-                        except Exception:
-                            pass
+                    finally:
+                        page.close()
 
                     stats["total_found"] += query_found
                     stats["new"] += query_new
@@ -371,111 +320,71 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                     query_filtered = 0
 
                     try:
-                        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                        remember_config = SearchPageConfig(
+                            base_url=remember_base_url,
+                            timeout_ms=8000,
+                            post_load_delay=request_delay,
+                            scroll_count=scroll_count,
+                            scroll_sleep=0.5,
+                        )
+                        outcome = load_and_scrape_remember(page, search_url, remember_config)
 
-                        has_results = page.locator('a[href*="/job/posting/"]')
-                        no_results = page.locator('text=총 0개 공고')
-
-                        try:
-                            has_results.first.or_(no_results.first).wait_for(state="attached", timeout=8000)
-                        except Exception:
+                        if outcome.timed_out:
                             print(f"   📊 결과: 0개 (타임아웃)")
-                            page.close()
                             stats["errors"] += 1
-                            continue
-
-                        if no_results.count() > 0 or has_results.count() == 0:
+                        elif outcome.no_results:
                             print(f"   📊 결과: 0개 (검색 결과 없음)")
-                            page.close()
-                            continue
-
-                        time.sleep(request_delay)
-
-                        for _ in range(scroll_count):
-                            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                            time.sleep(0.5)
-
-                        job_links = page.query_selector_all('a[href*="/job/posting/"]')
-                        seen_in_page = set()
-
-                        for link in job_links:
-                            try:
-                                href = link.get_attribute("href")
-                                if not href or "/job/posting/" not in href:
-                                    continue
-
-                                if "jdViewSource=inweb_list" not in href:
-                                    continue
-
-                                match = re.search(r"/job/posting/(\d+)", href)
-                                if not match:
-                                    continue
-
-                                raw_id = match.group(1)
-                                job_id = f"remember-{raw_id}"
-                                if raw_id in seen_in_page:
-                                    continue
-                                seen_in_page.add(raw_id)
-
+                        else:
+                            if outcome.error:
+                                print(f"   ⚠️  Partial error: {outcome.error}")
+                                stats["errors"] += 1
+                            for raw in outcome.results:
                                 query_found += 1
 
-                                text = link.inner_text()
-                                lines = [l.strip() for l in text.split("\n") if l.strip()]
-                                if len(lines) < 2:
-                                    continue
-
-                                company = lines[0]
-                                title = lines[1]
-                                experience = _parse_remember_experience(lines[2:])
-
-                                if quick_filter_title(title, config):
+                                if quick_filter_title(raw.title, config):
                                     query_filtered += 1
                                     continue
 
-                                if is_rejected_company(company, rejected_companies, config_excludes):
+                                if is_rejected_company(raw.company, rejected_companies, config_excludes):
                                     query_filtered += 1
                                     continue
 
-                                if filter_experience(experience, config):
+                                if filter_experience(raw.experience, config):
                                     query_filtered += 1
                                     continue
 
-                                if job_id in seen_ids or raw_id in seen_ids or job_id in queued_ids:
+                                dup_keys = raw.duplicate_keys()
+                                if any(k in seen_ids or k in queued_ids for k in dup_keys):
                                     query_dup += 1
                                     continue
 
-                                is_dup, _ = is_duplicate(job_id)
+                                is_dup, _ = is_duplicate(raw.canonical_id)
                                 if is_dup:
                                     query_dup += 1
-                                    seen_ids.add(job_id)
+                                    seen_ids.add(raw.canonical_id)
                                     continue
-                                is_dup, _ = is_duplicate(raw_id)
+                                is_dup, _ = is_duplicate(raw.raw_id)
                                 if is_dup:
                                     query_dup += 1
-                                    seen_ids.add(job_id)
+                                    seen_ids.add(raw.canonical_id)
                                     continue
 
-                                full_url = f"{remember_base_url}/job/posting/{raw_id}"
                                 item = QueueItem(
-                                    job_id=job_id,
-                                    url=full_url,
-                                    title=title,
-                                    company=company,
-                                    experience=experience,
+                                    job_id=raw.canonical_id,
+                                    url=raw.url,
+                                    title=raw.title,
+                                    company=raw.company,
+                                    experience=raw.experience,
                                     query=query,
                                     discovered_at=datetime.now().isoformat(),
                                     platform="remember",
                                 )
                                 new_items.append(item)
-                                seen_ids.add(job_id)
-                                queued_ids.add(job_id)
+                                seen_ids.add(raw.canonical_id)
+                                queued_ids.add(raw.canonical_id)
                                 query_new += 1
 
-                            except Exception as e:
-                                logger.debug(f"Failed to parse Remember job link: {e}")
-                                continue
-
-                        print(f"   📊 결과: {query_found}개 (새: {query_new}, 중복: {query_dup}, 필터: {query_filtered})")
+                            print(f"   📊 결과: {query_found}개 (새: {query_new}, 중복: {query_dup}, 필터: {query_filtered})")
 
                     except Exception as e:
                         print(f"   ❌ Error: {e}")

@@ -236,3 +236,16 @@ def is_rejected_company(
         if normalized in config_normalized:
             return True
     return False
+
+
+def parse_remember_experience(text_lines: list[str]) -> str:
+    """Extract experience string from Remember posting text lines.
+
+    Remember listings show fields like "3년~9년 차", "5년 이상", "경력 무관"
+    after the title and company lines.
+    """
+    exp_pattern = re.compile(r'\d+년|경력\s*무관|리더급')
+    for line in text_lines:
+        if exp_pattern.search(line):
+            return line
+    return ""
