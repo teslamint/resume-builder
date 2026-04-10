@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Tests for search quick_filter_title() in search.py and search_quick.py."""
+"""Tests for search filters: quick_filter_title() and experience filtering."""
 
 import unittest
 from pathlib import Path
 
+from experience_filter import filter_experience, parse_experience_range
 from search import quick_filter_title as search_filter
 from search_quick import quick_filter_title as quick_filter
 
@@ -145,6 +146,135 @@ class TestSearchQuickQuickFilterTitle(unittest.TestCase):
 
     def test_batch_regression_broadcast(self):
         assert quick_filter("송출 시스템 개발(2년 이상)", CONFIG) is True
+
+
+FILTER_CONFIG = {
+    "filters": {
+        "min_experience_upper": 14,
+        "max_experience": 15,
+    }
+}
+
+
+class TestParseExperienceRange(unittest.TestCase):
+    """parse_experience_range() — Korean experience string → (min, max) tuple."""
+
+    def test_range_hyphen(self):
+        assert parse_experience_range("경력 5-10년") == (5, 10)
+
+    def test_range_tilde(self):
+        assert parse_experience_range("5~10년") == (5, 10)
+
+    def test_range_remember_cha_suffix(self):
+        assert parse_experience_range("3년~9년 차") == (3, 9)
+
+    def test_range_unrealistic_max(self):
+        assert parse_experience_range("5~100년") == (5, None)
+
+    def test_compound_range(self):
+        assert parse_experience_range("경력 7년 이상 14년 이하") == (7, 14)
+
+    def test_compound_range_miman(self):
+        assert parse_experience_range("5년 이상 15년 미만") == (5, 15)
+
+    def test_compound_range_tilde_separator(self):
+        assert parse_experience_range("경력 8년 이상 ~ 12년 이하") == (8, 12)
+
+    def test_compound_range_tilde_miman(self):
+        assert parse_experience_range("경력 2년 이상 ~ 5년 미만") == (2, 5)
+
+    def test_open_ended_arrow(self):
+        assert parse_experience_range("경력 3년↑") == (3, None)
+
+    def test_open_ended_isang(self):
+        assert parse_experience_range("3년 이상") == (3, None)
+
+    def test_open_ended_plus(self):
+        assert parse_experience_range("5년+") == (5, None)
+
+    def test_markdown_bold(self):
+        assert parse_experience_range("**5년 이상**") == (5, None)
+
+    def test_exact(self):
+        assert parse_experience_range("경력 3년") == (3, 3)
+
+    def test_career_only(self):
+        assert parse_experience_range("경력") == (None, None)
+
+    def test_mugwan(self):
+        assert parse_experience_range("경력 무관") == (None, None)
+
+    def test_empty(self):
+        assert parse_experience_range("") == (None, None)
+
+    def test_none(self):
+        assert parse_experience_range(None) == (None, None)
+
+    def test_sinip_career_no_false_match(self):
+        assert parse_experience_range("신입/경력") == (None, None)
+
+    def test_cha_isang(self):
+        assert parse_experience_range("경력 3년차 이상") == (3, None)
+
+    def test_mixed_sinip_career_range(self):
+        assert parse_experience_range("신입/경력 3년 이상") == (3, None)
+
+    def test_compound_unrealistic_max(self):
+        assert parse_experience_range("3년 이상 999년 이하") == (3, None)
+
+
+class TestFilterExperience(unittest.TestCase):
+    """filter_experience() — returns True if JD should be skipped."""
+
+    def test_skip_low_upper(self):
+        assert filter_experience("경력 5-12년", FILTER_CONFIG) is True
+
+    def test_keep_sufficient_upper(self):
+        assert filter_experience("경력 5-15년", FILTER_CONFIG) is False
+
+    def test_keep_open_ended_low_min(self):
+        assert filter_experience("경력 3년↑", FILTER_CONFIG) is False
+
+    def test_skip_high_min_open_ended(self):
+        assert filter_experience("경력 20년 이상", FILTER_CONFIG) is True
+
+    def test_skip_high_min_range(self):
+        assert filter_experience("경력 16-20년", FILTER_CONFIG) is True
+
+    def test_skip_remember_cha_low_upper(self):
+        assert filter_experience("3년~9년 차", FILTER_CONFIG) is True
+
+    def test_keep_unrealistic_max(self):
+        assert filter_experience("5~100년", FILTER_CONFIG) is False
+
+    def test_keep_mugwan(self):
+        assert filter_experience("경력 무관", FILTER_CONFIG) is False
+
+    def test_keep_empty(self):
+        assert filter_experience("", FILTER_CONFIG) is False
+
+    def test_no_max_experience_config(self):
+        config = {"filters": {"min_experience_upper": 14}}
+        assert filter_experience("경력 20년 이상", config) is False
+
+    def test_exact_boundary(self):
+        assert filter_experience("경력 5-14년", FILTER_CONFIG) is False
+
+    def test_exact_max_boundary(self):
+        assert filter_experience("경력 15년 이상", FILTER_CONFIG) is False
+
+    def test_over_max_boundary(self):
+        assert filter_experience("경력 16년 이상", FILTER_CONFIG) is True
+
+    def test_exact_at_min_upper(self):
+        assert filter_experience("경력 14년", FILTER_CONFIG) is False
+
+    def test_empty_config_defaults_apply(self):
+        # empty config → default min_experience_upper=14, max 12 < 14 → skip
+        assert filter_experience("경력 5-12년", {}) is True
+
+    def test_empty_config_passes_sufficient_range(self):
+        assert filter_experience("경력 5-15년", {}) is False
 
 
 if __name__ == "__main__":
