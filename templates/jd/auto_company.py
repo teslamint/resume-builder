@@ -227,23 +227,60 @@ def _build_thevc_section(investment: dict) -> str:
 
 
 def _inject_thevc_into_file(file_path: Path, investment: dict) -> None:
-    """Inject or replace TheVC investment section in an existing company info file."""
+    """Inject TheVC investment data into existing company info file.
+
+    If the file already has a ## 투자 정보 section (e.g. from JD-based extraction),
+    enriches it with TheVC data (round/total) while preserving existing fields
+    like investors that TheVC may not have.
+    """
     content = file_path.read_text(encoding="utf-8")
-    thevc_section = _build_thevc_section(investment)
+
+    round_value = investment.get("round", "")
+    total_value = investment.get("total", "")
+    inv_source = investment.get("source", "https://thevc.kr")
 
     if "## 투자 정보" in content:
-        content = re.sub(
-            r"## 투자 정보.*?(?=\n## |\n---|\Z)",
-            thevc_section,
-            content,
-            flags=re.DOTALL,
-        )
-    elif "\n---\n" in content:
-        content = content.replace("\n---\n", f"\n{thevc_section}\n---\n", 1)
+        # Enrich existing section: update round/total if TheVC has them
+        if round_value and round_value != "정보 없음":
+            content = re.sub(
+                r"\| 현재 라운드 \| .+? \|",
+                f"| 현재 라운드 | {round_value} |",
+                content,
+            )
+        if total_value and total_value != "정보 없음":
+            content = re.sub(
+                r"\| 누적 투자금 \| .+? \|",
+                f"| 누적 투자금 | {total_value} |",
+                content,
+            )
+        # Add TheVC source note if not already present
+        if "TheVC" not in content and inv_source:
+            content = content.replace(
+                "\n---\n",
+                f"\n> TheVC에서 투자정보를 보강했습니다. 출처: [{inv_source}]({inv_source})\n\n---\n",
+                1,
+            )
     else:
-        content += f"\n{thevc_section}"
+        # No existing investment section — add full TheVC section
+        thevc_section = _build_thevc_section(investment)
+        if "\n---\n" in content:
+            content = content.replace("\n---\n", f"\n{thevc_section}\n---\n", 1)
+        else:
+            content += f"\n{thevc_section}"
 
     file_path.write_text(content, encoding="utf-8")
+
+
+def _inject_thevc_note_into_file(file_path: Path, thevc_note: str) -> None:
+    """Add TheVC status note to file when TheVC failed but company is startup."""
+    content = file_path.read_text(encoding="utf-8")
+    if "## 투자 정보" not in content:
+        note_section = f"\n## 투자 정보\n\n| 항목 | 내용 |\n|------|------|\n| 현재 라운드 | 정보 없음 |\n| 누적 투자금 | 정보 없음 |\n\n> {thevc_note}\n"
+        if "\n---\n" in content:
+            content = content.replace("\n---\n", f"{note_section}\n---\n", 1)
+        else:
+            content += note_section
+        file_path.write_text(content, encoding="utf-8")
 
 
 def _append_enrichment_queue(company: str) -> None:
@@ -366,6 +403,8 @@ def ensure_company_info(
     if has_extraction and extraction:
         if investment_data:
             _inject_thevc_into_file(output_path, investment_data)
+        elif startup:
+            _inject_thevc_note_into_file(output_path, thevc_note)
     else:
         markdown = _build_company_info_markdown(company, jd_url, startup, thevc_note, investment_data)
         if not dry_run:
