@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import urllib.parse
 import urllib.request
@@ -11,13 +12,17 @@ from pathlib import Path
 from typing import Optional
 
 try:
+    from .company_extractor import extract_company_info
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .jd_content import extract_metadata_from_jd
     from .naming import slugify_company
 except ImportError:
+    from company_extractor import extract_company_info
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from jd_content import extract_metadata_from_jd
     from naming import slugify_company
+
+_log = logging.getLogger(__name__)
 
 
 THEVC_MODES = {"auto", "skip", "require"}
@@ -201,6 +206,83 @@ def _build_company_info_markdown(company: str, jd_url: str, startup: bool, thevc
 """
 
 
+def _build_thevc_section(investment: dict) -> str:
+    """Build TheVC investment section markdown."""
+    round_value = investment.get("round", "정보 없음")
+    total_value = investment.get("total", "정보 없음")
+    inv_source = investment.get("source", "https://thevc.kr")
+
+    section = f"""## 투자 정보
+
+| 항목 | 내용 |
+|------|------|
+| 현재 라운드 | {round_value} |
+| 누적 투자금 | {total_value} |
+
+> TheVC에서 투자정보를 추출했습니다.
+"""
+    if inv_source:
+        section += f"\n출처: [{inv_source}]({inv_source})\n"
+    return section
+
+
+def _inject_thevc_into_file(file_path: Path, investment: dict) -> None:
+    """Inject TheVC investment data into existing company info file.
+
+    If the file already has a ## 투자 정보 section (e.g. from JD-based extraction),
+    enriches it with TheVC data (round/total) while preserving existing fields
+    like investors that TheVC may not have.
+    """
+    content = file_path.read_text(encoding="utf-8")
+
+    round_value = investment.get("round", "")
+    total_value = investment.get("total", "")
+    inv_source = investment.get("source", "https://thevc.kr")
+
+    if "## 투자 정보" in content:
+        # Enrich existing section: update round/total if TheVC has them
+        if round_value and round_value != "정보 없음":
+            content = re.sub(
+                r"\| 현재 라운드 \| .+? \|",
+                f"| 현재 라운드 | {round_value} |",
+                content,
+            )
+        if total_value and total_value != "정보 없음":
+            content = re.sub(
+                r"\| 누적 투자금 \| .+? \|",
+                f"| 누적 투자금 | {total_value} |",
+                content,
+            )
+        # Add TheVC source note if not already present
+        if "TheVC" not in content and inv_source:
+            content = content.replace(
+                "\n---\n",
+                f"\n> TheVC에서 투자정보를 보강했습니다. 출처: [{inv_source}]({inv_source})\n\n---\n",
+                1,
+            )
+    else:
+        # No existing investment section — add full TheVC section
+        thevc_section = _build_thevc_section(investment)
+        if "\n---\n" in content:
+            content = content.replace("\n---\n", f"\n{thevc_section}\n---\n", 1)
+        else:
+            content += f"\n{thevc_section}"
+
+    file_path.write_text(content, encoding="utf-8")
+
+
+def _inject_thevc_note_into_file(file_path: Path, thevc_note: str) -> None:
+    """Add TheVC status note to file when TheVC failed but company is startup."""
+    content = file_path.read_text(encoding="utf-8")
+    if "## 투자 정보" not in content:
+        note_section = f"\n## 투자 정보\n\n| 항목 | 내용 |\n|------|------|\n| 현재 라운드 | 정보 없음 |\n| 누적 투자금 | 정보 없음 |\n\n> {thevc_note}\n"
+        if "\n---\n" in content:
+            content = content.replace("\n---\n", f"{note_section}\n---\n", 1)
+        else:
+            content += note_section
+        file_path.write_text(content, encoding="utf-8")
+
+
 def _append_enrichment_queue(company: str) -> None:
     ENRICHMENT_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
     existing = set()
@@ -297,11 +379,37 @@ def ensure_company_info(
 
     slug = slugify_company(company)
     output_path = COMPANY_INFO_DIR / f"{slug}.md"
-    markdown = _build_company_info_markdown(company, jd_url, startup, thevc_note, investment_data)
+
+    # Phase 2: Wanted + Saramin extraction (skip on dry_run)
+    extraction = None
+    has_extraction = False
 
     if not dry_run:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(markdown, encoding="utf-8")
+        try:
+            extraction = extract_company_info(
+                company_name=company,
+                platforms=["wanted", "saramin"],
+            )
+            has_extraction = len(extraction.platforms_used) > 0
+            if has_extraction:
+                output_path = extraction.file_path
+                _log.info("회사 정보 추출 완료: %s (platforms=%s)", company, extraction.platforms_used)
+        except Exception as exc:
+            _log.warning("회사 정보 추출 실패 (%s): %s — 스텁 fallback", company, exc)
+            extraction = None
+            has_extraction = False
+
+    # Phase 3: Build final file
+    if has_extraction and extraction:
+        if investment_data:
+            _inject_thevc_into_file(output_path, investment_data)
+        elif startup:
+            _inject_thevc_note_into_file(output_path, thevc_note)
+    else:
+        markdown = _build_company_info_markdown(company, jd_url, startup, thevc_note, investment_data)
+        if not dry_run:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(markdown, encoding="utf-8")
 
     completeness = 0.0
     if not dry_run and output_path.exists():
@@ -319,5 +427,6 @@ def ensure_company_info(
         completeness=completeness,
         thevc_attempted=thevc_attempted,
         thevc_status=thevc_status,
-        investment_data_source=investment_source,
+        investment_data_source=investment_source if investment_source != "none" else
+            ("extraction" if has_extraction else "none"),
     )
