@@ -24,6 +24,7 @@ import yaml
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .constants import JOB_POSTINGS_DIR
+    from .experience_filter import filter_experience
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .models import DiscoveredJob
     from .path_utils import extract_job_id, is_duplicate
@@ -31,6 +32,7 @@ try:
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from constants import JOB_POSTINGS_DIR
+    from experience_filter import filter_experience
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from models import DiscoveredJob
     from path_utils import extract_job_id, is_duplicate
@@ -242,6 +244,10 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
                     result.filtered_out += 1
                     continue
 
+                if filter_experience(raw.experience, config):
+                    result.filtered_out += 1
+                    continue
+
                 if raw.canonical_id in state.seen_job_ids:
                     result.duplicates += 1
                     continue
@@ -340,6 +346,10 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
                     continue
 
                 if is_rejected_company(raw.company, rejected_companies, config_excludes):
+                    result.filtered_out += 1
+                    continue
+
+                if filter_experience(raw.experience, config):
                     result.filtered_out += 1
                     continue
 
