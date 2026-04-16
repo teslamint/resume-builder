@@ -1,4 +1,5 @@
-"""Shared search helpers — page load + DOM scraping for Wanted and Remember.
+"""Shared search helpers — page load + DOM scraping for Wanted and Remember,
+and API-based listing for GroupBy.
 
 Extracts raw job listing data from search result pages. Does NOT own:
 - Dedup (caller checks seen_ids, is_duplicate, queued_ids)
@@ -8,6 +9,7 @@ Extracts raw job listing data from search result pages. Does NOT own:
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from urllib.parse import quote
@@ -16,6 +18,8 @@ try:
     from .jd_content import parse_remember_experience
 except ImportError:
     from jd_content import parse_remember_experience
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -228,5 +232,82 @@ def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) ->
 
     except Exception as e:
         outcome.error = e
+
+    return outcome
+
+
+# ---------------------------------------------------------------------------
+# GroupBy helpers — API-based, no Playwright needed
+# ---------------------------------------------------------------------------
+
+def format_groupby_experience(item: dict) -> str:
+    """Convert GroupBy API item to display-only Korean experience string."""
+    career_type = item.get("careerType", "")
+    exp_range = item.get("experienceRange") or {}
+    exp_min = exp_range.get("min")
+    exp_max = exp_range.get("max")
+
+    if career_type == "무관" or career_type == "인턴":
+        return f"경력 {career_type}"
+
+    if exp_min is not None and exp_max is not None and exp_max > 0:
+        return f"경력 {exp_min}-{exp_max}년"
+
+    if exp_min is not None and exp_min > 0:
+        return f"경력 {exp_min}년 이상"
+
+    return f"경력 {career_type}" if career_type else ""
+
+
+def groupby_experience_values(item: dict) -> tuple[int | None, int | None]:
+    """Extract structured (min_years, max_years) from GroupBy API item.
+
+    Returns (None, None) for 무관/인턴 or missing data.
+    """
+    career_type = item.get("careerType", "")
+    if career_type in ("무관", "인턴"):
+        return None, None
+
+    exp_range = item.get("experienceRange") or {}
+    exp_min = exp_range.get("min")
+    exp_max = exp_range.get("max")
+
+    if exp_max == 0:
+        exp_max = None
+    if exp_min == 0 and exp_max is None:
+        return None, None
+
+    return exp_min, exp_max
+
+
+def convert_groupby_to_raw_results(
+    items: list[dict], base_url: str = "https://groupby.kr"
+) -> ScrapeOutcome:
+    """Convert GroupBy API items to ScrapeOutcome with RawJobResult list."""
+    outcome = ScrapeOutcome()
+
+    for item in items:
+        try:
+            item_id = item.get("id")
+            if item_id is None:
+                continue
+
+            startup = item.get("startup") or {}
+            canonical_id = f"groupby-{item_id}"
+
+            outcome.candidate_count += 1
+            outcome.results.append(RawJobResult(
+                raw_id=canonical_id,
+                canonical_id=canonical_id,
+                title=(item.get("name") or "").strip(),
+                company=(startup.get("name") or "").strip(),
+                experience=format_groupby_experience(item),
+                url=f"{base_url}/positions/{item_id}",
+                href=f"/positions/{item_id}",
+                platform="groupby",
+            ))
+        except Exception:
+            logger.debug("Failed to convert GroupBy item %s", item.get("id"), exc_info=True)
+            continue
 
     return outcome

@@ -21,22 +21,40 @@ from urllib.parse import quote, urljoin
 
 import yaml
 
+import logging
+
 try:
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .constants import JOB_POSTINGS_DIR
     from .experience_filter import filter_experience
+    from .groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .models import DiscoveredJob
     from .path_utils import extract_job_id, is_duplicate
-    from .search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
+    from .search_helpers import (
+        SearchPageConfig,
+        convert_groupby_to_raw_results,
+        groupby_experience_values,
+        load_and_scrape_wanted,
+        load_and_scrape_remember,
+    )
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from constants import JOB_POSTINGS_DIR
     from experience_filter import filter_experience
+    from groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from models import DiscoveredJob
     from path_utils import extract_job_id, is_duplicate
-    from search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
+    from search_helpers import (
+        SearchPageConfig,
+        convert_groupby_to_raw_results,
+        groupby_experience_values,
+        load_and_scrape_wanted,
+        load_and_scrape_remember,
+    )
+
+_logger = logging.getLogger(__name__)
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -389,6 +407,76 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     return result
 
 
+def _prefetch_groupby(config: dict, state: "SearchState") -> "SearchResult":
+    """Fetch GroupBy positions (queryless platform, called once per run)."""
+    result = SearchResult(query="(groupby)", total_found=0)
+    rejected_companies = get_rejected_companies()
+    config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
+    groupby_cfg = config.get("platforms", {}).get("groupby", {})
+    position_types = groupby_cfg.get("position_types", [2])
+    base_url = groupby_cfg.get("base_url", "https://groupby.kr")
+
+    print(f"\n🔍 검색 중 (GroupBy): positionTypes={position_types}")
+
+    try:
+        items = groupby_fetch_positions(position_types)
+    except GroupByAPIError as e:
+        print(f"   ⚠️  GroupBy API 오류: {e}")
+        return result
+
+    outcome = convert_groupby_to_raw_results(items, base_url)
+    if not outcome.results:
+        print("   📊 결과: 0개")
+        return result
+
+    for raw in outcome.results:
+        result.total_found += 1
+
+        filter_result = quick_filter_title(raw.title, config)
+        if filter_result == "pass":
+            result.filtered_out += 1
+            continue
+
+        if is_rejected_company(raw.company, rejected_companies, config_excludes):
+            result.filtered_out += 1
+            continue
+
+        # Find the original API item for structured experience data
+        orig_item = next((it for it in items if f"groupby-{it['id']}" == raw.canonical_id), None)
+        if orig_item:
+            exp_min, exp_max = groupby_experience_values(orig_item)
+            if filter_experience(raw.experience, config, min_years=exp_min, max_years=exp_max):
+                result.filtered_out += 1
+                continue
+        elif filter_experience(raw.experience, config):
+            result.filtered_out += 1
+            continue
+
+        if raw.canonical_id in state.seen_job_ids:
+            result.duplicates += 1
+            continue
+
+        is_dup, _ = is_duplicate(raw.canonical_id)
+        if is_dup:
+            result.duplicates += 1
+            state.seen_job_ids.add(raw.canonical_id)
+            continue
+
+        posting = JobPosting(
+            job_id=raw.canonical_id,
+            url=raw.url,
+            title=raw.title,
+            company=raw.company,
+            experience=raw.experience,
+            is_new=True,
+            quick_filter_result=filter_result,
+        )
+        result.new_postings.append(posting)
+        state.seen_job_ids.add(raw.canonical_id)
+
+    return result
+
+
 def run_search(
     queries: Optional[List[str]] = None,
     dry_run: bool = False,
@@ -429,10 +517,31 @@ def run_search(
         if cfg.get("enabled", False) and name in search_funcs
     ]
 
-    if not enabled_platforms:
+    if not enabled_platforms and not platforms_config.get("groupby", {}).get("enabled", False):
         enabled_platforms = ["wanted"]
 
-    print(f"   플랫폼: {', '.join(enabled_platforms)}")
+    # GroupBy prefetch — queryless platform, runs once before query loop
+    groupby_enabled = platforms_config.get("groupby", {}).get("enabled", False)
+    all_platform_names = list(enabled_platforms)
+    if groupby_enabled:
+        all_platform_names.append("groupby")
+
+    print(f"   플랫폼: {', '.join(all_platform_names)}")
+
+    if groupby_enabled and len(all_new_postings) < max_urls:
+        gb_result = _prefetch_groupby(config, state)
+        total_found += gb_result.total_found
+        total_duplicates += gb_result.duplicates
+        total_filtered += gb_result.filtered_out
+
+        remaining = max_urls - len(all_new_postings)
+        gb_to_add = gb_result.new_postings[:remaining]
+        all_new_postings.extend(gb_to_add)
+
+        print(f"   📊 결과: 총 {gb_result.total_found}개 발견")
+        print(f"      - 새 공고: {len(gb_result.new_postings)}개")
+        print(f"      - 중복: {gb_result.duplicates}개")
+        print(f"      - 필터링: {gb_result.filtered_out}개")
 
     for query in queries:
         for platform in enabled_platforms:

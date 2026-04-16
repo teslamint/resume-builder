@@ -20,7 +20,13 @@ def extract_job_id(url: str) -> Optional[str]:
     - Saramin: saramin.co.kr/zf_user/jobs/relay/view?rec_idx={id}
     - JobKorea: jobkorea.co.kr/Recruit/GI_Read/{id}
     - Jumpit: jumpit.saramin.co.kr/position/{id}
+    - GroupBy: groupby.kr/positions/{id} -> "groupby-{id}"
     """
+    # GroupBy: return prefixed ID to avoid collision with other platforms
+    gb_match = re.search(r"groupby\.kr/positions/(\d+)", url)
+    if gb_match:
+        return f"groupby-{gb_match.group(1)}"
+
     patterns = [
         r"wanted\.co\.kr/wd/(\d+)",
         r"rememberapp\.co\.kr/job/(?:posting/)?(\d+)",
@@ -44,8 +50,11 @@ def extract_job_id_from_filename(filename: str) -> Optional[str]:
     Patterns:
     - "123456-company-position.md" -> "123456"
     - "remember-273986-company-position.md" -> "273986" (platform prefix)
+    - "groupby-8807-company-position.md" -> "groupby-8807" (platform-aware ID)
     - "private-company-position.md" -> "private"
     """
+    _PLATFORM_PREFIXES = {"groupby"}
+
     stem = Path(filename).stem if "." in filename else filename
     parts = stem.split("-")
 
@@ -56,7 +65,11 @@ def extract_job_id_from_filename(filename: str) -> Optional[str]:
     if parts[0].isdigit():
         return parts[0]
 
-    # First part is prefix (e.g., "remember"), check second part
+    # Platform prefix that requires compound ID (e.g., "groupby-8807")
+    if parts[0] in _PLATFORM_PREFIXES and len(parts) > 1 and parts[1].isdigit():
+        return f"{parts[0]}-{parts[1]}"
+
+    # Legacy prefix (e.g., "remember"), return raw numeric part
     if len(parts) > 1 and parts[1].isdigit():
         return parts[1]
 
@@ -76,6 +89,8 @@ def get_platform_from_url(url: str) -> Optional[str]:
         return "jobkorea"
     elif "jumpit.saramin.co.kr" in url:
         return "jumpit"
+    elif "groupby.kr" in url:
+        return "groupby"
     return None
 
 

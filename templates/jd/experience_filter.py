@@ -71,18 +71,28 @@ def parse_experience_range(exp_str: str | None) -> tuple[int | None, int | None]
     return None, None
 
 
-def filter_experience(exp_str: str | None, config: dict) -> bool:
+def filter_experience(
+    exp_str: str | None,
+    config: dict,
+    *,
+    min_years: int | None = None,
+    max_years: int | None = None,
+) -> bool:
     """Returns True if the JD should be skipped based on experience range.
 
     Config keys (under 'filters'):
       min_experience_upper: JD's upper bound must be >= this (default 14)
       max_experience: JD's lower bound must not exceed this (None = disabled)
+
+    When min_years/max_years are provided (structured data from API),
+    text parsing is skipped. Both must be None to trigger text parsing.
     """
     filters = config.get("filters", {})
     min_upper = filters.get("min_experience_upper", 14)
     max_exp_cfg = filters.get("max_experience")
 
-    min_years, max_years = parse_experience_range(exp_str)
+    if min_years is None and max_years is None:
+        min_years, max_years = parse_experience_range(exp_str)
 
     # Rule 1: JD upper < min_upper → skip ("경력 5-12년" for 14yr user)
     if max_years is not None and max_years < min_upper:
