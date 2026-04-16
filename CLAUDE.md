@@ -24,7 +24,8 @@ python3 templates/jd/auto.py --from-urls <file>        # skip search
 python3 templates/jd/auto.py --screening-only           # screen existing JDs only
 python3 templates/jd/auto.py --company-enrichment-only  # reprocess TheVC queue
 python3 templates/jd/auto.py --min-completeness 60      # re-collect if existing company info < 60%
-python3 templates/jd/auto.py --thevc-mode auto|require  # TheVC login failure handling
+python3 templates/jd/auto.py --thevc-mode auto|skip|require  # TheVC login failure handling
+python3 templates/jd/auto.py --resume                        # resume from last incomplete run
 ```
 
 - `--min-completeness N`: skip re-collection when existing `company_info` completeness ≥ N% (0–100)

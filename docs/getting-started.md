@@ -103,6 +103,9 @@ python3 templates/jd/auto.py --from-urls private/job_postings/unprocessed/search
 
 # 스타트업 투자정보(TheVC) 처리 정책
 python3 templates/jd/auto.py --thevc-mode auto|skip|require
+
+# 이전 실행에서 미완료 항목만 재처리
+python3 templates/jd/auto.py --resume
 ```
 
 주요 출력:
