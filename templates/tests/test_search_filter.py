@@ -175,13 +175,13 @@ class TestParseExperienceRange(unittest.TestCase):
         assert parse_experience_range("경력 7년 이상 14년 이하") == (7, 14)
 
     def test_compound_range_miman(self):
-        assert parse_experience_range("5년 이상 15년 미만") == (5, 15)
+        assert parse_experience_range("5년 이상 15년 미만") == (5, 14)
 
     def test_compound_range_tilde_separator(self):
         assert parse_experience_range("경력 8년 이상 ~ 12년 이하") == (8, 12)
 
     def test_compound_range_tilde_miman(self):
-        assert parse_experience_range("경력 2년 이상 ~ 5년 미만") == (2, 5)
+        assert parse_experience_range("경력 2년 이상 ~ 5년 미만") == (2, 4)
 
     def test_open_ended_arrow(self):
         assert parse_experience_range("경력 3년↑") == (3, None)
@@ -221,6 +221,21 @@ class TestParseExperienceRange(unittest.TestCase):
 
     def test_compound_unrealistic_max(self):
         assert parse_experience_range("3년 이상 999년 이하") == (3, None)
+
+    def test_upper_only_iha(self):
+        assert parse_experience_range("경력 5년 이하") == (None, 5)
+
+    def test_upper_only_miman(self):
+        assert parse_experience_range("10년 미만") == (None, 9)
+
+    def test_upper_only_with_prefix(self):
+        assert parse_experience_range("경력 10년 미만") == (None, 9)
+
+    def test_upper_only_cha_suffix(self):
+        assert parse_experience_range("10년차 이하") == (None, 10)
+
+    def test_compound_not_false_captured(self):
+        assert parse_experience_range("5년 이상 15년 미만") == (5, 14)
 
 
 class TestFilterExperience(unittest.TestCase):
@@ -275,6 +290,18 @@ class TestFilterExperience(unittest.TestCase):
 
     def test_empty_config_passes_sufficient_range(self):
         assert filter_experience("경력 5-15년", {}) is False
+
+    def test_skip_upper_only_low(self):
+        assert filter_experience("경력 5년 이하", FILTER_CONFIG) is True
+
+    def test_keep_upper_only_sufficient(self):
+        assert filter_experience("경력 15년 이하", FILTER_CONFIG) is False
+
+    def test_skip_upper_only_miman(self):
+        assert filter_experience("10년 미만", FILTER_CONFIG) is True
+
+    def test_keep_upper_only_miman_sufficient(self):
+        assert filter_experience("15년 미만", FILTER_CONFIG) is False
 
 
 if __name__ == "__main__":
