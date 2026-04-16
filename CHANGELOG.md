@@ -8,7 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - `--resume` flag for auto.py: resume from last incomplete run with stage-based skip
 - Experience range filtering via `search_config.yaml` (`filters.min_experience_upper`, `filters.max_experience`)
-- Notification system (`notifications.py`): pipeline completion alerts
+- Notification system (`notifications.py`): alerts when recommended postings found
 - `--dry-run`, `--search-only`, `--no-classify`, `--stop-on-error` flags for auto.py
 
 ### Changed

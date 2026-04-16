@@ -20,7 +20,7 @@ Resume builder & job search automation system. Markdown source → PDF/HTML/TXT 
 ```bash
 python3 templates/jd/auto.py                          # full pipeline
 python3 templates/jd/auto.py --from-urls <file>        # skip search
-python3 templates/jd/auto.py --screening-only           # screen existing JDs only
+python3 templates/jd/auto.py --screening-only --from-urls <file>  # screen existing JDs only
 python3 templates/jd/auto.py --company-enrichment-only  # reprocess TheVC queue
 python3 templates/jd/auto.py --min-completeness 60      # re-collect if existing company info < 60%
 python3 templates/jd/auto.py --thevc-mode auto|skip|require  # TheVC login failure handling
