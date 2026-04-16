@@ -33,11 +33,13 @@ CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 try:
+    from .experience_filter import filter_experience
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import is_duplicate
     from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
     from .search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
 except ImportError:
+    from experience_filter import filter_experience
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import is_duplicate
     from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
@@ -104,56 +106,6 @@ def quick_filter_title(title: str, config: dict) -> bool:
             return True
 
     return False
-
-
-def parse_experience_range(exp_str: str) -> tuple[int | None, int | None]:
-    """
-    Parse experience string like "경력 5-10년" or "경력 3년↑"
-    Returns (min_years, max_years). None means no limit.
-    """
-    import re
-    
-    if not exp_str:
-        return None, None
-    
-    # "경력 5-10년" or "5-10년"
-    range_match = re.search(r'(\d+)\s*[-~]\s*(\d+)\s*년', exp_str)
-    if range_match:
-        return int(range_match.group(1)), int(range_match.group(2))
-    
-    # "경력 3년↑" or "3년 이상"
-    min_match = re.search(r'(\d+)\s*년\s*[↑이상]', exp_str)
-    if min_match:
-        return int(min_match.group(1)), None
-    
-    # "경력 3년" (exact)
-    exact_match = re.search(r'(\d+)\s*년', exp_str)
-    if exact_match:
-        years = int(exact_match.group(1))
-        return years, years
-    
-    return None, None
-
-
-def filter_experience(exp_str: str, config: dict) -> bool:
-    """
-    Filter by experience range - returns True if should be skipped.
-    
-    Config options:
-      filters.min_experience_upper: minimum upper limit (e.g., 10 means skip if max < 10)
-      filters.my_experience: my years of experience
-    """
-    filters = config.get("filters", {})
-    min_upper = filters.get("min_experience_upper", 10)  # 경력 상한 최소값
-    
-    min_years, max_years = parse_experience_range(exp_str)
-    
-    # 상한이 있고 그 상한이 min_upper보다 작으면 스킵
-    if max_years is not None and max_years < min_upper:
-        return True
-    
-    return False
-
 
 
 def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:

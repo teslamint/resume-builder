@@ -14,17 +14,17 @@ Resume builder & job search automation system. Markdown source → PDF/HTML/TXT 
 | `/jd-screening` | JD fit analysis against screening rules | `private/jd_analysis/screening/<id>-<company>-<position>.md` |
 | `/jd-batch` | Batch process URLs or reclassify files | Auto-classify to folders |
 | `/resume-build` | Build resume with variant/target options | `private/build/` |
-| `/commit` | Smart commit (Conventional Commits) | — |
 
 ## Auto Pipeline CLI
 
 ```bash
 python3 templates/jd/auto.py                          # full pipeline
 python3 templates/jd/auto.py --from-urls <file>        # skip search
-python3 templates/jd/auto.py --screening-only           # screen existing JDs only
+python3 templates/jd/auto.py --screening-only --from-urls <file>  # screen existing JDs only
 python3 templates/jd/auto.py --company-enrichment-only  # reprocess TheVC queue
 python3 templates/jd/auto.py --min-completeness 60      # re-collect if existing company info < 60%
-python3 templates/jd/auto.py --thevc-mode auto|require  # TheVC login failure handling
+python3 templates/jd/auto.py --thevc-mode auto|skip|require  # TheVC login failure handling
+python3 templates/jd/auto.py --resume                        # resume from last incomplete run
 ```
 
 - `--min-completeness N`: skip re-collection when existing `company_info` completeness ≥ N% (0–100)

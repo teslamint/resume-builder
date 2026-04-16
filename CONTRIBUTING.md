@@ -74,7 +74,7 @@ docs(readme): update installation instructions
 ./build.sh example all
 
 # 빌드 출력 확인
-ls build/resume-example*
+ls private/build/resume-example*
 
 # Python 스크립트 직접 실행
 python3 templates/build/resume_builder.py --variant public --example
