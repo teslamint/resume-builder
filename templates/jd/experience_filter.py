@@ -35,6 +35,8 @@ def parse_experience_range(exp_str: str | None) -> tuple[int | None, int | None]
     compound = re.search(r'(\d+)\s*년\s*이상\s*~?\s*(\d+)\s*년\s*(?:이하|미만)', exp_str)
     if compound:
         min_y, max_y = int(compound.group(1)), int(compound.group(2))
+        if '미만' in exp_str:
+            max_y -= 1
         if max_y >= _UNREALISTIC_MAX:
             return min_y, None
         return min_y, max_y
@@ -51,6 +53,14 @@ def parse_experience_range(exp_str: str | None) -> tuple[int | None, int | None]
     min_match = re.search(r'(\d+)\s*년\s*(?:차\s*)?(?:↑|이상|\+)', exp_str)
     if min_match:
         return int(min_match.group(1)), None
+
+    # "5년 이하" / "10년 미만" / "10년차 이하"
+    max_match = re.fullmatch(r'\s*(?:경력\s*)?(\d+)\s*년(?:\s*차)?\s*(?:이하|미만)\s*', exp_str)
+    if max_match:
+        max_y = int(max_match.group(1))
+        if '미만' in exp_str:
+            max_y -= 1
+        return None, max_y
 
     # "경력 3년" (exact)
     exact_match = re.fullmatch(r'\s*(?:경력\s*)?(\d+)\s*년(?:\s*차)?\s*', exp_str)
