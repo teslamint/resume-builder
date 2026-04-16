@@ -1,4 +1,6 @@
 """Regression tests for GroupBy queueing and API error handling."""
+import sys
+from types import ModuleType
 from unittest.mock import patch
 
 import pytest
@@ -47,6 +49,17 @@ class _DummySyncPlaywright:
         return False
 
 
+def _fake_playwright_modules() -> dict[str, ModuleType]:
+    playwright_module = ModuleType("playwright")
+    sync_api_module = ModuleType("playwright.sync_api")
+    sync_api_module.sync_playwright = lambda: _DummySyncPlaywright()
+    playwright_module.sync_api = sync_api_module
+    return {
+        "playwright": playwright_module,
+        "playwright.sync_api": sync_api_module,
+    }
+
+
 def test_request_wraps_json_decode_failure():
     with patch("urllib.request.urlopen", return_value=_DummyResponse(b"<html>proxy error</html>")):
         with pytest.raises(GroupByAPIError, match="Invalid JSON response"):
@@ -74,15 +87,15 @@ def test_run_quick_search_groupby_populates_queue_item_fields():
     )
     outcome = ScrapeOutcome(results=[raw])
 
-    with patch("search_quick.load_config", return_value=config), \
+    with patch.dict(sys.modules, _fake_playwright_modules()), \
+         patch("search_quick.load_config", return_value=config), \
          patch("search_quick.get_rejected_companies", return_value=set()), \
          patch("search_quick.load_seen_ids", return_value=set()), \
          patch("search_quick.load_queue", return_value=[]), \
          patch("search_quick.groupby_fetch_positions", return_value=[{"id": 8807}]), \
          patch("search_quick.convert_groupby_to_raw_results", return_value=outcome), \
          patch("search_quick.groupby_experience_values", return_value=(3, None)), \
-         patch("search_quick.is_duplicate", return_value=(False, None)), \
-         patch("playwright.sync_api.sync_playwright", return_value=_DummySyncPlaywright()):
+         patch("search_quick.is_duplicate", return_value=(False, None)):
         items, stats = run_quick_search(dry_run=True)
 
     assert len(items) == 1
