@@ -47,7 +47,11 @@ def _request(path: str, params: Optional[dict] = None) -> dict:
     req = urllib.request.Request(url, headers=GROUPBY_HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=GROUPBY_REQUEST_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            body = resp.read().decode("utf-8")
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError as e:
+                raise GroupByAPIError(f"Invalid JSON response for {url}") from e
     except urllib.error.HTTPError as e:
         raise GroupByAPIError(f"HTTP {e.code} for {url}") from e
     except urllib.error.URLError as e:

@@ -183,6 +183,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
         groupby_cfg = platforms_config.get("groupby", {})
         position_types = groupby_cfg.get("position_types", [2])
         base_url = groupby_cfg.get("base_url", "https://groupby.kr")
+        groupby_query = "(groupby)"
         print(f"\n🔍 검색 (GroupBy): positionTypes={position_types}")
 
         try:
@@ -224,6 +225,8 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                     url=raw.url,
                     title=raw.title,
                     company=raw.company,
+                    experience=raw.experience,
+                    query=groupby_query,
                     platform="groupby",
                     discovered_at=datetime.now().isoformat(),
                 ))
