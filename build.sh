@@ -97,12 +97,14 @@ generate_notes() {
     local clean_flag=${2:-}
     local suffix=${3:-}
     local current_file="private/build/resume-job${suffix}.md"
+    local output_file="private/build/resume-job-notes.md"
     if [[ -f "private/build/resume-job-base.md" ]]; then
         echo "Generating notes..."
         python3 templates/build/generate_notes.py \
             --base "private/build/resume-job-base.md" \
             --current "$current_file" \
             --target "$target" \
+            --output "$output_file" \
             ${clean_flag:+"$clean_flag"}
     else
         echo "Warning: private/build/resume-job-base.md not found. Run './build.sh job base' first to enable notes."
