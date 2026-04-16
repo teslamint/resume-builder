@@ -9,10 +9,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `--resume` flag for auto.py: resume from last incomplete run with stage-based skip
 - Experience range filtering via `search_config.yaml` (`filters.min_experience_upper`, `filters.max_experience`)
 - Notification system (`notifications.py`): pipeline completion alerts
-- State persistence: atomic state file writes with `os.replace` and directory fsync
 - `--dry-run`, `--search-only`, `--no-classify`, `--stop-on-error` flags for auto.py
 
 ### Changed
+- State persistence: atomic state file writes with `os.replace` and directory fsync
 - JD pipeline refactored into modular extractors (`ce_wanted.py`, `ce_saramin.py`, `ce_thevc.py`, `ce_jd_files.py`)
 - `DiscoveredJob` base class introduced for `JobPosting` and `QueueItem` (`models.py`)
 - Search helpers extracted to `search_helpers.py` (shared page load + DOM scraping)
@@ -21,7 +21,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - `parse_remember_experience` moved to `jd_content.py`
 
 ### Fixed
-- Atomic state file writes preventing corruption on crash
 - Resume logic with stage-based skip and protected status files
 - Per-link exception isolation in search helpers
 - `ensure_company_info` connected to Playwright-based extraction

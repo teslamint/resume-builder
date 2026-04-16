@@ -14,7 +14,6 @@ Resume builder & job search automation system. Markdown source → PDF/HTML/TXT 
 | `/jd-screening` | JD fit analysis against screening rules | `private/jd_analysis/screening/<id>-<company>-<position>.md` |
 | `/jd-batch` | Batch process URLs or reclassify files | Auto-classify to folders |
 | `/resume-build` | Build resume with variant/target options | `private/build/` |
-| `/commit` | Smart commit (Conventional Commits) | — |
 
 ## Auto Pipeline CLI
 
