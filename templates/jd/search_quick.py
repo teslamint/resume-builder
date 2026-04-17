@@ -34,16 +34,30 @@ STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 
 try:
     from .experience_filter import filter_experience
+    from .groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import is_duplicate
     from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
-    from .search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
+    from .search_helpers import (
+        SearchPageConfig,
+        convert_groupby_to_raw_results,
+        groupby_experience_values,
+        load_and_scrape_wanted,
+        load_and_scrape_remember,
+    )
 except ImportError:
     from experience_filter import filter_experience
+    from groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import is_duplicate
     from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
-    from search_helpers import SearchPageConfig, load_and_scrape_wanted, load_and_scrape_remember
+    from search_helpers import (
+        SearchPageConfig,
+        convert_groupby_to_raw_results,
+        groupby_experience_values,
+        load_and_scrape_wanted,
+        load_and_scrape_remember,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +135,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
     platforms_config = config.get("platforms", {})
     wanted_enabled = platforms_config.get("wanted", {}).get("enabled", True)
     remember_enabled = platforms_config.get("remember", {}).get("enabled", False)
+    groupby_enabled = platforms_config.get("groupby", {}).get("enabled", False)
 
     wanted_base_url = platforms_config.get("wanted", {}).get("base_url", "https://www.wanted.co.kr")
     remember_base_url = platforms_config.get("remember", {}).get("base_url", "https://career.rememberapp.co.kr")
@@ -153,6 +168,8 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
         enabled_names.append("Wanted")
     if remember_enabled:
         enabled_names.append("Remember")
+    if groupby_enabled:
+        enabled_names.append("GroupBy")
 
     print("=" * 60)
     print(f"🚀 JD Quick Search - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -160,6 +177,70 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
     print("=" * 60)
 
     start_time = time.time()
+
+    # --- GroupBy prefetch (API-based, no browser needed) ---
+    if groupby_enabled:
+        groupby_cfg = platforms_config.get("groupby", {})
+        position_types = groupby_cfg.get("position_types", [2])
+        base_url = groupby_cfg.get("base_url", "https://groupby.kr")
+        groupby_query = "(groupby)"
+        print(f"\n🔍 검색 (GroupBy): positionTypes={position_types}")
+
+        try:
+            gb_items = groupby_fetch_positions(position_types)
+            gb_outcome = convert_groupby_to_raw_results(gb_items, base_url)
+            gb_found = 0
+            gb_new = 0
+            gb_dup = 0
+            gb_filtered = 0
+
+            for raw in gb_outcome.results:
+                gb_found += 1
+                if quick_filter_title(raw.title, config):
+                    gb_filtered += 1
+                    continue
+                if is_rejected_company(raw.company, rejected_companies, config_excludes):
+                    gb_filtered += 1
+                    continue
+                orig_item = next((it for it in gb_items if f"groupby-{it['id']}" == raw.canonical_id), None)
+                if orig_item:
+                    exp_min, exp_max = groupby_experience_values(orig_item)
+                    if filter_experience(raw.experience, config, min_years=exp_min, max_years=exp_max):
+                        gb_filtered += 1
+                        continue
+                elif filter_experience(raw.experience, config):
+                    gb_filtered += 1
+                    continue
+                if raw.canonical_id in seen_ids or raw.canonical_id in queued_ids:
+                    gb_dup += 1
+                    continue
+                is_dup, _ = is_duplicate(raw.canonical_id)
+                if is_dup:
+                    gb_dup += 1
+                    seen_ids.add(raw.canonical_id)
+                    continue
+                gb_new += 1
+                new_items.append(QueueItem(
+                    job_id=raw.canonical_id,
+                    url=raw.url,
+                    title=raw.title,
+                    company=raw.company,
+                    experience=raw.experience,
+                    query=groupby_query,
+                    platform="groupby",
+                    discovered_at=datetime.now().isoformat(),
+                ))
+                seen_ids.add(raw.canonical_id)
+
+            stats["total_found"] += gb_found
+            stats["new"] += gb_new
+            stats["duplicates"] += gb_dup
+            stats["filtered"] += gb_filtered
+            print(f"   📊 결과: 발견 {gb_found}개, 신규 {gb_new}개, 중복 {gb_dup}개, 필터 {gb_filtered}개")
+        except GroupByAPIError as e:
+            logger.warning("GroupBy API error: %s", e)
+            print(f"   ⚠️  GroupBy API 오류: {e}")
+            stats["errors"] += 1
 
     with sync_playwright() as p:
         # Single browser instance for all queries

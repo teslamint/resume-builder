@@ -160,6 +160,8 @@ def _run_llm(prompt: str, timeout: int) -> tuple[str, str]:
 
 def _screening_filename(jd_path: Path) -> str:
     job_id = extract_job_id_from_filename(jd_path.name) or jd_path.stem.split("-")[0]
+    if jd_path.stem.startswith(f"{job_id}-"):
+        return f"{jd_path.stem}.md"
     return f"{job_id}-{jd_path.stem.split('-', 1)[1]}.md" if "-" in jd_path.stem else f"{job_id}.md"
 
 

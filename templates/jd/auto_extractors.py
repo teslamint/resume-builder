@@ -10,21 +10,25 @@ from typing import Optional
 
 try:
     from .constants import JOB_POSTINGS_DIR
+    from .groupby_client import GroupByAPIError, fetch_position_detail, html_to_text
     from .path_utils import extract_job_id, get_platform_from_url
     from .remember_batch_extract import fetch_posting as fetch_remember_posting
     from .remember_batch_extract import format_address as format_remember_address
     from .remember_batch_extract import format_experience as format_remember_experience
     from .remember_batch_extract import format_salary as format_remember_salary
     from .remember_batch_extract import slugify as remember_slugify
+    from .search_helpers import format_groupby_experience
     from .wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
 except ImportError:
     from constants import JOB_POSTINGS_DIR
+    from groupby_client import GroupByAPIError, fetch_position_detail, html_to_text
     from path_utils import extract_job_id, get_platform_from_url
     from remember_batch_extract import fetch_posting as fetch_remember_posting
     from remember_batch_extract import format_address as format_remember_address
     from remember_batch_extract import format_experience as format_remember_experience
     from remember_batch_extract import format_salary as format_remember_salary
     from remember_batch_extract import slugify as remember_slugify
+    from search_helpers import format_groupby_experience
     from wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
 
 
@@ -205,10 +209,106 @@ def extract_remember(url: str, output_dir: Optional[Path] = None) -> ExtractedJD
     )
 
 
+def extract_groupby(url: str, output_dir: Optional[Path] = None) -> ExtractedJD:
+    job_id = extract_job_id(url)
+    if not job_id:
+        raise ValueError(f"GroupBy URL에서 job_id를 추출할 수 없습니다: {url}")
+
+    # job_id is "groupby-8807", extract numeric part for API call
+    numeric_id = job_id.replace("groupby-", "") if job_id.startswith("groupby-") else job_id
+
+    try:
+        data = fetch_position_detail(numeric_id)
+    except GroupByAPIError as e:
+        raise RuntimeError(f"GroupBy 공고 조회 실패: {url} ({e})") from e
+
+    title = _normalize_text(data.get("name", "")) or f"groupby-{numeric_id}"
+    startup = data.get("startup") or {}
+    company = _normalize_text(startup.get("name", "")) or "unknown-company"
+    experience = format_groupby_experience(data)
+
+    location = _normalize_text(data.get("address", ""))
+    if not location:
+        loc_obj = data.get("location") or {}
+        location = loc_obj.get("name", "")
+    if not location:
+        location = _normalize_text(startup.get("location", ""))
+
+    description = html_to_text(data.get("task", ""))
+    requirements = html_to_text(data.get("qualification", ""))
+    preferred = html_to_text(data.get("preferred", ""))
+
+    hiring_process = html_to_text(data.get("hiringProcess", ""))
+    tech_stacks = data.get("techStacks", [])
+    if isinstance(tech_stacks, list) and tech_stacks:
+        stack_names = []
+        for s in tech_stacks:
+            if isinstance(s, dict):
+                stack_names.append(s.get("name", str(s)))
+            else:
+                stack_names.append(str(s))
+        if stack_names:
+            requirements = f"**기술 스택:** {', '.join(stack_names)}\n\n{requirements}"
+
+    benefits = ""
+    if hiring_process:
+        benefits = f"**채용 프로세스:**\n{hiring_process}"
+
+    member_count = startup.get("memberCount")
+    dev_count = startup.get("devCount")
+    funding_round = startup.get("fundingRound")
+    service_areas = startup.get("serviceAreas", [])
+    brief_intro = startup.get("briefIntro", "")
+
+    company_meta_parts = []
+    if brief_intro:
+        company_meta_parts.append(brief_intro)
+    if member_count is not None:
+        company_meta_parts.append(f"인원: {member_count}명 (개발: {dev_count or '?'}명)")
+    if funding_round:
+        company_meta_parts.append(f"투자: {funding_round}")
+    if service_areas:
+        company_meta_parts.append(f"분야: {', '.join(service_areas)}")
+    if company_meta_parts:
+        description = f"**회사 소개:** {' | '.join(company_meta_parts)}\n\n{description}"
+
+    company_slug = wanted_slugify(company)
+    title_slug = wanted_slugify(title)[:30]
+
+    output_root = output_dir or (JOB_POSTINGS_DIR / "unprocessed")
+    output_path = output_root / f"{job_id}-{company_slug}-{title_slug}.md"
+
+    markdown = _format_jd_markdown(
+        title=title,
+        company=company,
+        experience=experience,
+        location=location,
+        url=url,
+        description=description,
+        requirements=requirements,
+        preferred=preferred,
+        benefits=benefits,
+        source="GroupBy",
+    )
+
+    _write_markdown(output_path, markdown)
+
+    return ExtractedJD(
+        job_id=job_id,
+        platform="groupby",
+        url=url,
+        company=company,
+        title=title,
+        output_path=output_path,
+    )
+
+
 def extract_jd_from_url(url: str, output_dir: Optional[Path] = None) -> ExtractedJD:
     platform = get_platform_from_url(url)
     if platform == "wanted":
         return extract_wanted(url, output_dir=output_dir)
     if platform == "remember":
         return extract_remember(url, output_dir=output_dir)
+    if platform == "groupby":
+        return extract_groupby(url, output_dir=output_dir)
     raise ValueError(f"지원하지 않는 플랫폼입니다: {url}")
