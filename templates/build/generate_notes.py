@@ -51,7 +51,7 @@ def main():
     parser.add_argument('--current', required=True, help='Path to current resume markdown')
     parser.add_argument('--target', default='TBD', help='Target company/job posting name')
     parser.add_argument('--clean', action='store_true', help='Overwrite notes file instead of append')
-    parser.add_argument('--output', default='build/resume-job-notes.md', help='Output notes file path')
+    parser.add_argument('--output', default='private/build/resume-job-notes.md', help='Output notes file path')
     args = parser.parse_args()
 
     base_path = Path(args.base)
@@ -75,6 +75,7 @@ def main():
 
     diff_lines, additions, deletions = generate_diff(base_content, current_content)
     entry = format_notes_entry(args.target, diff_lines, additions, deletions)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if args.clean or not output_path.exists():
         header = "# Resume Job Notes\n\n"
