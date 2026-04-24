@@ -107,7 +107,7 @@ python3 templates/jd/wanted_extract.py <job_id>
 
 - stdout의 JSON 결과에서 `status == "ok"` 확인. 아니면 → 방법 B
 - 마크다운 저장: `private/job_postings/unprocessed/{id}-{company}-{position}.md` (자동)
-- 회사 프로필 URL 조립: JSON 내부 `company.company_id` → `https://www.wanted.co.kr/company/{company_id}` (예: 311992 → company_id=15095 → `wanted.co.kr/company/15095`)
+- 회사 프로필 URL 조립: JSON의 `company_id` 또는 `company_profile_url` 사용 (예: `company_id=15095` → `wanted.co.kr/company/15095`)
 - Chrome MCP 탭 열지 않음
 
 **Remember** (`rememberapp.co.kr/job/posting/{id}` 또는 `/job/{id}`):

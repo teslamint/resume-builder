@@ -48,7 +48,7 @@ python3 templates/jd/wanted_extract.py <job_id>
 - `job_id`는 URL `wanted.co.kr/wd/{job_id}`에서 추출
 - 저장 경로: `private/job_postings/unprocessed/{id}-{company_slug}-{title_slug}.md` (자동)
 - stdout JSON 배열에서 첫 entry의 `status == "ok"` 확인. 아니면 → 방법 B fallback
-- 회사 프로필 URL 조립: JSON의 `company.company_id` → `wanted.co.kr/company/{company_id}` (예: 311992 → 15095 → `wanted.co.kr/company/15095`)
+- 회사 프로필 URL 조립: JSON의 `company_id` 또는 `company_profile_url` 사용 (예: `company_id=15095` → `wanted.co.kr/company/15095`)
 
 #### Remember
 

@@ -28,6 +28,13 @@ def fetch_posting(posting_id):
     data = json.loads(m.group(1))
     return data['props']['pageProps']['dehydratedState']['queries'][0]['state']['data']['data']
 
+def extract_posting_id(url):
+    for pattern in (r'/job/posting/(\d+)(?:[/?#]|$)', r'/job/(\d+)(?:[/?#]|$)'):
+        m = re.search(pattern, url)
+        if m:
+            return m.group(1)
+    return None
+
 def format_experience(d):
     min_exp = d.get('minExperience')
     max_exp = d.get('maxExperience')
@@ -146,11 +153,10 @@ def main():
         url = url.strip()
         if not url:
             continue
-        m = re.search(r'/posting/(\d+)', url)
-        if not m:
+        posting_id = extract_posting_id(url)
+        if not posting_id:
             print(f"SKIP: invalid URL {url}")
             continue
-        posting_id = m.group(1)
 
         try:
             d = fetch_posting(posting_id)
