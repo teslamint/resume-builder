@@ -22,6 +22,11 @@ from datetime import date
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_JD_DIR = Path(__file__).resolve().parent
+if str(_JD_DIR) not in sys.path:
+    sys.path.insert(0, str(_JD_DIR))
+from path_utils import extract_job_id_from_filename  # noqa: E402
+
 SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
 PASS_DIR = REPO_ROOT / "private" / "job_postings" / "pass"
 
@@ -88,8 +93,7 @@ def detect_modes(text: str) -> tuple[bool, bool, bool]:
 
 
 def extract_id(filename: str) -> str:
-    m = re.match(r"^(\d{5,6})-", filename)
-    return m.group(1) if m else ""
+    return extract_job_id_from_filename(filename) or ""
 
 
 def main() -> int:

@@ -81,6 +81,20 @@ def load_company_slugs() -> set[str]:
     return {p.stem for p in COMPANY_INFO_DIR.glob("*.md")}
 
 
+def strip_job_id_prefix(filename: str) -> str:
+    """Remove filename ID prefixes before company slug matching."""
+    parts = Path(filename).stem.split("-")
+    if not parts:
+        return ""
+    if parts[0].isdigit():
+        return "-".join(parts[1:])
+    if len(parts) > 1 and parts[0] == "groupby" and parts[1].isdigit():
+        return "-".join(parts[2:])
+    if len(parts) > 1 and parts[1].isdigit():
+        return "-".join(parts[2:])
+    return "-".join(parts)
+
+
 def derive_company_slug(screening_fn: str, available_slugs: set[str]) -> str:
     """Attempt to derive company_info key from screening filename.
 
@@ -91,7 +105,7 @@ def derive_company_slug(screening_fn: str, available_slugs: set[str]) -> str:
     gap/escalation metrics. Instead, match the longest ``available_slug``
     that prefixes the stripped stem.
     """
-    stem = re.sub(r"^\d+-", "", screening_fn[:-3])
+    stem = strip_job_id_prefix(screening_fn)
     best = ""
     for slug in available_slugs:
         if stem == slug or stem.startswith(slug + "-"):
