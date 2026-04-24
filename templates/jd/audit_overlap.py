@@ -58,6 +58,11 @@ STRATUM_LABELS = {
 }
 
 
+def _pct(numerator: int, denominator: int) -> float:
+    """Safe percentage — returns 0.0 when the denominator is zero."""
+    return numerator / denominator * 100 if denominator else 0.0
+
+
 def _has_any(text: str, patterns) -> bool:
     return any(p.search(text) for p in patterns)
 
@@ -144,8 +149,7 @@ def main() -> int:
     print("-" * 56)
     for mask_str in ["000", "100", "010", "001", "110", "101", "011", "111"]:
         cnt = counter.get(mask_str, 0)
-        ratio = cnt / total_pass * 100 if total_pass else 0.0
-        print(f"{STRATUM_LABELS[mask_str]:<36} {cnt:>6} {ratio:>10.1f}%")
+        print(f"{STRATUM_LABELS[mask_str]:<36} {cnt:>6} {_pct(cnt, total_pass):>10.1f}%")
 
     m1_count = sum(1 for r in pass_rows if r["M1"] == "1")
     m2_count = sum(1 for r in pass_rows if r["M2"] == "1")
@@ -153,10 +157,10 @@ def main() -> int:
     overlap_any = sum(1 for r in pass_rows if r["mask"] != "000")
 
     print()
-    print(f"pass/ M1 (도메인):       {m1_count:>4} ({m1_count / total_pass * 100:.1f}%)")
-    print(f"pass/ M2 (M&A):          {m2_count:>4} ({m2_count / total_pass * 100:.1f}%)")
-    print(f"pass/ M3 (경력 상한):    {m3_count:>4} ({m3_count / total_pass * 100:.1f}%)")
-    print(f"pass/ 플래그 있는 건:    {overlap_any:>4} ({overlap_any / total_pass * 100:.1f}%)")
+    print(f"pass/ M1 (도메인):       {m1_count:>4} ({_pct(m1_count, total_pass):.1f}%)")
+    print(f"pass/ M2 (M&A):          {m2_count:>4} ({_pct(m2_count, total_pass):.1f}%)")
+    print(f"pass/ M3 (경력 상한):    {m3_count:>4} ({_pct(m3_count, total_pass):.1f}%)")
+    print(f"pass/ 플래그 있는 건:    {overlap_any:>4} ({_pct(overlap_any, total_pass):.1f}%)")
     print()
     print(f"CSV 출력: {output_path}")
     return 0

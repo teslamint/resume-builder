@@ -41,6 +41,11 @@ JOB_POSTING_DIRS = {
 VACANT_RE = re.compile(r"정보\s*없음|비공개|TBD|정보없음")
 
 
+def _pct(numerator: int, denominator: int) -> float:
+    """Safe percentage — returns 0.0 when the denominator is zero."""
+    return numerator / denominator * 100 if denominator else 0.0
+
+
 def load_file_locations() -> dict[str, str]:
     """Map filename → folder label."""
     loc = {}
@@ -58,13 +63,33 @@ def extract_id(filename: str) -> str:
     return m.group(1) if m else ""
 
 
-def derive_company_slug(screening_fn: str) -> str:
-    """Attempt to derive company_info key from screening filename."""
-    # strip id prefix and .md
+def load_company_slugs() -> set[str]:
+    """List all existing company_info/*.md stems for longest-prefix lookup."""
+    if not COMPANY_INFO_DIR.exists():
+        return set()
+    return {p.stem for p in COMPANY_INFO_DIR.glob("*.md")}
+
+
+def derive_company_slug(screening_fn: str, available_slugs: set[str]) -> str:
+    """Attempt to derive company_info key from screening filename.
+
+    Filenames look like ``{id}-{company_slug}-{title_slug}.md`` where both
+    company_slug and title_slug may contain hyphens. A naive ``split('-')[0]``
+    truncates multi-token companies like ``my-company-backend`` down to
+    ``my``, producing missing-company-info false positives and inflating H1
+    gap/escalation metrics. Instead, match the longest ``available_slug``
+    that prefixes the stripped stem.
+    """
     stem = re.sub(r"^\d+-", "", screening_fn[:-3])
-    # first hyphen-separated token is typically the company
-    first = stem.split("-")[0]
-    return first
+    best = ""
+    for slug in available_slugs:
+        if stem == slug or stem.startswith(slug + "-"):
+            if len(slug) > len(best):
+                best = slug
+    if best:
+        return best
+    # Fallback: keep legacy first-token behavior when no slug matches
+    return stem.split("-")[0]
 
 
 # ---------- verdict extraction (H3 core, handles 311992 edge case) ----------
@@ -210,6 +235,41 @@ def parse_summary_verdicts() -> dict[str, str]:
     return out
 
 
+# ---------- CSV schemas (explicit so empty result sets still emit headers) ----------
+
+H1_FIELDNAMES = [
+    "id",
+    "filename",
+    "company_slug",
+    "ci_exists",
+    "vacant_fields",
+    "vacant_count",
+    "total_fields",
+    "vacancy_ratio",
+    "all_empty_or_missing",
+]
+H2_FIELDNAMES = [
+    "id",
+    "filename",
+    "has_salary_cut",
+    "tier",
+    "t1_hit",
+    "t2_hit",
+    "t3_hit",
+]
+H3_FIELDNAMES = [
+    "id",
+    "filename",
+    "folder",
+    "screening_last_verdict",
+    "screening_raw",
+    "summary_verdict",
+    "folder_vs_screening_mismatch",
+    "folder_vs_summary_mismatch",
+    "screening_vs_summary_mismatch",
+]
+
+
 # ---------- main ----------
 
 def main() -> int:
@@ -217,6 +277,7 @@ def main() -> int:
 
     file_locations = load_file_locations()
     summary_verdicts = parse_summary_verdicts()
+    available_slugs = load_company_slugs()
 
     # Precompute company_info vacancies per slug (cache)
     ci_cache: dict[str, dict] = {}
@@ -267,7 +328,7 @@ def main() -> int:
             continue
 
         # H1: look up company_info file
-        slug = derive_company_slug(md.name)
+        slug = derive_company_slug(md.name, available_slugs)
         ci_path = COMPANY_INFO_DIR / f"{slug}.md"
         if slug not in ci_cache:
             ci_cache[slug] = measure_company_info_gaps(ci_path)
@@ -308,15 +369,15 @@ def main() -> int:
     }
 
     with paths["h1"].open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(h1_rows[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=H1_FIELDNAMES)
         writer.writeheader()
         writer.writerows(h1_rows)
     with paths["h2"].open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(h2_rows[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=H2_FIELDNAMES)
         writer.writeheader()
         writer.writerows(h2_rows)
     with paths["h3"].open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(h3_rows[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=H3_FIELDNAMES)
         writer.writeheader()
         writer.writerows(h3_rows)
 
@@ -330,9 +391,9 @@ def main() -> int:
     print("H1: pass/ 🔴 cuts — company_info 핵심 필드 공백률")
     print("=" * 70)
     print(f"총 pass/ 🔴 건수:              {total_pass_red}")
-    print(f"company_info 파일 없음:        {ci_missing} ({ci_missing/total_pass_red*100:.1f}%)")
-    print(f"4개 필드 모두 공백/없음:       {all_empty} ({all_empty/total_pass_red*100:.1f}%)")
-    print(f"일부 필드 공백:                {partial_gaps} ({partial_gaps/total_pass_red*100:.1f}%)")
+    print(f"company_info 파일 없음:        {ci_missing} ({_pct(ci_missing, total_pass_red):.1f}%)")
+    print(f"4개 필드 모두 공백/없음:       {all_empty} ({_pct(all_empty, total_pass_red):.1f}%)")
+    print(f"일부 필드 공백:                {partial_gaps} ({_pct(partial_gaps, total_pass_red):.1f}%)")
 
     # ========== H2 summary ==========
     salary_cuts = [r for r in h2_rows if r["has_salary_cut"] == "1"]
@@ -383,7 +444,7 @@ def main() -> int:
     h2_escalate = t23_pct > 20.0
     h3_escalate = fvs > 5
 
-    print(f"H1 all_empty > 10%:     {all_empty/total_pass_red*100:.1f}%  →  {'🚨 ESCALATE' if h1_escalate else '✅ 유지'}")
+    print(f"H1 all_empty > 10%:     {_pct(all_empty, total_pass_red):.1f}%  →  {'🚨 ESCALATE' if h1_escalate else '✅ 유지'}")
     print(f"H2 T2+T3 > 20%:         {t23_pct:.1f}%  →  {'🚨 ESCALATE' if h2_escalate else '✅ 유지'}")
     print(f"H3 folder/screening mismatch > 5: {fvs}  →  {'🚨 ESCALATE' if h3_escalate else '✅ 유지'}")
     return 0
