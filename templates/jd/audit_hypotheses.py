@@ -362,6 +362,7 @@ def main() -> int:
 
     # Write CSVs
     out_dir = REPO_ROOT / "private" / "jd_analysis"
+    out_dir.mkdir(parents=True, exist_ok=True)
     paths = {
         "h1": out_dir / f"r2_h1_company_info_gaps_{date_tag}.csv",
         "h2": out_dir / f"r2_h2_salary_evidence_{date_tag}.csv",
@@ -385,7 +386,7 @@ def main() -> int:
     total_pass_red = len(h1_rows)
     ci_missing = sum(1 for r in h1_rows if r["ci_exists"] == "0")
     all_empty = sum(1 for r in h1_rows if r["all_empty_or_missing"] == "1")
-    partial_gaps = sum(1 for r in h1_rows if r["vacant_count"] != "0" and r["all_empty_or_missing"] == "0")
+    partial_gaps = sum(1 for r in h1_rows if r["vacant_count"] > 0 and r["all_empty_or_missing"] == "0")
 
     print("=" * 70)
     print("H1: pass/ 🔴 cuts — company_info 핵심 필드 공백률")
