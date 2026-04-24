@@ -26,6 +26,11 @@ from datetime import date
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_JD_DIR = Path(__file__).resolve().parent
+if str(_JD_DIR) not in sys.path:
+    sys.path.insert(0, str(_JD_DIR))
+from path_utils import extract_job_id_from_filename  # noqa: E402
+
 SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
 COMPANY_INFO_DIR = REPO_ROOT / "private" / "company_info"
 SUMMARY_MD = SCREENING_DIR / "SUMMARY.md"
@@ -59,8 +64,14 @@ def load_file_locations() -> dict[str, str]:
 
 
 def extract_id(filename: str) -> str:
-    m = re.match(r"^(\d{4,6})-", filename)
-    return m.group(1) if m else ""
+    """Extract canonical job ID using the same parser as the rest of the pipeline.
+
+    Delegates to path_utils.extract_job_id_from_filename so that long numeric IDs
+    and platform-prefixed IDs (e.g. "groupby-8807") match the IDs written into
+    SUMMARY.md — without this, H3 verdict lookups silently return "unknown" for
+    every non-4-to-6-digit filename.
+    """
+    return extract_job_id_from_filename(filename) or ""
 
 
 def load_company_slugs() -> set[str]:
@@ -214,7 +225,11 @@ def classify_salary_tier(text: str) -> dict:
 # ---------- SUMMARY parser ----------
 
 SUMMARY_VERDICT_RE = re.compile(
-    r"^\|\s*\d{4}-\d{2}-\d{2}\s*\|\s*(\d{4,6})\s*\|[^|]*\|[^|]*\|\s*([^|]+?)\s*\|",
+    # ID column accepts: numeric of any length (e.g. 123456, 12345678),
+    # platform-prefixed IDs (e.g. "groupby-8807"), and bare slug IDs
+    # ("private"). Matches the shape produced by
+    # path_utils.extract_job_id_from_filename so filename↔SUMMARY joins line up.
+    r"^\|\s*\d{4}-\d{2}-\d{2}\s*\|\s*([A-Za-z0-9-]+)\s*\|[^|]*\|[^|]*\|\s*([^|]+?)\s*\|",
     re.MULTILINE,
 )
 
@@ -333,7 +348,13 @@ def main() -> int:
         if slug not in ci_cache:
             ci_cache[slug] = measure_company_info_gaps(ci_path)
         ci = ci_cache[slug]
-        vacancy_ratio = len(ci["vacant_fields"]) / ci["total_checked"] if ci["total_checked"] else 0
+        if ci["exists"] and ci["total_checked"]:
+            vacancy_ratio = len(ci["vacant_fields"]) / ci["total_checked"]
+        else:
+            # Missing company_info ⇒ every critical field is effectively vacant.
+            # Reporting 0.0 here contradicted the row's all_empty_or_missing=1
+            # flag and made downstream completeness analysis understate gaps.
+            vacancy_ratio = 1.0
         all_empty = (len(ci["vacant_fields"]) == ci["total_checked"]) if ci["exists"] else True
 
         h1_rows.append({
