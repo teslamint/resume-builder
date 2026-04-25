@@ -37,7 +37,10 @@ SUMMARY_MD = SCREENING_DIR / "SUMMARY.md"
 JOB_POSTING_DIRS = {
     "pass": REPO_ROOT / "private" / "job_postings" / "pass",
     "high": REPO_ROOT / "private" / "job_postings" / "conditional" / "high",
-    "hold": REPO_ROOT / "private" / "job_postings" / "conditional" / "hold",
+    "hold": (
+        REPO_ROOT / "private" / "job_postings" / "conditional",
+        REPO_ROOT / "private" / "job_postings" / "conditional" / "hold",
+    ),
     "middle": REPO_ROOT / "private" / "job_postings" / "conditional" / "middle",
     "low": REPO_ROOT / "private" / "job_postings" / "conditional" / "low",
     "applied": REPO_ROOT / "private" / "job_postings" / "applied",
@@ -60,13 +63,21 @@ def _pct(numerator: int, denominator: int) -> float:
 def load_file_locations() -> dict[str, str]:
     """Map filename → folder label."""
     loc = {}
-    for label, path in JOB_POSTING_DIRS.items():
-        if not path.exists():
-            continue
-        for f in path.iterdir():
-            if f.suffix == ".md":
-                loc[f.name] = label
+    for label, paths in JOB_POSTING_DIRS.items():
+        if isinstance(paths, Path):
+            paths = (paths,)
+        for path in paths:
+            if not path.exists():
+                continue
+            for f in path.iterdir():
+                if f.suffix == ".md":
+                    loc[f.name] = label
     return loc
+
+
+def is_pass_folder_cut(folder: str) -> bool:
+    """H1/H2 use folder ground truth, so stale screening verdicts still count."""
+    return folder == "pass"
 
 
 def extract_id(filename: str) -> str:
@@ -356,10 +367,7 @@ def main() -> int:
         })
 
         # ---------- H1 & H2 scope: pass/ 🔴 cuts only ----------
-        if folder != "pass":
-            continue
-        if verdict_label != "pass":
-            # verdict says not 🔴 but in pass/ - still interesting for H3 but skip H1/H2
+        if not is_pass_folder_cut(folder):
             continue
 
         # H1: look up company_info file
