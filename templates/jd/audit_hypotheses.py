@@ -188,7 +188,7 @@ def measure_company_info_gaps(company_info_path: Path) -> dict:
 # ---------- H2: salary evidence tier ----------
 
 T1_PATTERNS = [
-    re.compile(r"연봉상위\s*[\d~~%]+"),
+    re.compile(r"연봉상위\s*[\d~%]+"),
     re.compile(r"상위\s*\d+%"),
     re.compile(r"평균\s*연봉.*[\d,]+만원"),
     re.compile(r"전사\s*평균.*[\d,]+만원"),
