@@ -47,9 +47,14 @@ JOB_POSTING_DIRS = {
     "applied": REPO_ROOT / "private" / "job_postings" / "applied",
     "rejected": REPO_ROOT / "private" / "job_postings" / "rejected",
     "unprocessed": REPO_ROOT / "private" / "job_postings" / "unprocessed",
-    "high_priority": REPO_ROOT / "private" / "job_postings" / "high_priority",
-    "on_going": REPO_ROOT / "private" / "job_postings" / "on_going",
 }
+
+# Folders whose membership is the direct output of the verdict pipeline.
+# H3 mismatch count is restricted to these so that status-managed folders
+# (applied/rejected/unprocessed) and unscored buckets (middle/low) do not
+# inflate the metric — those moves are driven by application status, not
+# by re-running screening.
+H3_VERDICT_SCOPE = {"pass", "hold", "high"}
 
 # ---------- helpers ----------
 
@@ -383,9 +388,15 @@ def main() -> int:
 
         # ---------- H3 ----------
         # Tie-break order: folder > summary > screening
-        # Ground truth = folder
-        mismatch_folder_vs_screening = (folder != verdict_label and folder != "missing" and verdict_label != "unknown")
-        mismatch_folder_vs_summary = (folder != summary_v and folder != "missing" and summary_v != "unknown")
+        # Ground truth = folder, but only verdict-pipeline folders count
+        # toward folder-vs-* mismatch. status folders (applied/rejected/...)
+        # carry verdicts that may legitimately diverge from current location.
+        if folder in H3_VERDICT_SCOPE:
+            mismatch_folder_vs_screening = (folder != verdict_label and verdict_label != "unknown")
+            mismatch_folder_vs_summary = (folder != summary_v and summary_v != "unknown")
+        else:
+            mismatch_folder_vs_screening = False
+            mismatch_folder_vs_summary = False
         mismatch_screening_vs_summary = (verdict_label != summary_v and verdict_label != "unknown" and summary_v != "unknown")
 
         h3_rows.append({
