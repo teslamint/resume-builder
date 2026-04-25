@@ -38,7 +38,13 @@ JOB_POSTING_DIRS = {
     "pass": REPO_ROOT / "private" / "job_postings" / "pass",
     "high": REPO_ROOT / "private" / "job_postings" / "conditional" / "high",
     "hold": REPO_ROOT / "private" / "job_postings" / "conditional" / "hold",
+    "middle": REPO_ROOT / "private" / "job_postings" / "conditional" / "middle",
+    "low": REPO_ROOT / "private" / "job_postings" / "conditional" / "low",
     "applied": REPO_ROOT / "private" / "job_postings" / "applied",
+    "rejected": REPO_ROOT / "private" / "job_postings" / "rejected",
+    "unprocessed": REPO_ROOT / "private" / "job_postings" / "unprocessed",
+    "high_priority": REPO_ROOT / "private" / "job_postings" / "high_priority",
+    "on_going": REPO_ROOT / "private" / "job_postings" / "on_going",
 }
 
 # ---------- helpers ----------
@@ -223,7 +229,7 @@ def classify_salary_tier(text: str) -> dict:
     t3 = any(p.search(text) for p in T3_PATTERNS)
     if has_salary_cut:
         # priority: T1 if present else T2 else T3 else unknown
-        if t1 and not t2:
+        if t1:
             tier = "T1"
         elif t2:
             tier = "T2"  # approximated
