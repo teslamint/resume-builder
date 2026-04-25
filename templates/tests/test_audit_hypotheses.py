@@ -7,6 +7,102 @@ from pathlib import Path
 import audit_hypotheses as audit
 
 
+def test_extract_last_verdict_modern_format():
+    text = "여러 줄...\n## 최종 판정: 🔴 지원 비추천\n"
+    label, raw = audit.extract_last_verdict(text)
+    assert label == "pass"
+    assert "지원 비추천" in raw
+
+
+def test_extract_last_verdict_blockquote_legacy():
+    text = "분석 본문...\n> 판정: 🔴 **PASS**\n끝.\n"
+    label, _ = audit.extract_last_verdict(text)
+    assert label == "pass"
+
+
+def test_extract_last_verdict_heading_legacy():
+    text = "본문\n### 🔴 **PASS**\n뒷부분\n"
+    label, _ = audit.extract_last_verdict(text)
+    assert label == "pass"
+
+
+def test_extract_last_verdict_picks_last_when_multiple_blocks():
+    text = (
+        "## 최종 판정: 🔴 지원 비추천\n"
+        "...재스크리닝...\n"
+        "## 최종 판정: 🟢 지원 추천\n"
+    )
+    label, raw = audit.extract_last_verdict(text)
+    assert label == "high"
+    assert "지원 추천" in raw
+
+
+def test_extract_last_verdict_no_verdict_returns_unknown():
+    label, raw = audit.extract_last_verdict("이 파일에는 판정 라인이 없습니다.\n")
+    assert label == "unknown"
+    assert raw == ""
+
+
+def test_extract_last_verdict_conclusion_format():
+    text = "본문\n**결론**: 🔴 지원 비추천 — 연봉 컷\n"
+    label, _ = audit.extract_last_verdict(text)
+    assert label == "pass"
+
+
+def test_measure_company_info_round_text_value_not_vacant(tmp_path):
+    ci = tmp_path / "co.md"
+    ci.write_text(
+        "## 투자 정보\n"
+        "| 항목 | 내용 |\n"
+        "| 현재 라운드 | Series A |\n"
+        "| 누적 투자금 | 미공개 |\n"
+        "## 인원 통계\n"
+        "| 현재 인원 | 50명 |\n"
+        "## 매출\n"
+        "| 매출액 | 100억 |\n"
+        "## 연봉\n"
+        "| 평균 연봉 | 6000만원 |\n",
+        encoding="utf-8",
+    )
+    result = audit.measure_company_info_gaps(ci)
+    assert result["exists"] is True
+    assert "round" not in result["vacant_fields"]
+
+
+def test_measure_company_info_round_missing_anchor_vacant(tmp_path):
+    ci = tmp_path / "co.md"
+    ci.write_text(
+        "# Company\n## 인원 통계\n| 현재 인원 | 100명 |\n",
+        encoding="utf-8",
+    )
+    result = audit.measure_company_info_gaps(ci)
+    assert "round" in result["vacant_fields"]
+
+
+def test_measure_company_info_round_anchor_present_but_no_value_vacant(tmp_path):
+    ci = tmp_path / "co.md"
+    ci.write_text(
+        "## 투자 정보\n"
+        "| 현재 라운드 | 미공개 |\n"
+        "| 누적 투자금 | 미공개 |\n",
+        encoding="utf-8",
+    )
+    result = audit.measure_company_info_gaps(ci)
+    assert "round" in result["vacant_fields"]
+
+
+def test_measure_company_info_numeric_field_no_unit_vacant(tmp_path):
+    ci = tmp_path / "co.md"
+    ci.write_text(
+        "## 연봉 정보\n"
+        "| 평균 연봉 | 정보 없음 |\n"
+        "| 평균 연봉 | 정보 없음 |\n",
+        encoding="utf-8",
+    )
+    result = audit.measure_company_info_gaps(ci)
+    assert "salary" in result["vacant_fields"]
+
+
 def test_salary_tier_prefers_t1_when_t2_phrase_is_also_present():
     text = """
     최종 판정: 🔴 지원 비추천
