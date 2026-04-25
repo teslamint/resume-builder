@@ -93,22 +93,51 @@ python3 templates/jd/pipeline.py --url "{URL}"
 
 ### Phase 2: JD 추출 + 회사 URL 추출
 
-Chrome MCP 사용:
+> **전환 정책 (2026-04-17)**: HTTP 우선 + Chrome MCP fallback 구조. Wanted/Remember는 이미 production에서 `auto.py`가 사용 중인 HTTP 모듈을 직접 호출하여 15~30배 빠름. R1 감사 실측 33건 ~15초(건당 0.5초).
+
+#### 방법 A — HTTP 우선 (Wanted / Remember, 권장)
+
+URL prefix로 플랫폼 판별 후 해당 경로로 분기.
+
+**Wanted** (`wanted.co.kr/wd/{id}`):
+
+```bash
+python3 templates/jd/wanted_extract.py <job_id>
+```
+
+- stdout의 JSON 결과에서 `status == "ok"` 확인. 아니면 → 방법 B
+- 마크다운 저장: `private/job_postings/unprocessed/{id}-{company}-{position}.md` (자동)
+- 회사 프로필 URL 조립: JSON의 `company_id` 또는 `company_profile_url` 사용 (예: `company_id=15095` → `wanted.co.kr/company/15095`)
+- Chrome MCP 탭 열지 않음
+
+**Remember** (`rememberapp.co.kr/job/posting/{id}` 또는 `/job/{id}`):
+
+```bash
+echo "<url>" > /tmp/remember_url.txt
+python3 templates/jd/remember_batch_extract.py /tmp/remember_url.txt
+```
+
+- `private/job_postings/unprocessed/batch_results.json`에서 entry 확인 (`status == "ok"`)
+- 마크다운 저장: `private/job_postings/unprocessed/{id}-{company}-{title}.md` (자동)
+- 회사 프로필 URL 조립: `batch_results.json`의 `orgId` 활용. 현재 규격 미검증이라 **확실한 URL 조립 방법 없음** → Phase 3에서 회사명 검색 폴백 권장
+- 배치 시 `remember_batch_extract.py` 내부에서 `time.sleep(0.5)` 자동 적용됨
+
+#### 방법 B — Chrome MCP fallback
+
+방법 A 실패(`status != ok`, HTTP 404, 파싱 오류) 또는 **Saramin / Jumpit / JobKorea** 등 미지원 플랫폼일 때:
 
 1. `tabs_context_mcp` 호출 (탭 컨텍스트 확인)
 2. `tabs_create_mcp` 또는 기존 탭에서 `navigate` (url)
 3. 페이지 로드 대기 후 `get_page_text` 호출
 4. 채용공고 정보 파싱 (플랫폼별 구조 적용)
-5. 회사 프로필 URL 추출 (javascript_tool)
+5. 회사 프로필 URL 추출 (`javascript_tool`)
 6. `private/job_postings/unprocessed/{id}-{company}-{position}.md` 저장
 
-**회사 프로필 URL 추출 (Step 5):**
-
-`javascript_tool`로 DOM에서 회사 프로필 링크를 추출합니다.
+**회사 프로필 URL 추출 DOM 셀렉터 (방법 B 전용):**
 
 | 플랫폼 | CSS Selector | 추출 URL 형태 |
 |--------|-------------|--------------|
-| Wanted | `a[href*="/company/"]` | `wanted.co.kr/company/{id}` |
+| Wanted | `a[href*="/company/"]` | `wanted.co.kr/company/{id}` (방법 A 실패 시에만 사용) |
 | Remember | `a[href*="/job/company/"]` | `career.rememberapp.co.kr/job/company/{id}` |
 | Saramin | `a[href*="/company-info/view"]` | `saramin.co.kr/zf_user/company-info/view?csn={csn}` |
 | Jumpit / JobKorea | (프로필 링크 없음) | 회사명만 파싱 → Phase 3 검색 폴백 |
@@ -126,6 +155,15 @@ document.querySelector('a[href*="/company-info/view"]')?.href
 
 - 추출 성공 → URL을 Phase 3에 전달 (검색 단계 생략)
 - 추출 실패 → 회사명 기반 검색으로 폴백 (Phase 3에서 처리)
+
+#### 경로 선택 요약
+
+| 플랫폼 | 기본 경로 | 비고 |
+|--------|-----------|------|
+| Wanted | 방법 A | company_id JSON 포함, 회사 URL 조립 가능 |
+| Remember | 방법 A | 회사 URL 조립은 Phase 3에서 처리 |
+| Saramin | 방법 B | anti-bot/CSR |
+| Jumpit, JobKorea, GroupBy | 방법 B 또는 기타 CLI | 현행 유지 |
 
 **플랫폼별 참조:**
 - Wanted: `/extract-job-posting` 스킬의 Wanted 섹션 참조
@@ -187,7 +225,8 @@ python3 templates/jd/pipeline.py --classify private/job_postings/unprocessed/
 
 | 상황 | 처리 |
 |------|------|
-| JD 추출 실패 | 사용자에게 수동 입력 요청, 해당 URL 스킵 |
+| 방법 A (HTTP) 추출 실패 (status != ok) | 방법 B Chrome MCP fallback 진입 |
+| JD 추출 실패 (방법 B도 실패) | 사용자에게 수동 입력 요청, 해당 URL 스킵 |
 | 회사 프로필 URL 추출 실패 | 회사명 기반 멀티소스 검색으로 폴백 (Phase 3b) |
 | 회사 정보 추출 실패 | 경고 출력 후 스크리닝 계속 (제한된 정보로 분석) |
 | 회사 정보 검증 실패 | 불완전 데이터로 진행, 누락 필드 안내 |

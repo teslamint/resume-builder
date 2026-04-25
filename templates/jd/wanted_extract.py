@@ -32,6 +32,12 @@ def fetch_wanted_posting(job_id):
     job_detail = data['props']['pageProps']['initialData']
     return job_detail
 
+def extract_company_id(company):
+    """Return Wanted company profile ID from known API field variants."""
+    if not isinstance(company, dict):
+        return None
+    return company.get('company_id') or company.get('id')
+
 def format_experience_wanted(job):
     """경력 포맷팅"""
     career = job.get('career', {})
@@ -60,6 +66,7 @@ def extract_wanted(job_id):
         job_title = job.get('position', 'Unknown')
         company = job.get('company', {})
         company_name = company.get('company_name', 'Unknown')
+        company_id = extract_company_id(company)
         experience = format_experience_wanted(job)
         address = job.get('address', {})
         location = address.get('full_location', '정보 없음')
@@ -119,6 +126,8 @@ url: https://www.wanted.co.kr/wd/{job_id}
         return {
             "id": job_id,
             "company": company_name,
+            "company_id": company_id,
+            "company_profile_url": f"https://www.wanted.co.kr/company/{company_id}" if company_id else None,
             "title": job_title,
             "file": filename,
             "status": "ok"
