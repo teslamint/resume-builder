@@ -30,6 +30,7 @@ _JD_DIR = Path(__file__).resolve().parent
 if str(_JD_DIR) not in sys.path:
     sys.path.insert(0, str(_JD_DIR))
 from path_utils import extract_job_id_from_filename  # noqa: E402
+from verdict import normalize_verdict  # noqa: E402
 
 SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
 COMPANY_INFO_DIR = REPO_ROOT / "private" / "company_info"
@@ -141,29 +142,52 @@ def derive_company_slug(screening_fn: str, available_slugs: set[str]) -> str:
 
 # ---------- verdict extraction (H3 core, handles 311992 edge case) ----------
 
-VERDICT_RE = re.compile(r"최종\s*판정\s*[:：]?\s*([^\n]+)")
-VERDICT_MAP = {
-    "🔴": "pass",
-    "🟡": "hold",
-    "🟢": "high",
-    "✅": "applied",
-    "지원 비추천": "pass",
-    "지원 보류": "hold",
+# Multi-format verdict patterns: modern '최종 판정:' line plus legacy variants
+# (blockquote 판정, heading PASS/HOLD/RECOMMEND, table cell, **결론**, list item).
+# Mirrors verdict.parse_verdict_from_screening single-line patterns + an
+# audit-only emoji+heading variant for legacy '### 🔴 **PASS**' files.
+VERDICT_PATTERNS = [
+    re.compile(r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$", re.MULTILINE),
+    re.compile(r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$", re.MULTILINE),
+    re.compile(r"^\s*>\s*(?:최종\s*)?판정\s*[:：]\s*(.+?)\s*$", re.MULTILINE),
+    re.compile(r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|", re.MULTILINE),
+    re.compile(r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$", re.MULTILINE),
+    re.compile(r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$", re.MULTILINE),
+    re.compile(
+        r"^\s*#{2,6}\s*(?:🔴|🟡|🟢|✅|❌)\s*\*\*(?:PASS|HOLD|RECOMMEND|APPLIED)\*\*\s*$",
+        re.MULTILINE,
+    ),
+]
+
+# Map normalize_verdict() canonical output → audit folder labels.
+# normalize_verdict returns None for ✅/이미 지원, so handle 'applied' separately
+# before delegating to it (legacy CSV expects an 'applied' verdict label).
+VERDICT_LABEL_MAP = {
     "지원 추천": "high",
-    "지원추천": "high",
-    "이미 지원": "applied",
+    "지원 보류": "hold",
+    "지원 비추천": "pass",
 }
 
 
 def extract_last_verdict(text: str) -> tuple[str, str]:
-    """Returns (verdict_label, raw_match) using LAST 최종 판정 occurrence."""
-    matches = list(VERDICT_RE.finditer(text))
+    """Pick last verdict by file position across all supported formats.
+
+    Re-uses verdict.normalize_verdict so emoji/PASS/HOLD/지원비추천 variants
+    are handled by the same canonical logic the rest of the pipeline uses.
+    """
+    matches = []
+    for pat in VERDICT_PATTERNS:
+        for m in pat.finditer(text):
+            matches.append((m.start(), m.group(0).strip()))
     if not matches:
         return ("unknown", "")
-    last_raw = matches[-1].group(1).strip()
-    for emoji, label in VERDICT_MAP.items():
-        if emoji in last_raw:
-            return (label, last_raw)
+    matches.sort(key=lambda x: x[0])
+    last_pos, last_raw = matches[-1]
+    if "✅" in last_raw or "이미 지원" in last_raw:
+        return ("applied", last_raw)
+    canonical = normalize_verdict(last_raw)
+    if canonical:
+        return (VERDICT_LABEL_MAP[canonical], last_raw)
     return ("unknown", last_raw)
 
 
@@ -283,12 +307,11 @@ def parse_summary_verdicts() -> dict[str, str]:
     out = {}
     for m in SUMMARY_VERDICT_RE.finditer(text):
         id_, verdict_raw = m.group(1), m.group(2).strip()
-        label = "unknown"
-        for emoji, lbl in VERDICT_MAP.items():
-            if emoji in verdict_raw:
-                label = lbl
-                break
-        out[id_] = label
+        if "✅" in verdict_raw or "이미 지원" in verdict_raw:
+            out[id_] = "applied"
+            continue
+        canonical = normalize_verdict(verdict_raw)
+        out[id_] = VERDICT_LABEL_MAP[canonical] if canonical else "unknown"
     return out
 
 
