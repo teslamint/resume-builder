@@ -52,7 +52,12 @@ JOB_POSTING_DIRS = {
 
 # ---------- helpers ----------
 
-VACANT_RE = re.compile(r"정보\s*없음|비공개|TBD|정보없음")
+# "미공개"는 vacancy 지시자이지 라운드 값이 아님 — VACANT_RE에 포함.
+VACANT_RE = re.compile(r"정보\s*없음|비공개|미공개|TBD")
+# Round 필드 전용 텍스트 검증 — 숫자+단위 없이도 라운드 명칭이면 채워진 것으로 간주.
+ROUND_VALUE_RE = re.compile(
+    r"(?i)Seed|Pre-?A|Series\s*[A-Z]|시드|시리즈\s*[A-D]|상장|IPO"
+)
 
 
 def _pct(numerator: int, denominator: int) -> float:
@@ -189,10 +194,16 @@ def measure_company_info_gaps(company_info_path: Path) -> dict:
         if not field_block:
             result["vacant_fields"].append(field)
             continue
-        # Count vacancy markers in the block
-        vacant_markers = VACANT_RE.findall(field_block)
-        if len(vacant_markers) >= 2 or (not re.search(r"[0-9]+\s*[만억%명]", field_block)):
-            result["vacant_fields"].append(field)
+        if field == "round":
+            # Round 값은 텍스트(Series A, Pre-A, 시리즈C, IPO 등). 300-char window가
+            # 다음 필드의 vacancy 마커(미공개 등)까지 포함하므로, 라운드 명칭이
+            # 명시적으로 존재하면 다른 마커와 무관하게 채워진 것으로 인정.
+            if not ROUND_VALUE_RE.search(field_block):
+                result["vacant_fields"].append(field)
+        else:
+            vacant_markers = VACANT_RE.findall(field_block)
+            if len(vacant_markers) >= 2 or not re.search(r"[0-9]+\s*[만억%명]", field_block):
+                result["vacant_fields"].append(field)
     return result
 
 
