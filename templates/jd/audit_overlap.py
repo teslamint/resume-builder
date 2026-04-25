@@ -37,8 +37,6 @@ M1_PATTERNS = [
     re.compile(r"Infra.*❌"),
     re.compile(r"Platform.*❌"),
     re.compile(r"DevOps.*❌"),
-    re.compile(r"포지션 소개"),
-    re.compile(r"포지션명"),
 ]
 M2_PATTERNS = [
     re.compile(r"M&A"),
