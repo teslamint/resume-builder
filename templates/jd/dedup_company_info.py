@@ -379,7 +379,10 @@ def emit_actions(classifications: list[Classification], path: Path) -> None:
         lines.append("# ── Step A: rewrite external references ──────────────────────────")
         lines.append(_REWRITE_PYTHON.format(rewrites=rewrites, scan_dirs=scan_dirs))
         lines.append("")
-        lines.append("git add -A")
+        # Stage only the directories we scan, not the whole tree, so unrelated
+        # untracked files don't end up in this commit.
+        scan_args = " ".join(f"'{d}'" for d in scan_dirs)
+        lines.append(f"git add {scan_args}")
         lines.append('if ! git diff --quiet --cached; then')
         lines.append('    git commit -m "chore(company_info): rewrite refs from cosmetic-duplicate slugs"')
         lines.append('else')
