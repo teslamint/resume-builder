@@ -13,11 +13,13 @@ from typing import Optional
 
 try:
     from .company_extractor import extract_company_info
+    from .company_match_verify import verify_company_match
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .jd_content import extract_metadata_from_jd
     from .naming import slugify_company
 except ImportError:
     from company_extractor import extract_company_info
+    from company_match_verify import verify_company_match
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from jd_content import extract_metadata_from_jd
     from naming import slugify_company
@@ -419,6 +421,19 @@ def ensure_company_info(
             completeness = result.completeness_score
         except Exception:
             completeness = 0.0
+
+        try:
+            ok, conf, mismatches = verify_company_match(output_path, jd_path)
+            if not ok and mismatches:
+                import sys
+                print(
+                    f"WARN: company_info({output_path.name}) vs JD({jd_path.name}) "
+                    f"동음이의 매칭 가능성 (confidence={conf}). "
+                    f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
+                    file=sys.stderr,
+                )
+        except Exception as exc:
+            _log.warning("company_match_verify 실패 (%s): %s", output_path.name, exc)
 
     return CompanyInfoResult(
         company=company,
