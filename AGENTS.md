@@ -65,6 +65,20 @@ AI-generated content (interview sheets, mock interviews) must not infer specific
 python3 templates/tests/test_jd_status.py -v
 ```
 
+## Plan Review in Codex
+
+When creating a non-trivial coding plan in Codex, ask whether the user wants a sub-agent review unless they have already explicitly requested it.
+
+If the user explicitly requests sub-agent/advisor-style review, spawn one sub-agent to review the draft plan before presenting the final plan.
+
+The sub-agent review should:
+- Check whether the plan matches repository constraints and current code reality
+- Identify missing tests, risky assumptions, and unintended side effects
+- Avoid implementing changes
+- Return concise actionable feedback
+
+If sub-agents are unavailable or not explicitly approved, state that the advisor/sub-agent review was skipped and proceed with the best local review.
+
 ## Key Directory Structure
 
 ```
