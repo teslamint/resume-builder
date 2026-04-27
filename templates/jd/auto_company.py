@@ -136,9 +136,16 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
     if len(candidates) == 1:
         return candidates[0]
 
-    scored = [(_completeness_score(c), c.stat().st_mtime, c) for c in candidates]
-    scored.sort(key=lambda t: (-t[0], -t[1]))
-    return scored[0][2]
+    def _exact_match(p: Path) -> int:
+        head = _read_first_heading(p)
+        return 1 if head and head == company_norm else 0
+
+    scored = [
+        (_exact_match(c), _completeness_score(c), c.stat().st_mtime, c)
+        for c in candidates
+    ]
+    scored.sort(key=lambda t: (-t[0], -t[1], -t[2]))
+    return scored[0][3]
 
 
 def _find_existing_company_file(company: str) -> Optional[Path]:
