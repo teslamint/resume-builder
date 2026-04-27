@@ -25,6 +25,18 @@ except ImportError:
     from verdict import parse_verdict_from_screening
 
 
+BASE_DIR = Path(__file__).parent.parent.parent
+PROFILE_DIR = BASE_DIR / "private" / "profile"
+COMPANIES_DIR = BASE_DIR / "private" / "companies"
+MAX_CANDIDATE_CONTEXT_CHARS = 60000
+MAX_CANDIDATE_FILE_CHARS = 4000
+PROFILE_CONTEXT_FILES = (
+    "summary-job.md",
+    "skills-job.md",
+    "core-competencies.md",
+)
+
+
 @dataclass
 class ScreeningResult:
     verdict: str
@@ -40,21 +52,78 @@ def _load_text(path: Optional[Path]) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _build_prompt(jd_content: str, rules: str, company_content: str, company_risk_summary: str) -> str:
+def _source_label(path: Path) -> str:
+    try:
+        return str(path.relative_to(BASE_DIR))
+    except ValueError:
+        return str(path)
+
+
+def _read_context_file(path: Path) -> str:
+    text = path.read_text(encoding="utf-8", errors="replace").strip()
+    if len(text) > MAX_CANDIDATE_FILE_CHARS:
+        text = text[:MAX_CANDIDATE_FILE_CHARS].rstrip() + "\n...(truncated)"
+    return f"[source: {_source_label(path)}]\n{text}"
+
+
+def _load_candidate_context() -> str:
+    paths: list[Path] = []
+
+    for filename in PROFILE_CONTEXT_FILES:
+        path = PROFILE_DIR / filename
+        if path.exists():
+            paths.append(path)
+
+    if COMPANIES_DIR.exists():
+        paths.extend(sorted(COMPANIES_DIR.glob("*/profile.md")))
+        paths.extend(sorted(COMPANIES_DIR.glob("*/projects/*.md")))
+
+    blocks: list[str] = []
+    total_chars = 0
+    for path in paths:
+        if not path.exists() or path.name == "CLAUDE.md":
+            continue
+        block = _read_context_file(path)
+        next_total = total_chars + len(block) + 2
+        if next_total > MAX_CANDIDATE_CONTEXT_CHARS:
+            remaining = MAX_CANDIDATE_CONTEXT_CHARS - total_chars
+            if remaining > 200:
+                blocks.append(block[:remaining].rstrip() + "\n...(context truncated)")
+            break
+        blocks.append(block)
+        total_chars = next_total
+
+    return "\n\n---\n\n".join(blocks) if blocks else "후보자 이력 파일 없음"
+
+
+def _build_prompt(
+    jd_content: str,
+    rules: str,
+    company_content: str,
+    company_risk_summary: str,
+    candidate_context: str,
+) -> str:
     return f"""아래 기준으로 JD 스크리닝을 수행하세요.
 
 요구사항:
 1) 반드시 최종 판정을 `지원 추천` 또는 `지원 보류` 또는 `지원 비추천` 중 하나로 명시
-2) 결과는 Markdown으로 작성
+2) 결과는 Markdown으로 stdout에 직접 출력 (파일 저장 아님 — 권한 요청·승인 대기 응답 금지)
 3) 아래 섹션 순서 사용:
    - ## 기본 정보
    - ## 스크리닝 결과
+   - ## 이력/경험 매칭
    - ## 최종 판정
    - ## 핵심 근거
 4) 최종 판정 섹션에 `### 최종 판정: <판정>` 형식을 포함
+5) `## 이력/경험 매칭`에서는 JD 필수요건/우대사항/역할 기대치를 후보자 이력 근거와 대조
+6) 후보자 이력에 명시된 근거가 없으면 추정하지 말고 `근거 없음` 또는 `근거 약함`으로 표기
+7) 이력 매칭 근거는 가능한 한 `[source: ...]` 경로를 함께 언급
 
 [스크리닝 규칙]
 {rules}
+
+[후보자 이력/경험 근거]
+{candidate_context}
 
 [기업 리스크 요약]
 {company_risk_summary}
@@ -181,8 +250,9 @@ def run_screening(
     rules = load_screening_rules()
     company_content = _load_text(company_file)
     risk_summary = _build_company_risk_summary(company_file)
+    candidate_context = _load_candidate_context()
 
-    prompt = _build_prompt(jd_content, rules, company_content, risk_summary)
+    prompt = _build_prompt(jd_content, rules, company_content, risk_summary, candidate_context)
 
     provider = "fallback"
     used_fallback = False

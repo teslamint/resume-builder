@@ -219,6 +219,75 @@ class TestAutoCompany(unittest.TestCase):
 
 
 class TestAutoScreening(unittest.TestCase):
+    def test_build_prompt_requires_resume_experience_matching_with_sources(self):
+        from auto_screening import _build_prompt
+
+        prompt = _build_prompt(
+            jd_content="## 자격 요건\n- JPA N+1 해결 경험",
+            rules="스크리닝 규칙",
+            company_content="# TestCo",
+            company_risk_summary="완성도: 100%",
+            candidate_context="[source: private/profile/skills-job.md]\nSpring Boot 사용",
+        )
+
+        self.assertIn("## 이력/경험 매칭", prompt)
+        self.assertIn("[후보자 이력/경험 근거]", prompt)
+        self.assertIn("[source: private/profile/skills-job.md]", prompt)
+        self.assertIn("근거 없음", prompt)
+        self.assertIn("추정하지 말고", prompt)
+
+    def test_load_candidate_context_includes_profile_and_project_sources(self):
+        import auto_screening
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            profile_dir = tmp_path / "profile"
+            companies_dir = tmp_path / "companies"
+            project_dir = companies_dir / "co" / "projects"
+            profile_dir.mkdir()
+            project_dir.mkdir(parents=True)
+            (profile_dir / "summary-job.md").write_text("운영 안정성 경험", encoding="utf-8")
+            (profile_dir / "skills-job.md").write_text("Spring Boot", encoding="utf-8")
+            (companies_dir / "co" / "profile.md").write_text("백엔드 개발자", encoding="utf-8")
+            (project_dir / "api.md").write_text("정합성 개선", encoding="utf-8")
+
+            with patch("auto_screening.BASE_DIR", tmp_path), \
+                 patch("auto_screening.PROFILE_DIR", profile_dir), \
+                 patch("auto_screening.COMPANIES_DIR", companies_dir):
+                context = auto_screening._load_candidate_context()
+
+        self.assertIn("[source: profile/summary-job.md]", context)
+        self.assertIn("[source: profile/skills-job.md]", context)
+        self.assertIn("[source: companies/co/profile.md]", context)
+        self.assertIn("[source: companies/co/projects/api.md]", context)
+
+    def test_run_screening_passes_candidate_context_to_llm(self):
+        from auto_screening import run_screening
+
+        captured = {}
+
+        def fake_run_llm(prompt, timeout):
+            captured["prompt"] = prompt
+            return "test", "## 최종 판정\n\n### 최종 판정: 지원 보류\n"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            jd = tmp_path / "123-testco-backend.md"
+            jd.write_text(
+                "# Backend\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n| 포지션 | Backend |\n",
+                encoding="utf-8",
+            )
+
+            with patch("auto_screening.SCREENING_DIR", tmp_path / "screening"), \
+                 patch("auto_screening._load_candidate_context", return_value="[source: private/profile/summary-job.md]\n운영 안정성"), \
+                 patch("auto_screening._run_llm", side_effect=fake_run_llm), \
+                 patch("auto_screening.update_summary"):
+                result = run_screening(jd_path=jd, company_file=None, dry_run=False)
+
+        self.assertEqual(result.verdict, "지원 보류")
+        self.assertIn("[후보자 이력/경험 근거]", captured["prompt"])
+        self.assertIn("운영 안정성", captured["prompt"])
+
     def test_run_screening_fallback_when_llm_fails(self):
         from auto_screening import run_screening
 
