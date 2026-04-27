@@ -228,8 +228,10 @@ python3 templates/jd/pipeline.py --classify private/job_postings/unprocessed/
 | 방법 A (HTTP) 추출 실패 (status != ok) | 방법 B Chrome MCP fallback 진입 |
 | JD 추출 실패 (방법 B도 실패) | 사용자에게 수동 입력 요청, 해당 URL 스킵 |
 | 회사 프로필 URL 추출 실패 | 회사명 기반 멀티소스 검색으로 폴백 (Phase 3b) |
-| 회사 정보 추출 실패 | 경고 출력 후 스크리닝 계속 (제한된 정보로 분석) |
-| 회사 정보 검증 실패 | 불완전 데이터로 진행, 누락 필드 안내 |
+| 회사 정보 추출 실패 (플랫폼 장애/네트워크 오류/로그인·접근 제한 등 불가항력) | 경고 출력 후 제한된 정보로 스크리닝 계속 가능 |
+| 회사 정보 미수집/저완성도 (기존 스텁, `정보 없음` 다수, 검색·추출 미완료) | 스크리닝 중단, `company_info_incomplete`로 보류 |
+| 회사 정보 검증 실패 (파싱 오류 등 불가항력) | 불완전 데이터로 진행 가능하되 누락 필드 명시 |
+| 회사 정보 검증 결과 기준 미달 | 스크리닝 중단, 회사 정보 보완 후 재시도 |
 | 스크리닝 실패 | `private/job_postings/conditional/hold/`로 기본 분류 |
 | Chrome 연결 실패 | 브라우저 확인 요청 후 대기 |
 

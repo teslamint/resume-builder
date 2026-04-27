@@ -241,6 +241,102 @@ class TestAutoScreening(unittest.TestCase):
             self.assertTrue(result.screening_path.exists())
 
 
+class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
+    def test_run_auto_blocks_screening_when_company_info_incomplete(self):
+        from auto import run_auto
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            jd = tmp_path / "999001-testco-backend.md"
+            jd.write_text(
+                "# Backend\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n",
+                encoding="utf-8",
+            )
+            company_file = tmp_path / "company_info" / "testco.md"
+            company_file.parent.mkdir()
+            company_file.write_text("# TestCo\n", encoding="utf-8")
+            urls = tmp_path / "urls.txt"
+            urls.write_text("https://www.wanted.co.kr/wd/999001\n", encoding="utf-8")
+
+            extracted = MagicMock(output_path=jd, company="TestCo", title="Backend")
+            company_info = MagicMock(
+                company="TestCo",
+                file_path=company_file,
+                completeness=0.0,
+                thevc_attempted=False,
+                thevc_status="skipped",
+                investment_data_source="none",
+            )
+
+            with patch("auto.STATE_DIR", tmp_path / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.ensure_company_info", return_value=company_info), \
+                 patch("auto.run_screening") as mock_screening:
+                results, summary = run_auto(
+                    from_urls=urls,
+                    run_id="test-company-info-block",
+                    min_completeness=70.0,
+                )
+
+            self.assertEqual(summary.failed, 1)
+            self.assertEqual(summary.screened, 0)
+            self.assertEqual(results[0].status, "blocked_company_info")
+            self.assertEqual(results[0].error_stage, "company_info")
+            mock_screening.assert_not_called()
+
+    def test_run_auto_allows_incomplete_company_info_when_explicitly_overridden(self):
+        from auto import run_auto
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            jd = tmp_path / "999002-testco-backend.md"
+            jd.write_text(
+                "# Backend\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n",
+                encoding="utf-8",
+            )
+            company_file = tmp_path / "company_info" / "testco.md"
+            company_file.parent.mkdir()
+            company_file.write_text("# TestCo\n", encoding="utf-8")
+            urls = tmp_path / "urls.txt"
+            urls.write_text("https://www.wanted.co.kr/wd/999002\n", encoding="utf-8")
+
+            extracted = MagicMock(output_path=jd, company="TestCo", title="Backend")
+            company_info = MagicMock(
+                company="TestCo",
+                file_path=company_file,
+                completeness=0.0,
+                thevc_attempted=False,
+                thevc_status="skipped",
+                investment_data_source="none",
+            )
+            screening = MagicMock(
+                screening_path=tmp_path / "screening.md",
+                verdict="지원 보류",
+                used_fallback=False,
+            )
+
+            with patch("auto.STATE_DIR", tmp_path / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.ensure_company_info", return_value=company_info), \
+                 patch("auto.run_screening", return_value=screening) as mock_screening, \
+                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                results, summary = run_auto(
+                    from_urls=urls,
+                    run_id="test-company-info-override",
+                    min_completeness=70.0,
+                    allow_incomplete_company_info=True,
+                )
+
+            self.assertEqual(summary.failed, 0)
+            self.assertEqual(summary.screened, 1)
+            self.assertEqual(results[0].status, "processed")
+            mock_screening.assert_called_once()
+
+
 class TestAutoNotifications(unittest.TestCase):
     def test_send_notification_uses_openclaw_send_with_target(self):
         from notifications import send_notification

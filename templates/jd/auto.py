@@ -46,6 +46,7 @@ except ImportError:
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
 STATE_DIR = RESULTS_DIR
+DEFAULT_MIN_COMPLETENESS = 70.0
 
 
 def _state_path(run_id: str) -> Path:
@@ -306,7 +307,8 @@ def run_auto(
     no_classify: bool = False,
     thevc_mode: str = "auto",
     company_enrichment_only: bool = False,
-    min_completeness: float = 0.0,
+    min_completeness: float = DEFAULT_MIN_COMPLETENESS,
+    allow_incomplete_company_info: bool = False,
     resume: bool = False,
 ) -> tuple[List[AutoTaskResult], RunSummary]:
     config = load_config()
@@ -469,6 +471,29 @@ def run_auto(
             row.thevc_status = company_info.thevc_status
             row.investment_data_source = company_info.investment_data_source
 
+            if (
+                not allow_incomplete_company_info
+                and not dry_run
+                and company_info.completeness < min_completeness
+            ):
+                row.status = "blocked_company_info"
+                row.error_stage = "company_info"
+                row.error_reason = (
+                    f"회사정보 완성도 {company_info.completeness:.0f}% "
+                    f"< 기준 {min_completeness:.0f}%"
+                )
+                summary.failed += 1
+                state_items[job_id].update(
+                    stage="company_info",
+                    status="blocked",
+                    error=row.error_reason,
+                    company_file=row.company_file,
+                )
+                _save_state(run_id, state_items)
+                results.append(row)
+                print(f"   ⛔ 회사정보 보완 필요: {row.error_reason}")
+                continue
+
             # 3) screening — skip if already done and saved in state
             saved_screening_path = saved.get("screening_path", "")
             saved_verdict = saved.get("verdict", "")
@@ -586,8 +611,13 @@ def main() -> None:
     parser.add_argument(
         "--min-completeness",
         type=float,
-        default=0.0,
-        help="기존 파일 completeness가 이 값 미만이면 재수집 (0~100, 기본 0.0)",
+        default=DEFAULT_MIN_COMPLETENESS,
+        help=f"회사정보 completeness가 이 값 미만이면 스크리닝 중단 (0~100, 기본 {DEFAULT_MIN_COMPLETENESS:.0f})",
+    )
+    parser.add_argument(
+        "--allow-incomplete-company-info",
+        action="store_true",
+        help="플랫폼 장애/접근 제한 등 불가항력일 때만 회사정보 기준 미달 스크리닝 허용",
     )
     parser.add_argument("--notify-test", action="store_true", help="알림 테스트")
     parser.add_argument(
@@ -618,6 +648,7 @@ def main() -> None:
         thevc_mode=args.thevc_mode,
         company_enrichment_only=args.company_enrichment_only,
         min_completeness=args.min_completeness,
+        allow_incomplete_company_info=args.allow_incomplete_company_info,
         resume=args.resume,
     )
 
