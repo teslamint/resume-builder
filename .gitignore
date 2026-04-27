@@ -16,6 +16,7 @@ htmlcov/
 
 # Personal data (all private data lives under /private/)
 /private/
+/_workspace/
 
 # Keep example data
 !/example/
