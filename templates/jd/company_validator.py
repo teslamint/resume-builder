@@ -314,18 +314,20 @@ def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
     if data.employee_current and data.employee_left_1y:
         turnover_rate = data.employee_left_1y / data.employee_current
 
-        net_positive = False
+        net_growth_ok = False
         net_info = ""
         if data.employee_joined_1y is not None:
             net_change = data.employee_joined_1y - data.employee_left_1y
+            net_change_rate = net_change / data.employee_current if data.employee_current else 0
+            if net_change_rate > RISK_THRESHOLDS["shrinking_high"]:  # > -0.1
+                net_growth_ok = True
             if net_change > 0:
-                net_positive = True
-                net_info = f" (순증 +{net_change}명)"
+                net_info = f" (순증 +{net_change}명, {net_change_rate:+.0%})"
             elif net_change < 0:
-                net_info = f" (순감 {net_change}명)"
+                net_info = f" (순감 {net_change}명, {net_change_rate:.0%})"
 
         if turnover_rate >= RISK_THRESHOLDS["turnover_critical"]:
-            if net_positive:
+            if net_growth_ok:
                 result.risk_flags.append(RiskFlag(
                     code="TURNOVER_HIGH",
                     severity="high",
@@ -340,7 +342,7 @@ def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
                     value=f"{turnover_rate:.0%}"
                 ))
         elif turnover_rate >= RISK_THRESHOLDS["turnover_high"]:
-            if net_positive:
+            if net_growth_ok:
                 result.risk_flags.append(RiskFlag(
                     code="TURNOVER_MEDIUM",
                     severity="medium",
@@ -355,7 +357,7 @@ def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
                     value=f"{turnover_rate:.0%}"
                 ))
         elif turnover_rate >= RISK_THRESHOLDS["turnover_medium"]:
-            if not net_positive:
+            if not net_growth_ok:
                 result.risk_flags.append(RiskFlag(
                     code="TURNOVER_MEDIUM",
                     severity="medium",

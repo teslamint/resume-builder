@@ -118,8 +118,9 @@ class TestValidateCompany(unittest.TestCase):
         self.assertIn("TURNOVER_MEDIUM", codes)
         self.assertNotIn("TURNOVER_HIGH", codes)
 
-    def test_turnover_medium_no_net_positive(self):
-        data = self._make_data(employee_left_1y=25, employee_joined_1y=20)
+    def test_turnover_medium_significant_decline_fires_flag(self):
+        # 순감 -15% (< -10%): TURNOVER_MEDIUM 발생
+        data = self._make_data(employee_left_1y=25, employee_joined_1y=10)  # net=-15, rate=-15%
         result = validate_company(data, Path("test.md"))
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_MEDIUM", codes)
@@ -129,6 +130,14 @@ class TestValidateCompany(unittest.TestCase):
         result = validate_company(data, Path("test.md"))
         turnover_codes = [f.code for f in result.risk_flags if "TURNOVER" in f.code]
         self.assertEqual(turnover_codes, [])
+
+    def test_turnover_critical_slight_decline_downgrades_to_high(self):
+        # 순감 -8% (> -10%): CRITICAL → HIGH
+        data = self._make_data(employee_left_1y=52, employee_joined_1y=44)  # net=-8, rate=-8%
+        result = validate_company(data, Path("test.md"))
+        codes = [f.code for f in result.risk_flags]
+        self.assertIn("TURNOVER_HIGH", codes)
+        self.assertNotIn("TURNOVER_CRITICAL", codes)
 
     def test_completeness_all_required_present(self):
         data = self._make_data()
