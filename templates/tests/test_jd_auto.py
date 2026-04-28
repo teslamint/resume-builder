@@ -306,6 +306,8 @@ class TestAutoJdPathAfterClassify(unittest.TestCase):
                 encoding="utf-8",
             )
             pass_path = tmp_path / "pass" / "999010-testco-backend.md"
+            pass_path.parent.mkdir(parents=True, exist_ok=True)
+            pass_path.write_text("# Backend (classified)\n", encoding="utf-8")
 
             company_file = tmp_path / "company_info" / "testco.md"
             company_file.parent.mkdir()
@@ -330,8 +332,9 @@ class TestAutoJdPathAfterClassify(unittest.TestCase):
             )
 
             with patch("auto.STATE_DIR", tmp_path / "state"), \
+                 patch("auto.JOB_POSTINGS_DIR", tmp_path), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", side_effect=[None, pass_path]), \
+                 patch("auto.find_existing_jd", return_value=None), \
                  patch("auto.extract_jd_from_url", return_value=extracted), \
                  patch("auto.ensure_company_info", return_value=company_info), \
                  patch("auto.run_screening", return_value=screening), \
