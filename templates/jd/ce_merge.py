@@ -172,7 +172,7 @@ def build_enriched_markdown(merged: dict, company_name: str, source_urls: list[s
         salary_str = f"**{avg_salary:,}만원**"
         if salary_pct:
             salary_str += f" (상위 {salary_pct}%)"
-        salary_source = "Wanted"
+        salary_source = merged.get("salary_source") or "Wanted"
     else:
         salary_str = "정보 없음"
         salary_source = "정보 없음"

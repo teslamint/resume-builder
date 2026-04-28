@@ -219,6 +219,24 @@ class TestScanCandidates(unittest.TestCase):
             result = scan_candidates(queue_path)
             self.assertEqual(result, [])
 
+    def test_resolves_existing_file_by_heading_alias(self):
+        from enrich_saramin_company_info import scan_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            queue_path = tmp_path / "queue.txt"
+            queue_path.write_text("네오랩컨버전스\n", encoding="utf-8")
+            company_dir = tmp_path / "company_info"
+            company_dir.mkdir()
+            target = company_dir / "네오랩컨버전스-neolab.md"
+            target.write_text("# 네오랩컨버전스(NeoLab)\n", encoding="utf-8")
+
+            with patch("enrich_saramin_company_info.COMPANY_INFO_DIR", company_dir), \
+                 patch("auto_company.COMPANY_INFO_DIR", company_dir):
+                candidates = scan_candidates(queue_path)
+
+            self.assertEqual(candidates[0].file_path, target)
+
 
 class TestBuildMergedDict(unittest.TestCase):
     def test_existing_value_wins_over_saramin(self):
@@ -250,6 +268,19 @@ class TestBuildMergedDict(unittest.TestCase):
         merged = _build_merged_dict(existing, saramin, [])
         self.assertEqual(merged["industry"], "IT서비스")
         self.assertEqual(merged["employee_count"], 150)
+
+    def test_saramin_salary_marks_saramin_source(self):
+        from enrich_saramin_company_info import _build_merged_dict
+        from company_validator import CompanyData
+        from ce_types import PlatformData
+
+        existing = CompanyData(name="회사")
+        saramin = PlatformData(platform="saramin", source_url="https://saramin/csn=1", company_name="회사")
+        saramin.avg_salary = 4500
+
+        merged = _build_merged_dict(existing, saramin, [])
+        self.assertEqual(merged["avg_salary"], 4500)
+        self.assertEqual(merged["salary_source"], "Saramin")
 
     def test_investment_total_conversion(self):
         from enrich_saramin_company_info import _build_merged_dict

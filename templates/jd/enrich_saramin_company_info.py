@@ -15,14 +15,24 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from .auto_company import SARAMIN_ENRICHMENT_QUEUE_PATH, _append_saramin_enrichment_queue, is_headhunting_company
+    from .auto_company import (
+        SARAMIN_ENRICHMENT_QUEUE_PATH,
+        _append_saramin_enrichment_queue,
+        _resolve_company_alias,
+        is_headhunting_company,
+    )
     from .ce_merge import build_enriched_markdown
     from .ce_saramin import extract_saramin
     from .ce_types import PlatformData
     from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
     from .naming import slugify_company
 except ImportError:
-    from auto_company import SARAMIN_ENRICHMENT_QUEUE_PATH, _append_saramin_enrichment_queue, is_headhunting_company
+    from auto_company import (
+        SARAMIN_ENRICHMENT_QUEUE_PATH,
+        _append_saramin_enrichment_queue,
+        _resolve_company_alias,
+        is_headhunting_company,
+    )
     from ce_merge import build_enriched_markdown
     from ce_saramin import extract_saramin
     from ce_types import PlatformData
@@ -79,12 +89,7 @@ def scan_candidates(queue_path: Path = SARAMIN_ENRICHMENT_QUEUE_PATH) -> list[Sa
     for company in companies:
         if is_headhunting_company(company):
             continue
-        slug = slugify_company(company)
-        file_path = COMPANY_INFO_DIR / f"{slug}.md"
-        if not file_path.exists():
-            file_path = COMPANY_INFO_DIR / f"{Path(company).name}.md"
-        if not file_path.exists():
-            file_path = None
+        file_path = _resolve_company_alias(company)
 
         completeness = 0.0
         if file_path and file_path.exists():
@@ -110,6 +115,9 @@ def _build_merged_dict(existing: CompanyData, saramin: PlatformData, existing_ur
     else:
         inv_total = None
 
+    avg_salary = existing.avg_salary if not _is_empty(existing.avg_salary) else saramin.avg_salary
+    salary_source = "Existing" if not _is_empty(existing.avg_salary) else ("Saramin" if not _is_empty(saramin.avg_salary) else None)
+
     return {
         "company_name": existing.name or saramin.company_name,
         "company_name_en": existing.name_en if not _is_empty(existing.name_en) else saramin.company_name_en,
@@ -118,7 +126,8 @@ def _build_merged_dict(existing: CompanyData, saramin: PlatformData, existing_ur
         "employee_count": existing.employee_current if not _is_empty(existing.employee_current) else saramin.employee_count,
         "employee_joined_1y": existing.employee_joined_1y if not _is_empty(existing.employee_joined_1y) else saramin.employee_joined_1y,
         "employee_left_1y": existing.employee_left_1y if not _is_empty(existing.employee_left_1y) else saramin.employee_left_1y,
-        "avg_salary": existing.avg_salary if not _is_empty(existing.avg_salary) else saramin.avg_salary,
+        "avg_salary": avg_salary,
+        "salary_source": salary_source,
         "salary_percentile": existing.salary_percentile if not _is_empty(existing.salary_percentile) else saramin.salary_percentile,
         "revenue": None,
         "investment_round": existing.investment_round if not _is_empty(existing.investment_round) else saramin.investment_round,
@@ -228,11 +237,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.company:
-        slug = slugify_company(args.company)
-        file_path = COMPANY_INFO_DIR / f"{slug}.md"
+        file_path = _resolve_company_alias(args.company)
         candidates = [SaraminCandidate(
             company=args.company,
-            file_path=file_path if file_path.exists() else None,
+            file_path=file_path,
             completeness=0.0,
         )]
     else:
