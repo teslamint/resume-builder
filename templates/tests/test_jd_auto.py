@@ -328,5 +328,62 @@ class TestScreeningOnlyFindsUnprocessed(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestAutoJdPathAfterClassify(unittest.TestCase):
+    """Verify that jd_path in result row reflects post-classification file location."""
+
+    def test_jd_path_updated_after_classification(self):
+        from auto import run_auto
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            unprocessed_path = tmp_path / "999010-testco-backend.md"
+            unprocessed_path.write_text(
+                "# Backend\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n",
+                encoding="utf-8",
+            )
+            pass_path = tmp_path / "pass" / "999010-testco-backend.md"
+            pass_path.parent.mkdir(parents=True, exist_ok=True)
+            pass_path.write_text("# Backend (classified)\n", encoding="utf-8")
+
+            company_file = tmp_path / "company_info" / "testco.md"
+            company_file.parent.mkdir()
+            company_file.write_text("# TestCo\n", encoding="utf-8")
+
+            urls = tmp_path / "urls.txt"
+            urls.write_text("https://www.wanted.co.kr/wd/999010\n", encoding="utf-8")
+
+            extracted = MagicMock(output_path=unprocessed_path, company="TestCo", title="Backend")
+            company_info = MagicMock(
+                company="TestCo",
+                file_path=company_file,
+                completeness=100.0,
+                thevc_attempted=False,
+                thevc_status="skipped",
+                investment_data_source="none",
+            )
+            screening = MagicMock(
+                screening_path=tmp_path / "screening.md",
+                verdict="지원 추천",
+                used_fallback=False,
+            )
+
+            with patch("auto.STATE_DIR", tmp_path / "state"), \
+                 patch("auto.JOB_POSTINGS_DIR", tmp_path), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.ensure_company_info", return_value=company_info), \
+                 patch("auto.run_screening", return_value=screening), \
+                 patch("auto._classify", return_value=("지원 추천", "pass")):
+                results, summary = run_auto(
+                    from_urls=urls,
+                    run_id="test-jd-path-after-classify",
+                )
+
+            self.assertEqual(summary.failed, 0)
+            self.assertEqual(results[0].jd_path, str(pass_path))
+
+
 if __name__ == "__main__":
     unittest.main()

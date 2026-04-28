@@ -97,7 +97,7 @@ def _load_state(run_id: str) -> dict:
 def _find_latest_state() -> Optional[str]:
     if not STATE_DIR.exists():
         return None
-    state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), reverse=True)
+    state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for sf in state_files:
         try:
             with open(sf, "r", encoding="utf-8") as f:
@@ -512,6 +512,11 @@ def run_auto(
                 if verdict:
                     row.verdict = verdict
                 row.classified_folder = classified
+                if classified:
+                    new_path = JOB_POSTINGS_DIR / classified / Path(row.jd_path).name
+                    if new_path.exists():
+                        row.jd_path = str(new_path)
+                        state_items[job_id]["jd_path"] = str(new_path)
 
             _update_verdict_count(summary, row.verdict)
 
