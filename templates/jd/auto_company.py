@@ -118,8 +118,7 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
             candidates.append(p)
             seen.add(p)
 
-    slug_path = COMPANY_INFO_DIR / f"{slugify_company(company)}.md"
-    _add(slug_path)
+    _add(COMPANY_INFO_DIR / f"{slugify_company(company)}.md")
     _add(COMPANY_INFO_DIR / f"{company}.md")
 
     # Reverse-lookup by # heading. Cheap enough as fallback (one-line read per file).
@@ -137,19 +136,16 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
     if len(candidates) == 1:
         return candidates[0]
 
-    def _slug_match(p: Path) -> int:
-        return 1 if p == slug_path else 0
-
     def _exact_match(p: Path) -> int:
         head = _read_first_heading(p)
         return 1 if head and head == company_norm else 0
 
     scored = [
-        (_slug_match(c), _exact_match(c), _completeness_score(c), c.stat().st_mtime, c)
+        (_exact_match(c), _completeness_score(c), c.stat().st_mtime, c)
         for c in candidates
     ]
-    scored.sort(key=lambda t: (-t[0], -t[1], -t[2], -t[3]))
-    return scored[0][4]
+    scored.sort(key=lambda t: (-t[0], -t[1], -t[2]))
+    return scored[0][3]
 
 
 def _find_existing_company_file(company: str) -> Optional[Path]:
