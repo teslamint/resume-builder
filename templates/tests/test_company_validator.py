@@ -229,37 +229,72 @@ class TestParseCompanyFile(unittest.TestCase):
             self.assertEqual(data.investment_round, "Series B")
             self.assertAlmostEqual(data.investment_total, 130.0)
 
-    def test_parse_explicit_startup_yes(self):
+    def test_parse_startup_status_from_company_info_table(self):
         import tempfile
         with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / "startup_yes.md"
+            p = Path(td) / "startup-status.md"
             p.write_text(
-                "# 스타트업\n\n"
+                "# 명시스타트업\n\n"
                 "## 기업 정보\n\n"
                 "| 항목 | 내용 |\n|------|------|\n"
-                "| 스타트업 여부 | Yes |\n",
+                "| 회사명 | 명시스타트업 |\n"
+                "| 스타트업 여부 | Yes |\n"
+                "| 설립 | 2020년 |\n"
+                "| 직원수 | 25명 |\n",
                 encoding="utf-8",
             )
+
             data = parse_company_file(p)
+
             self.assertTrue(data.is_startup)
 
-    def test_parse_explicit_startup_no_excludes_series_text(self):
+    def test_parse_non_startup_status_locks_keyword_detection(self):
         import tempfile
         with tempfile.TemporaryDirectory() as td:
-            p = Path(td) / "startup_no.md"
+            p = Path(td) / "non-startup.md"
             p.write_text(
                 "# 비스타트업\n\n"
                 "## 기업 정보\n\n"
                 "| 항목 | 내용 |\n|------|------|\n"
-                "| 스타트업 여부 | No |\n\n"
-                "## 투자 정보\n\n"
-                "| 항목 | 내용 |\n|------|------|\n"
-                "| 현재 라운드 | Series B |\n"
-                "| 누적 투자금 | 100억원 |\n",
+                "| 회사명 | 비스타트업 |\n"
+                "| 스타트업 여부 | No |\n"
+                "| 설립 | 2010년 |\n"
+                "| 직원수 | 250명 |\n\n"
+                "본문에 스타트업 단어가 있어도 명시값을 우선합니다.\n",
                 encoding="utf-8",
             )
+
             data = parse_company_file(p)
+
             self.assertFalse(data.is_startup)
+
+    def test_startup_keyword_tags_affect_completeness(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "young-startup.md"
+            p.write_text(
+                "# 영스타트업\n\n"
+                "## 기업 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 설립 | 2024년 |\n"
+                "| 직원수 | 25명 |\n"
+                "| 업종 | IT |\n\n"
+                "## 연봉 정보\n\n"
+                "| 항목 | 금액 |\n|------|------|\n"
+                "| 평균 연봉 | **5,200만원** |\n\n"
+                "태그: 설립3년이하, 인원 급성장\n",
+                encoding="utf-8",
+            )
+
+            data = parse_company_file(p)
+            result = validate_company(data, p)
+
+            self.assertTrue(data.is_startup)
+            self.assertAlmostEqual(result.completeness_score, 3 / 7 * 100, places=1)
+            missing_fields = [issue.field for issue in result.issues]
+            self.assertIn("investment_round", missing_fields)
+            self.assertIn("investment_total", missing_fields)
+
 
 
 if __name__ == "__main__":

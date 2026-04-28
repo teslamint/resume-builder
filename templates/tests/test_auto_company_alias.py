@@ -61,6 +61,36 @@ STARTUP_BODY = (
     "- https://www.wanted.co.kr/company/11881\n"
 )
 
+# Startup with missing investment total — triggers new startup_needs_thevc condition
+STARTUP_NO_TOTAL_BODY = (
+    "# 래브라도랩스\n\n"
+    "## 기업 정보\n\n"
+    "| 항목 | 내용 |\n"
+    "|------|------|\n"
+    "| 회사명 | 래브라도랩스 |\n"
+    "| 스타트업 여부 | Yes |\n"
+    "| 업종 | IT |\n"
+    "| 설립 | 2018년 |\n"
+    "| 직원수 | 36명 |\n\n"
+    "## 연봉 정보\n\n"
+    "| 항목 | 금액 | 출처 |\n"
+    "|------|------|------|\n"
+    "| 평균 연봉 | **5680만원** | Wanted |\n\n"
+    "## 인원 통계\n\n"
+    "| 항목 | 수치 |\n"
+    "|------|------|\n"
+    "| 현재 인원 | 36명 |\n"
+    "| 1년간 입사자 | 15명 |\n"
+    "| 1년간 퇴사자 | 11명 |\n\n"
+    "## 태그\n"
+    "- 인원 급성장\n\n"
+    "## 회사 소개\n\n"
+    "기존 소개 보존 대상.\n\n"
+    "---\n\n"
+    "*출처:*\n"
+    "- https://www.wanted.co.kr/company/11881\n"
+)
+
 
 class TestResolveCompanyAlias(unittest.TestCase):
     def _setup_dir(self, files: dict[str, str]) -> tuple[tempfile.TemporaryDirectory, Path]:
@@ -120,7 +150,7 @@ class TestExistingThevcEnrichment(unittest.TestCase):
         from auto_company import ensure_company_info
 
         tmp, company_dir = TestResolveCompanyAlias()._setup_dir({
-            "래브라도랩스.md": STARTUP_BODY,
+            "래브라도랩스.md": STARTUP_NO_TOTAL_BODY,
         })
         jd_path = Path(tmp.name) / "jd.md"
         jd_path.write_text("# Backend - 래브라도랩스\n", encoding="utf-8")
@@ -148,8 +178,9 @@ class TestExistingThevcEnrichment(unittest.TestCase):
             self.assertTrue(result.used_existing)
             self.assertTrue(result.thevc_attempted)
             self.assertEqual(result.investment_data_source, "thevc")
-            self.assertIn("| 주요 투자자 | KB인베스트먼트 |", text)
             self.assertIn("https://thevc.kr/labradorlabs", text)
+            self.assertIn("Series B", text)
+            self.assertIn("100억원", text)
             self.assertIn("기존 소개 보존 대상.", text)
             self.assertIn("- 인원 급성장", text)
         finally:

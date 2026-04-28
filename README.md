@@ -54,6 +54,9 @@ cp -r example/companies/* private/companies/
 # 지원용 이력서
 ./build.sh job all
 
+# 지원 패킷: 1페이지 이력서 + 상세 경력기술서 PDF
+./build.sh job packet
+
 # 특정 회사 타겟
 ./build.sh job full --target company-name
 ```

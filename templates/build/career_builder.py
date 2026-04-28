@@ -39,6 +39,10 @@ CONTACT_LABELS = {
 }
 
 
+def resolve_base_dir(example: bool) -> Path:
+    return _BASE_DIR / ('example' if example else 'private')
+
+
 def discover_all_companies(base_dir: Path) -> list[Path]:
     """companies/ 디렉토리의 모든 회사를 Period 기준 최신순 정렬."""
     companies_dir = base_dir / 'companies'
@@ -104,8 +108,9 @@ def build_career_project(project_path: Path, index: int) -> str:
 
     title = ''
     for line in content.splitlines():
-        if line.startswith('# '):
-            title = line[2:].strip()
+        stripped = line.strip()
+        if stripped.startswith('#'):
+            title = stripped.lstrip('#').strip()
             break
 
     parts = [f'### 프로젝트 {index}: {title}']
@@ -117,6 +122,11 @@ def build_career_project(project_path: Path, index: int) -> str:
             parts.append(f'- 기간: {stripped.split(":", 1)[1].strip()}')
         elif stripped.startswith('- Type:'):
             parts.append(f'- 유형: {stripped.split(":", 1)[1].strip()}')
+
+    if not overview.strip():
+        period = extract_section(content, 'Period')
+        if period.strip():
+            parts.append(f'- 기간: {" ".join(period.strip().splitlines())}')
 
     summary = extract_section(content, 'Summary')
     if summary.strip():
@@ -130,6 +140,8 @@ def build_career_project(project_path: Path, index: int) -> str:
             parts.append(f'- 기술스택: {", ".join(tech_items)}')
 
     resp_section = extract_section(content, 'Key Responsibilities')
+    if not resp_section.strip():
+        resp_section = extract_section(content, 'Responsibilities')
     if resp_section.strip():
         parts.append('- 상세 업무:')
         for line in resp_section.splitlines():
@@ -229,10 +241,7 @@ def main():
                         help='example/ 디렉토리 데이터 사용')
     args = parser.parse_args()
 
-    if args.example:
-        base_dir = _BASE_DIR / 'example'
-    else:
-        base_dir = _BASE_DIR
+    base_dir = resolve_base_dir(args.example)
 
     result = build_career(base_dir, args.format)
 

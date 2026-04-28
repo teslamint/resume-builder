@@ -50,6 +50,142 @@ class TestAutoCompany(unittest.TestCase):
             self.assertTrue(result.used_existing)
             self.assertEqual(result.file_path, existing)
 
+    def test_existing_complete_startup_without_investment_attempts_thevc(self):
+        from auto_company import ensure_company_info
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            company_dir = tmp_path / "company_info"
+            company_dir.mkdir()
+
+            existing = company_dir / "startupco.md"
+            existing.write_text(
+                "# StartupCo\n\n"
+                "## 기업 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 회사명 | StartupCo |\n| 설립 | 2021년 |\n| 직원수 | 30명 |\n\n"
+                "## 연봉 정보\n\n"
+                "| 항목 | 금액 | 출처 |\n|------|------|------|\n"
+                "| 평균 연봉 | **5000만원** | test |\n",
+                encoding="utf-8",
+            )
+
+            jd = tmp_path / "jd.md"
+            jd.write_text(
+                "# Backend\n\n"
+                "설립3년이하 스타트업\n\n"
+                "## 기본 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 회사명 | StartupCo |\n| 출처 | [Wanted](https://wanted.co.kr/wd/3) |\n",
+                encoding="utf-8",
+            )
+
+            investment = {
+                "round": "Series A",
+                "total": "100억원",
+                "source": "https://thevc.kr/startupco",
+            }
+            with patch("auto_company.COMPANY_INFO_DIR", company_dir), \
+                 patch("auto_company._extract_thevc_investment", return_value=("success", investment)) as mock_thevc:
+                result = ensure_company_info(
+                    jd_path=jd,
+                    jd_url="https://wanted.co.kr/wd/3",
+                    company_name="StartupCo",
+                    thevc_mode="auto",
+                    dry_run=False,
+                    min_completeness=70.0,
+                )
+
+            mock_thevc.assert_called_once_with("StartupCo")
+            self.assertTrue(result.used_existing)
+            self.assertTrue(result.thevc_attempted)
+            self.assertEqual(result.thevc_status, "success")
+            self.assertEqual(result.investment_data_source, "thevc")
+            content = existing.read_text(encoding="utf-8")
+            self.assertIn("## 투자 정보", content)
+            self.assertIn("| 현재 라운드 | Series A |", content)
+            self.assertIn("| 누적 투자금 | 100억원 |", content)
+
+    def test_existing_complete_startup_skip_mode_reuses_without_thevc(self):
+        from auto_company import ensure_company_info
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            company_dir = tmp_path / "company_info"
+            company_dir.mkdir()
+
+            existing = company_dir / "startupco.md"
+            existing.write_text(
+                "# StartupCo\n\n"
+                "## 기업 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 회사명 | StartupCo |\n| 설립 | 2021년 |\n| 직원수 | 30명 |\n\n"
+                "## 연봉 정보\n\n"
+                "| 항목 | 금액 | 출처 |\n|------|------|------|\n"
+                "| 평균 연봉 | **5000만원** | test |\n",
+                encoding="utf-8",
+            )
+
+            jd = tmp_path / "jd.md"
+            jd.write_text(
+                "# Backend\n\n"
+                "설립3년이하 스타트업\n\n"
+                "## 기본 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 회사명 | StartupCo |\n",
+                encoding="utf-8",
+            )
+
+            with patch("auto_company.COMPANY_INFO_DIR", company_dir), \
+                 patch("auto_company._extract_thevc_investment") as mock_thevc:
+                result = ensure_company_info(
+                    jd_path=jd,
+                    jd_url="https://wanted.co.kr/wd/3",
+                    company_name="StartupCo",
+                    thevc_mode="skip",
+                    dry_run=False,
+                    min_completeness=70.0,
+                )
+
+            mock_thevc.assert_not_called()
+            self.assertTrue(result.used_existing)
+            self.assertFalse(result.thevc_attempted)
+            self.assertEqual(result.thevc_status, "skipped")
+            self.assertEqual(result.investment_data_source, "existing")
+            self.assertNotIn("## 투자 정보", existing.read_text(encoding="utf-8"))
+
+    def test_generated_company_info_includes_startup_status(self):
+        from auto_company import ensure_company_info
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            company_dir = tmp_path / "company_info"
+            company_dir.mkdir()
+
+            jd = tmp_path / "jd.md"
+            jd.write_text(
+                "# Backend\n\n"
+                "투자 시리즈 A 스타트업\n\n"
+                "## 기본 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 회사명 | TemplateCo |\n",
+                encoding="utf-8",
+            )
+
+            with patch("auto_company.COMPANY_INFO_DIR", company_dir), \
+                 patch("auto_company._extract_thevc_investment", return_value=("access_limited", None)), \
+                 patch("auto_company.extract_company_info", side_effect=RuntimeError("no external")):
+                result = ensure_company_info(
+                    jd_path=jd,
+                    jd_url="https://wanted.co.kr/wd/4",
+                    company_name="TemplateCo",
+                    thevc_mode="auto",
+                    dry_run=False,
+                )
+
+            content = result.file_path.read_text(encoding="utf-8")
+            self.assertIn("| 스타트업 여부 | Yes |", content)
+
     def test_ensure_company_info_min_completeness_triggers_recollection(self):
         from auto_company import ensure_company_info
 
@@ -508,8 +644,6 @@ class TestAutoJdPathAfterClassify(unittest.TestCase):
                 encoding="utf-8",
             )
             pass_path = tmp_path / "pass" / "999010-testco-backend.md"
-            pass_path.parent.mkdir(parents=True, exist_ok=True)
-            pass_path.write_text("# Backend (classified)\n", encoding="utf-8")
 
             company_file = tmp_path / "company_info" / "testco.md"
             company_file.parent.mkdir()
@@ -534,9 +668,8 @@ class TestAutoJdPathAfterClassify(unittest.TestCase):
             )
 
             with patch("auto.STATE_DIR", tmp_path / "state"), \
-                 patch("auto.JOB_POSTINGS_DIR", tmp_path), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.find_existing_jd", side_effect=[None, pass_path]), \
                  patch("auto.extract_jd_from_url", return_value=extracted), \
                  patch("auto.ensure_company_info", return_value=company_info), \
                  patch("auto.run_screening", return_value=screening), \

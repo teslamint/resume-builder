@@ -133,4 +133,6 @@ VARIANT_CONFIG = {
 | 전체 | `./build.sh <variant> full` | PDF, HTML, MD, TXT |
 | 요약 | `./build.sh <variant> short` | PDF, HTML, MD |
 | Wanted | `./build.sh <variant> wanted` | TXT (채용사이트용) |
-| 모두 | `./build.sh <variant> all` | 위 모든 포맷 |
+| 경력기술서 | `./build.sh <variant> career` | PDF, HTML, MD |
+| 지원 패킷 | `./build.sh <variant> packet` | 1페이지 이력서 + 상세 경력기술서 PDF/HTML/MD |
+| 모두 | `./build.sh <variant> all` | full + short + wanted |

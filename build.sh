@@ -112,7 +112,7 @@ generate_notes() {
 }
 
 usage() {
-    echo "Usage: $0 <public|job|example> [full|short|wanted|base|all] [options]" >&2
+    echo "Usage: $0 <public|job|example> [full|short|wanted|career|packet|base|all] [options]" >&2
     echo "" >&2
     echo "Variants:" >&2
     echo "  public  - Senior profile, full company details, certificates" >&2
@@ -124,6 +124,7 @@ usage() {
     echo "  short   - Build 1-page resume only" >&2
     echo "  wanted  - Build Wanted site format" >&2
     echo "  career  - Build detailed career description" >&2
+    echo "  packet  - Build 1-page resume + detailed career description" >&2
     echo "  base    - Build base resume for diff (job only)" >&2
     echo "  all     - Build full + short + wanted (default)" >&2
     echo "" >&2
@@ -200,6 +201,10 @@ case "$format" in
         build_wanted "$variant" "$target" "$example_flag"
         ;;
     career)
+        build_career "$example_flag"
+        ;;
+    packet)
+        build_short "$variant" "$target" "$example_flag"
         build_career "$example_flag"
         ;;
     base)

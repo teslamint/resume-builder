@@ -401,7 +401,18 @@ def _inject_thevc_into_file(file_path: Path, investment: dict) -> None:
 def _inject_thevc_note_into_file(file_path: Path, thevc_note: str) -> None:
     """Add TheVC status note to file when TheVC failed but company is startup."""
     content = file_path.read_text(encoding="utf-8")
-    if "## 투자 정보" not in content:
+    if "TheVC" in content:
+        return
+    if "## 투자 정보" in content:
+        content = re.sub(
+            r"(## 투자 정보.*?)(?=\n## |\n---|\Z)",
+            lambda m: m.group(1).rstrip() + f"\n\n> {thevc_note}\n",
+            content,
+            count=1,
+            flags=re.DOTALL,
+        )
+        file_path.write_text(content, encoding="utf-8")
+    else:
         note_section = f"\n## 투자 정보\n\n| 항목 | 내용 |\n|------|------|\n| 현재 라운드 | 정보 없음 |\n| 누적 투자금 | 정보 없음 |\n\n> {thevc_note}\n"
         if "\n---\n" in content:
             content = content.replace("\n---\n", f"{note_section}\n---\n", 1)
@@ -443,6 +454,14 @@ def _append_saramin_enrichment_queue(company: str) -> None:
             f.write(company + "\n")
 
 
+def _thevc_failure_note(status: str) -> str:
+    if status == "not_logged_in":
+        return "TheVC 로그인 필요로 투자정보를 수집하지 못했습니다."
+    if status == "access_limited":
+        return "TheVC 접근 제한으로 투자정보를 수집하지 못했습니다."
+    return "TheVC 투자정보 추출에 실패했습니다."
+
+
 def ensure_company_info(
     jd_path: Path,
     jd_url: str,
@@ -477,8 +496,10 @@ def ensure_company_info(
         )
 
     existing = _find_existing_company_file(company)
+    jd_text = jd_path.read_text(encoding="utf-8")
     if existing:
         completeness = -1.0
+        data = None
         try:
             data = parse_company_file(existing)
             result = validate_company(data, existing)
@@ -489,16 +510,19 @@ def ensure_company_info(
                 "completeness 파싱 실패 (%s): %s — re-collection 진행", existing, exc
             )
 
+        startup_signal = (data.is_startup if data else False) or _looks_startup(jd_text)
+        missing_investment_data = (
+            data is not None
+            and (data.investment_round is None or data.investment_total is None)
+        )
+        startup_needs_thevc = startup_signal and missing_investment_data
+
         if completeness >= 0 and completeness >= min_completeness:
-            if (
-                thevc_mode != "skip"
-                and _existing_needs_thevc_enrichment(existing, completeness)
-            ):
+            if startup_needs_thevc and thevc_mode != "skip":
                 thevc_status, investment_data = _extract_thevc_investment(company)
                 if thevc_status == "success" and investment_data:
                     _inject_thevc_into_file(existing, investment_data)
-                    data = parse_company_file(existing)
-                    completeness = validate_company(data, existing).completeness_score
+                    completeness = _completeness_score(existing)
                     return CompanyInfoResult(
                         company=company,
                         file_path=existing,
@@ -509,9 +533,13 @@ def ensure_company_info(
                         investment_data_source="thevc",
                     )
 
-                _append_enrichment_queue(company)
                 if thevc_mode == "require":
                     raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
+
+                thevc_note = _thevc_failure_note(thevc_status)
+                _inject_thevc_note_into_file(existing, thevc_note)
+                _append_enrichment_queue(company)
+                completeness = _completeness_score(existing)
                 return CompanyInfoResult(
                     company=company,
                     file_path=existing,
@@ -544,7 +572,6 @@ def ensure_company_info(
                 investment_data_source="existing",
             )
 
-    jd_text = jd_path.read_text(encoding="utf-8")
     startup = _looks_startup(jd_text)
 
     thevc_attempted = False
@@ -559,14 +586,9 @@ def ensure_company_info(
         if thevc_status == "success" and investment_data:
             investment_source = "thevc"
             thevc_note = "TheVC에서 투자정보를 추출했습니다."
-        elif thevc_status == "not_logged_in":
-            thevc_note = "TheVC 로그인 필요로 투자정보를 수집하지 못했습니다."
-            _append_enrichment_queue(company)
-        elif thevc_status == "access_limited":
-            thevc_note = "TheVC 접근 제한으로 투자정보를 수집하지 못했습니다."
-            _append_enrichment_queue(company)
         else:
-            thevc_note = "TheVC 투자정보 추출에 실패했습니다."
+            thevc_note = _thevc_failure_note(thevc_status)
+            _append_enrichment_queue(company)
 
         if thevc_mode == "require" and thevc_status != "success":
             raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")

@@ -68,6 +68,7 @@ class TestRoundTrip:
     def test_investment_round(self):
         result = _roundtrip([_make(platform="thevc", investment_round="Series B")])
         assert result.investment_round == "Series B"
+        assert result.is_startup
 
     def test_investment_total(self):
         result = _roundtrip([_make(platform="thevc", investment_total="298억원")])

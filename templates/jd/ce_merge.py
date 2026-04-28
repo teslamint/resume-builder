@@ -187,6 +187,12 @@ def build_enriched_markdown(merged: dict, company_name: str, source_urls: list[s
     inv_total = merged.get("investment_total")
     investors = merged.get("investors", [])
     has_investment = inv_round or inv_total
+    tags = merged.get("tags", [])
+    startup = has_investment or any(
+        token in tag
+        for tag in tags
+        for token in ("스타트업", "Series", "시리즈", "벤처", "투자 유치", "설립3년이하", "인원 급성장", "누적 투자", "투자 라운드")
+    )
 
     # Revenue
     revenue_list = merged.get("revenue")
@@ -271,7 +277,6 @@ def build_enriched_markdown(merged: dict, company_name: str, source_urls: list[s
         sections.append("\n## 복지/혜택\n\n" + "\n".join(f"- {b}" for b in benefits[:20]))
 
     # Tags
-    tags = merged.get("tags", [])
     if tags:
         sections.append("\n## 태그\n" + "\n".join(f"- {t}" for t in tags))
 

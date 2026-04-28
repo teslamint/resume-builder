@@ -568,6 +568,7 @@ def run_auto(
                 not allow_incomplete_company_info
                 and not dry_run
                 and company_info.completeness < min_completeness
+                and company_info.investment_data_source != "headhunting_excluded"
             ):
                 row.status = "blocked_company_info"
                 row.error_stage = "company_info"
@@ -631,8 +632,8 @@ def run_auto(
                     row.verdict = verdict
                 row.classified_folder = classified
                 if classified:
-                    new_path = JOB_POSTINGS_DIR / classified / Path(row.jd_path).name
-                    if new_path.exists():
+                    new_path = find_existing_jd(job_id)
+                    if new_path:
                         row.jd_path = str(new_path)
                         state_items[job_id]["jd_path"] = str(new_path)
 

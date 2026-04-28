@@ -213,6 +213,15 @@ def parse_company_file(file_path: Path) -> CompanyData:
         industry_match = re.search(r'업종.*?\|\s*([^|]+)', section_text)
         if industry_match:
             data.industry = industry_match.group(1).strip()
+
+        startup_match = re.search(r'스타트업\s*여부.*?\|\s*([^|\n]+)', section_text)
+        if startup_match:
+            startup_value = startup_match.group(1).strip().lower()
+            if startup_value in {"yes", "y", "true", "예", "맞음", "스타트업"}:
+                data.is_startup = True
+            elif startup_value in {"no", "n", "false", "아니오", "아님", "비스타트업"}:
+                data.is_startup = False
+                startup_status_locked = True
     
     # 인원 통계 or 인원 현황 (stops at next ## but not ###)
     staff_section = re.search(r'## 인원 (?:통계|현황).*?(?=\n## [^#]|\Z)', content, re.DOTALL)

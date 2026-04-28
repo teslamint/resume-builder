@@ -39,6 +39,15 @@ pip3 install weasyprint
 - `private/build/resume-example-short.pdf` - 1페이지 요약
 - `private/build/resume-example-wanted.txt` - 채용 사이트용 텍스트
 
+1페이지 이력서와 상세 경력기술서 PDF만 함께 확인하려면:
+
+```bash
+./build.sh example packet
+```
+
+추가 생성 파일:
+- `private/build/career-description-example.pdf` - 상세 경력기술서
+
 ### 2. 개인 데이터 설정
 
 `example/` 디렉토리를 참고하여 개인 데이터를 생성합니다:
@@ -62,6 +71,9 @@ cp example/profile/*.md private/profile/
 
 # 지원용
 ./build.sh job all
+
+# 지원 패킷: 1페이지 이력서 + 상세 경력기술서 PDF
+./build.sh job packet
 ```
 
 ## 디렉토리 구조

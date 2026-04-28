@@ -3,8 +3,10 @@
 
 import tempfile
 import unittest
-from datetime import datetime
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 
 from resume_builder import _BASE_DIR
 
@@ -13,6 +15,7 @@ from career_builder import (
     build_career_project,
     build_contact,
     discover_all_companies,
+    resolve_base_dir,
 )
 
 
@@ -25,12 +28,27 @@ class TestSmokeExampleBuild(unittest.TestCase):
         self.assertTrue(len(result) > 0)
         self.assertIn("경력기술서", result)
 
+    def test_example_career_includes_company_and_projects(self):
+        result = build_career(base_dir=EXAMPLE_BASE, format_type="md")
+        self.assertIn("테크코프 주식회사", result)
+        self.assertIn("프로젝트 1: API 성능 최적화", result)
+        self.assertIn("프로젝트 2: 결제 시스템 개발", result)
+        self.assertIn("응답 시간 30% 개선", result)
+
     def test_discover_all_companies_sorted(self):
         companies = discover_all_companies(EXAMPLE_BASE)
         self.assertGreater(len(companies), 0)
         # All returned paths should have a profile.md
         for c in companies:
             self.assertTrue((c / "profile.md").exists())
+
+
+class TestResolveBaseDir(unittest.TestCase):
+    def test_default_uses_private_data_root(self):
+        self.assertEqual(resolve_base_dir(example=False), _BASE_DIR / "private")
+
+    def test_example_uses_example_data_root(self):
+        self.assertEqual(resolve_base_dir(example=True), _BASE_DIR / "example")
 
 
 class TestBuildContact(unittest.TestCase):
@@ -72,6 +90,20 @@ class TestBuildCareerProject(unittest.TestCase):
             self.assertIn("기간:", result)
             self.assertIn("기술스택:", result)
             self.assertIn("Python", result)
+
+    def test_project_accepts_double_hash_title_and_period_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "project.md"
+            p.write_text(
+                "## Internal Project\n\n"
+                "### Period\n\n2024.01 - 2024.03\n\n"
+                "### Responsibilities\n\n- Built an internal API\n",
+                encoding="utf-8",
+            )
+            result = build_career_project(p, 1)
+            self.assertIn("프로젝트 1: Internal Project", result)
+            self.assertIn("기간: 2024.01 - 2024.03", result)
+            self.assertIn("Built an internal API", result)
 
 
 class TestDiscoverAllCompanies(unittest.TestCase):

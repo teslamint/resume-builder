@@ -112,6 +112,7 @@ class TestBuildEnrichedMarkdown:
         md = build_enriched_markdown(merged, "테스트회사", ["https://example.com"])
         assert "## 기업 정보" in md
         assert "| 업종 | IT |" in md
+        assert "| 스타트업 여부 | No |" in md
 
     def test_salary_bold_format(self):
         """Salary must be in **N만원** bold format for validator compatibility."""
@@ -135,4 +136,5 @@ class TestBuildEnrichedMarkdown:
         merged = merge_platform_data([_make("thevc", investment_round="Series A", investment_total="50억원")])
         md = build_enriched_markdown(merged, "A", [])
         assert "## 투자 정보" in md
+        assert "| 스타트업 여부 | Yes |" in md
         assert "Series A" in md
