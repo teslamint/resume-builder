@@ -245,7 +245,7 @@ def classify_group(group: Group) -> Classification:
     # the slugs are aliases for the same company even if one file is a stub.
     if not all_headings_match and min_jaccard < JACCARD_HOMONYM_THRESHOLD:
         kind = "manual_homonym"
-    elif keep_score >= KEEP_HIGH_THRESHOLD and max_delete_score <= DELETE_LOW_THRESHOLD:
+    elif keep_score >= KEEP_HIGH_THRESHOLD and max_delete_score <= DELETE_LOW_THRESHOLD and min_jaccard >= 0.30:
         kind = "ref_rewrite" if has_refs else "auto_safe"
     elif keep_score >= DELETE_MID_THRESHOLD and max_delete_score >= DELETE_MID_THRESHOLD:
         kind = "manual_merge"

@@ -118,7 +118,8 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
             candidates.append(p)
             seen.add(p)
 
-    _add(COMPANY_INFO_DIR / f"{slugify_company(company)}.md")
+    slug_path = COMPANY_INFO_DIR / f"{slugify_company(company)}.md"
+    _add(slug_path)
     _add(COMPANY_INFO_DIR / f"{company}.md")
 
     # Reverse-lookup by # heading. Cheap enough as fallback (one-line read per file).
@@ -128,7 +129,7 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
             if file.name.startswith("_") or file in seen:
                 continue
             head = _read_first_heading(file)
-            if head and (head == company_norm or company_norm in head or head in company_norm):
+            if head and head == company_norm:
                 _add(file)
 
     if not candidates:
@@ -136,9 +137,19 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
     if len(candidates) == 1:
         return candidates[0]
 
-    scored = [(_completeness_score(c), c.stat().st_mtime, c) for c in candidates]
-    scored.sort(key=lambda t: (-t[0], -t[1]))
-    return scored[0][2]
+    def _slug_match(p: Path) -> int:
+        return 1 if p == slug_path else 0
+
+    def _exact_match(p: Path) -> int:
+        head = _read_first_heading(p)
+        return 1 if head and head == company_norm else 0
+
+    scored = [
+        (_slug_match(c), _exact_match(c), _completeness_score(c), c.stat().st_mtime, c)
+        for c in candidates
+    ]
+    scored.sort(key=lambda t: (-t[0], -t[1], -t[2], -t[3]))
+    return scored[0][4]
 
 
 def _find_existing_company_file(company: str) -> Optional[Path]:
@@ -400,6 +411,18 @@ def ensure_company_info(
             )
 
         if completeness >= 0 and completeness >= min_completeness:
+            try:
+                ok, conf, mismatches = verify_company_match(existing, jd_path)
+                if not ok and mismatches:
+                    import sys
+                    print(
+                        f"WARN: company_info({existing.name}) vs JD({jd_path.name}) "
+                        f"동음이의 매칭 가능성 (confidence={conf}). "
+                        f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                _log.warning("company_match_verify 실패 (%s): %s", existing.name, exc)
             return CompanyInfoResult(
                 company=company,
                 file_path=existing,
