@@ -180,18 +180,18 @@ def verify_company_match(
     jd_domains = _extract_domains(jd_text)
     domain_overlap = info_domains & jd_domains
 
-    if not info_tokens or not jd_tokens:
+    name_kind = _name_match_kind(info_company, jd_company)
+    has_strong_signal = name_kind == "exact" or bool(domain_overlap)
+
+    if not has_strong_signal and (not info_tokens or not jd_tokens):
         return (False, 0.0, [])
 
     intersection = info_tokens & jd_tokens
     union = info_tokens | jd_tokens
     jaccard = len(intersection) / len(union) if union else 0.0
 
-    name_kind = _name_match_kind(info_company, jd_company)
-
     ok = (
-        name_kind == "exact"
-        or bool(domain_overlap)
+        has_strong_signal
         or jaccard >= threshold
         or (name_kind == "substring" and jaccard >= threshold / 2)
     )
