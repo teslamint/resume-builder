@@ -291,6 +291,43 @@ class TestAutoNotifications(unittest.TestCase):
         mock_run.assert_not_called()
 
 
+class TestScreeningOnlyFindsUnprocessed(unittest.TestCase):
+    """Verify Issue #2: _resolve_jd_path_for_screening finds JDs in unprocessed/ via find_jd_anywhere."""
+
+    def test_resolve_jd_for_screening_finds_unprocessed_jd(self):
+        from auto import _resolve_jd_path_for_screening
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            unprocessed_dir = tmp_path / "unprocessed"
+            unprocessed_dir.mkdir()
+            jd = unprocessed_dir / "999020-testco-backend.md"
+            jd.write_text("# Backend\n", encoding="utf-8")
+
+            with patch("path_utils.JOB_POSTINGS_DIR", tmp_path):
+                result = _resolve_jd_path_for_screening("https://www.wanted.co.kr/wd/999020")
+
+        self.assertEqual(result, jd)
+
+    def test_find_existing_jd_does_not_search_unprocessed(self):
+        """Dedup check (find_existing_jd) must NOT find JDs in unprocessed/."""
+        from path_utils import find_existing_jd
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            unprocessed_dir = tmp_path / "unprocessed"
+            unprocessed_dir.mkdir()
+            jd = unprocessed_dir / "999021-testco-backend.md"
+            jd.write_text("# Backend\n", encoding="utf-8")
+
+            with patch("path_utils.JOB_POSTINGS_DIR", tmp_path):
+                result = find_existing_jd("999021")
+
+        self.assertIsNone(result)
+
+
 class TestAutoJdPathAfterClassify(unittest.TestCase):
     """Verify that jd_path in result row reflects post-classification file location."""
 
