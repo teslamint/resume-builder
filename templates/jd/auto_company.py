@@ -119,7 +119,7 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
             seen.add(p)
 
     _add(COMPANY_INFO_DIR / f"{slugify_company(company)}.md")
-    _add(COMPANY_INFO_DIR / f"{company}.md")
+    _add(COMPANY_INFO_DIR / f"{Path(company).name}.md")
 
     # Reverse-lookup by # heading. Cheap enough as fallback (one-line read per file).
     company_norm = _HEADING_PAREN_RE.sub("", company).strip().lower()
@@ -128,7 +128,7 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
             if file.name.startswith("_") or file in seen:
                 continue
             head = _read_first_heading(file)
-            if head and (head == company_norm or company_norm in head or head in company_norm):
+            if head and head == company_norm:
                 _add(file)
 
     if not candidates:
@@ -407,6 +407,18 @@ def ensure_company_info(
             )
 
         if completeness >= 0 and completeness >= min_completeness:
+            try:
+                ok, conf, mismatches = verify_company_match(existing, jd_path)
+                if not ok and mismatches:
+                    import sys
+                    print(
+                        f"WARN: company_info({existing.name}) vs JD({jd_path.name}) "
+                        f"동음이의 매칭 가능성 (confidence={conf}). "
+                        f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                _log.warning("company_match_verify 실패 (%s): %s", existing.name, exc)
             return CompanyInfoResult(
                 company=company,
                 file_path=existing,

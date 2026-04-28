@@ -245,7 +245,7 @@ def classify_group(group: Group) -> Classification:
     # the slugs are aliases for the same company even if one file is a stub.
     if not all_headings_match and min_jaccard < JACCARD_HOMONYM_THRESHOLD:
         kind = "manual_homonym"
-    elif keep_score >= KEEP_HIGH_THRESHOLD and max_delete_score <= DELETE_LOW_THRESHOLD:
+    elif keep_score >= KEEP_HIGH_THRESHOLD and max_delete_score <= DELETE_LOW_THRESHOLD and min_jaccard >= 0.30:
         kind = "ref_rewrite" if has_refs else "auto_safe"
     elif keep_score >= DELETE_MID_THRESHOLD and max_delete_score >= DELETE_MID_THRESHOLD:
         kind = "manual_merge"
@@ -379,10 +379,10 @@ def emit_actions(classifications: list[Classification], path: Path) -> None:
         lines.append("# ── Step A: rewrite external references ──────────────────────────")
         lines.append(_REWRITE_PYTHON.format(rewrites=rewrites, scan_dirs=scan_dirs))
         lines.append("")
-        # Stage only the directories we scan, not the whole tree, so unrelated
-        # untracked files don't end up in this commit.
-        scan_args = " ".join(f"'{d}'" for d in scan_dirs)
-        lines.append(f"git add {scan_args}")
+        git_add_dirs = [str(d.relative_to(BASE_DIR)) for d in REF_GREP_DIRS if d.exists()]
+        if git_add_dirs:
+            scan_args = " ".join(f"'{d}'" for d in git_add_dirs)
+            lines.append(f"git add -u -- {scan_args}")
         lines.append('if ! git diff --quiet --cached; then')
         lines.append('    git commit -m "chore(company_info): rewrite refs from cosmetic-duplicate slugs"')
         lines.append('else')

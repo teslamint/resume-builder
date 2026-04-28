@@ -65,6 +65,36 @@ class TestLoadState:
             assert _load_state("test") == {}
 
 
+class TestFindLatestStateMtime:
+    def test_find_latest_state_uses_mtime(self, tmp_path):
+        """mtime이 더 최신인 파일이 lexical order와 무관하게 선택되어야 함."""
+        import os
+        import json
+
+        old_file = tmp_path / ".auto_state_jd-batch-foo.json"
+        new_file = tmp_path / ".auto_state_20260101_000000.json"
+
+        old_file.write_text(
+            json.dumps({"run_id": "jd-batch-foo", "items": {"j1": {"status": "pending"}}}),
+            encoding="utf-8",
+        )
+        new_file.write_text(
+            json.dumps({"run_id": "20260101_000000", "items": {"j2": {"status": "pending"}}}),
+            encoding="utf-8",
+        )
+
+        os.utime(old_file, (1000, 1000))
+        os.utime(new_file, (2000, 2000))
+
+        with patch("auto.STATE_DIR", tmp_path):
+            result = _find_latest_state()
+
+        assert result == "20260101_000000", (
+            f"mtime-newest 파일의 run_id를 반환해야 하지만 '{result}' 반환. "
+            "lexical sort인 경우 'jd-batch-foo'(j > 2)가 먼저 선택됨."
+        )
+
+
 class TestResumeStatePreservation:
     """Verify that resume preserves jd_path, screening_path, verdict from state."""
 

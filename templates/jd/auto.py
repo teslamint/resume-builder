@@ -26,7 +26,7 @@ try:
     from .auto_screening import run_screening
     from .constants import JOB_POSTINGS_DIR
     from .naming import slugify_company
-    from .path_utils import extract_job_id, find_existing_jd
+    from .path_utils import extract_job_id, find_existing_jd, find_jd_anywhere
     from .pipeline import ProcessResult, classify_file
     from .search import JobPosting, load_config, run_search
     from .notifications import format_notification, send_notification
@@ -38,7 +38,7 @@ except ImportError:
     from constants import JOB_POSTINGS_DIR
     from naming import slugify_company
     from notifications import format_notification, send_notification
-    from path_utils import extract_job_id, find_existing_jd
+    from path_utils import extract_job_id, find_existing_jd, find_jd_anywhere
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
     from verdict import move_to_folder
@@ -98,7 +98,7 @@ def _load_state(run_id: str) -> dict:
 def _find_latest_state() -> Optional[str]:
     if not STATE_DIR.exists():
         return None
-    state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), reverse=True)
+    state_files = sorted(STATE_DIR.glob(".auto_state_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for sf in state_files:
         try:
             with open(sf, "r", encoding="utf-8") as f:
@@ -177,7 +177,7 @@ def _resolve_jd_path_for_screening(url: str) -> Optional[Path]:
     job_id = extract_job_id(url)
     if not job_id:
         return None
-    return find_existing_jd(job_id)
+    return find_jd_anywhere(job_id)
 
 
 _CLOSED_MARKERS = (
@@ -630,6 +630,11 @@ def run_auto(
                 if verdict:
                     row.verdict = verdict
                 row.classified_folder = classified
+                if classified:
+                    new_path = JOB_POSTINGS_DIR / classified / Path(row.jd_path).name
+                    if new_path.exists():
+                        row.jd_path = str(new_path)
+                        state_items[job_id]["jd_path"] = str(new_path)
 
             _update_verdict_count(summary, row.verdict)
 

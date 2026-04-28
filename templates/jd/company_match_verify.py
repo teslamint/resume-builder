@@ -44,6 +44,8 @@ _PLATFORM_DOMAINS: frozenset[str] = frozenset({
     "naver", "google", "kakao", "daum",
 })
 
+_SECONDARY_LABELS: frozenset[str] = frozenset({"co", "com", "net", "org", "gov", "edu", "ac", "or", "ne"})
+
 
 def _read(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8")
@@ -90,16 +92,22 @@ def _extract_jd_company(content: str) -> str:
 def _extract_domains(text: str) -> set[str]:
     """Pull out company-specific domain stems (e.g., 'ypolaris' from 'www.ypolaris.com').
 
+    Extracts the registrable SLD to avoid false positives from generic subdomains
+    like 'careers' in 'careers.alpha.com'. Handles ccTLD+SLD patterns (co.kr, ac.kr).
     Excludes recruiting platforms and generic services so that two unrelated
     companies extracted from the same source (e.g., both via Wanted) don't
     match on the platform domain alone.
     """
     domains: set[str] = set()
-    for m in re.finditer(r"(?:https?://)?(?:www\.)?([a-z0-9-]+)\.[a-z]{2,}", text.lower()):
-        stem = m.group(1)
-        if stem == "www" or stem in _PLATFORM_DOMAINS:
+    for m in re.finditer(r"(?:https?://)?([a-z0-9][a-z0-9.-]*\.[a-z]{2,})", text.lower()):
+        parts = m.group(1).split(".")
+        if len(parts) < 2:
             continue
-        if len(stem) < 3:
+        idx = len(parts) - 2
+        if parts[idx] in _SECONDARY_LABELS and idx > 0:
+            idx -= 1
+        stem = parts[idx]
+        if stem == "www" or stem in _PLATFORM_DOMAINS or len(stem) < 3:
             continue
         domains.add(stem)
     return domains
@@ -172,18 +180,18 @@ def verify_company_match(
     jd_domains = _extract_domains(jd_text)
     domain_overlap = info_domains & jd_domains
 
-    if not info_tokens or not jd_tokens:
+    name_kind = _name_match_kind(info_company, jd_company)
+    has_strong_signal = name_kind == "exact" or bool(domain_overlap)
+
+    if not has_strong_signal and (not info_tokens or not jd_tokens):
         return (False, 0.0, [])
 
     intersection = info_tokens & jd_tokens
     union = info_tokens | jd_tokens
     jaccard = len(intersection) / len(union) if union else 0.0
 
-    name_kind = _name_match_kind(info_company, jd_company)
-
     ok = (
-        name_kind == "exact"
-        or bool(domain_overlap)
+        has_strong_signal
         or jaccard >= threshold
         or (name_kind == "substring" and jaccard >= threshold / 2)
     )
