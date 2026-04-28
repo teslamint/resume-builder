@@ -88,6 +88,34 @@ STARTUP_REQUIRED_FIELDS = [
     ("employee_left_1y", "1년간 퇴사자"),
 ]
 
+STARTUP_POSITIVE_KEYWORDS = [
+    "스타트업",
+    "Series",
+    "시리즈",
+    "Seed",
+    "Pre-A",
+    "벤처",
+    "투자 유치",
+    "누적 투자",
+    "투자 라운드",
+    "인원 급성장",
+    "설립3년이하",
+]
+
+STARTUP_NEGATIVE_KEYWORDS = [
+    "IPO",
+    "M&A",
+    "상장",
+    "상장기업",
+    "대기업",
+    "글로벌 기업",
+    "한국법인",
+    "계열",
+    "일반기업",
+    "해당 없음",
+    "해당없음",
+]
+
 # Risk thresholds
 RISK_THRESHOLDS = {
     "turnover_critical": 0.5,   # 50% 이상 퇴사
@@ -161,6 +189,15 @@ def parse_company_file(file_path: Path) -> CompanyData:
     info_section = re.search(r'## 기업 정보.*?(?=##|\Z)', content, re.DOTALL)
     if info_section:
         section_text = info_section.group()
+
+        startup_match = re.search(r'스타트업 여부.*?\|\s*([^|\n]+)', section_text)
+        if startup_match:
+            startup_value = startup_match.group(1).strip().lower()
+            if startup_value in {"yes", "y", "true", "1", "예"}:
+                data.is_startup = True
+            elif startup_value in {"no", "n", "false", "0", "아니오"}:
+                data.is_startup = False
+                startup_status_locked = True
         
         # 설립연도
         year_match = re.search(r'설립.*?\|\s*(\d{4})년', section_text)
@@ -221,7 +258,8 @@ def parse_company_file(file_path: Path) -> CompanyData:
     investment_section = re.search(r'## 투자 정보.*?(?=##|\Z)', content, re.DOTALL)
     if investment_section:
         section_text = investment_section.group()
-        data.is_startup = True
+        if not startup_status_locked:
+            data.is_startup = True
         
         # 현재 라운드 or 상태 (handles "Series C", "상장기업", "M&A")
         round_match = re.search(r'(?:현재 라운드|현재 상태).*?\|\s*([^\n|]+)', section_text)
@@ -249,9 +287,11 @@ def parse_company_file(file_path: Path) -> CompanyData:
         data.is_startup = True
     
     # 스타트업 키워드 확인
-    startup_keywords = ['스타트업', 'Series', '시리즈', '벤처', '투자 유치']
-    if not startup_status_locked and any(kw in content for kw in startup_keywords):
+    if not startup_status_locked and any(kw in content for kw in STARTUP_POSITIVE_KEYWORDS):
         data.is_startup = True
+
+    if any(kw in content for kw in STARTUP_NEGATIVE_KEYWORDS):
+        data.is_startup = False
     
     # 매출
     revenue_section = re.search(r'## 매출.*?(?=##|\Z)', content, re.DOTALL)

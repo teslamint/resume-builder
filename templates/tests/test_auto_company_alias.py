@@ -27,6 +27,40 @@ RICH_BODY = (
 
 STUB_BODY = "# {name}\n\n*자동 생성 stub*\n"
 
+STARTUP_BODY = (
+    "# 래브라도랩스\n\n"
+    "## 기업 정보\n\n"
+    "| 항목 | 내용 |\n"
+    "|------|------|\n"
+    "| 회사명 | 래브라도랩스 |\n"
+    "| 스타트업 여부 | Yes |\n"
+    "| 업종 | IT |\n"
+    "| 설립 | 2018년 |\n"
+    "| 직원수 | 36명 |\n\n"
+    "## 연봉 정보\n\n"
+    "| 항목 | 금액 | 출처 |\n"
+    "|------|------|------|\n"
+    "| 평균 연봉 | **5680만원** | Wanted |\n\n"
+    "## 인원 통계\n\n"
+    "| 항목 | 수치 |\n"
+    "|------|------|\n"
+    "| 현재 인원 | 36명 |\n"
+    "| 1년간 입사자 | 15명 |\n"
+    "| 1년간 퇴사자 | 11명 |\n\n"
+    "## 투자 정보\n\n"
+    "| 항목 | 내용 |\n"
+    "|------|------|\n"
+    "| 현재 라운드 | Series B |\n"
+    "| 누적 투자금 | 100억원 |\n\n"
+    "## 태그\n"
+    "- 인원 급성장\n\n"
+    "## 회사 소개\n\n"
+    "기존 소개 보존 대상.\n\n"
+    "---\n\n"
+    "*출처:*\n"
+    "- https://www.wanted.co.kr/company/11881\n"
+)
+
 
 class TestResolveCompanyAlias(unittest.TestCase):
     def _setup_dir(self, files: dict[str, str]) -> tuple[tempfile.TemporaryDirectory, Path]:
@@ -77,6 +111,72 @@ class TestResolveCompanyAlias(unittest.TestCase):
             with patch("auto_company.COMPANY_INFO_DIR", company_dir):
                 result = _resolve_company_alias("신규회사")
             self.assertIsNone(result)
+        finally:
+            tmp.cleanup()
+
+
+class TestExistingThevcEnrichment(unittest.TestCase):
+    def test_complete_startup_without_thevc_is_enriched_in_place(self):
+        from auto_company import ensure_company_info
+
+        tmp, company_dir = TestResolveCompanyAlias()._setup_dir({
+            "래브라도랩스.md": STARTUP_BODY,
+        })
+        jd_path = Path(tmp.name) / "jd.md"
+        jd_path.write_text("# Backend - 래브라도랩스\n", encoding="utf-8")
+        try:
+            with patch("auto_company.COMPANY_INFO_DIR", company_dir), \
+                 patch("auto_company._extract_thevc_investment") as extract_mock:
+                extract_mock.return_value = (
+                    "success",
+                    {
+                        "round": "Series B",
+                        "total": "100억원",
+                        "investors": ["KB인베스트먼트"],
+                        "source": "https://thevc.kr/labradorlabs",
+                    },
+                )
+
+                result = ensure_company_info(
+                    jd_path,
+                    "https://example.com/jd",
+                    company_name="래브라도랩스",
+                    min_completeness=70,
+                )
+
+            text = (company_dir / "래브라도랩스.md").read_text(encoding="utf-8")
+            self.assertTrue(result.used_existing)
+            self.assertTrue(result.thevc_attempted)
+            self.assertEqual(result.investment_data_source, "thevc")
+            self.assertIn("| 주요 투자자 | KB인베스트먼트 |", text)
+            self.assertIn("https://thevc.kr/labradorlabs", text)
+            self.assertIn("기존 소개 보존 대상.", text)
+            self.assertIn("- 인원 급성장", text)
+        finally:
+            tmp.cleanup()
+
+    def test_skip_mode_does_not_attempt_thevc_for_existing_startup(self):
+        from auto_company import ensure_company_info
+
+        tmp, company_dir = TestResolveCompanyAlias()._setup_dir({
+            "래브라도랩스.md": STARTUP_BODY,
+        })
+        jd_path = Path(tmp.name) / "jd.md"
+        jd_path.write_text("# Backend - 래브라도랩스\n", encoding="utf-8")
+        try:
+            with patch("auto_company.COMPANY_INFO_DIR", company_dir), \
+                 patch("auto_company._extract_thevc_investment") as extract_mock, \
+                 patch("auto_company.verify_company_match", return_value=(True, 1.0, [])):
+                result = ensure_company_info(
+                    jd_path,
+                    "https://example.com/jd",
+                    company_name="래브라도랩스",
+                    thevc_mode="skip",
+                    min_completeness=70,
+                )
+
+            extract_mock.assert_not_called()
+            self.assertEqual(result.thevc_status, "skipped")
         finally:
             tmp.cleanup()
 

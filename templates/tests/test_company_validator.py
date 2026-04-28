@@ -229,6 +229,38 @@ class TestParseCompanyFile(unittest.TestCase):
             self.assertEqual(data.investment_round, "Series B")
             self.assertAlmostEqual(data.investment_total, 130.0)
 
+    def test_parse_explicit_startup_yes(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "startup_yes.md"
+            p.write_text(
+                "# 스타트업\n\n"
+                "## 기업 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 스타트업 여부 | Yes |\n",
+                encoding="utf-8",
+            )
+            data = parse_company_file(p)
+            self.assertTrue(data.is_startup)
+
+    def test_parse_explicit_startup_no_excludes_series_text(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "startup_no.md"
+            p.write_text(
+                "# 비스타트업\n\n"
+                "## 기업 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 스타트업 여부 | No |\n\n"
+                "## 투자 정보\n\n"
+                "| 항목 | 내용 |\n|------|------|\n"
+                "| 현재 라운드 | Series B |\n"
+                "| 누적 투자금 | 100억원 |\n",
+                encoding="utf-8",
+            )
+            data = parse_company_file(p)
+            self.assertFalse(data.is_startup)
+
 
 if __name__ == "__main__":
     unittest.main()

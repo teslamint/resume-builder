@@ -206,6 +206,7 @@ def build_enriched_markdown(merged: dict, company_name: str, source_urls: list[s
 | 항목 | 내용 |
 |------|------|
 | 회사명 | {name} |
+| 스타트업 여부 | {'Yes' if has_investment else 'No'} |
 | 업종 | {industry} |
 | 설립 | {founded} |
 | 직원수 | {emp_count} |"""

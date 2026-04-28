@@ -29,8 +29,26 @@ _log = logging.getLogger(__name__)
 
 THEVC_MODES = {"auto", "skip", "require"}
 ENRICHMENT_QUEUE_PATH = Path(__file__).parent.parent.parent / "private" / "job_postings" / "unprocessed" / "company_enrichment_thevc.txt"
+SARAMIN_ENRICHMENT_QUEUE_PATH = Path(__file__).parent.parent.parent / "private" / "job_postings" / "unprocessed" / "company_enrichment_saramin.txt"
 
 HEADHUNTING_KEYWORDS = ["써치", "서치펌", "헤드헌팅", "리크루팅", "인력파견", "헤드헌터"]
+THEVC_SOURCE_TOKENS = ("thevc.kr", "TheVC")
+FALSE_STARTUP_TOKENS = (
+    "ipo",
+    "m&a",
+    "상장기업",
+    "코스피 상장",
+    "코스닥 상장",
+    "대기업",
+    "글로벌 기업",
+    "한국법인",
+    "계열",
+    "일반기업",
+    "해당 없음",
+    "해당없음",
+)
+REAL_STARTUP_ROUND_TOKENS = ("seed", "pre-a", "pre-b", "series", "시리즈", "브릿지", "예비 유니콘")
+STARTUP_SIGNAL_TOKENS = ("스타트업", "벤처", "투자 유치", "인원 급성장", "설립3년이하")
 
 
 def is_headhunting_company(company_name: str) -> bool:
@@ -168,6 +186,34 @@ def _looks_startup(jd_text: str) -> bool:
     return any(token in text_lower for token in startup_tokens)
 
 
+def _has_thevc_source(text: str) -> bool:
+    return any(token.lower() in text.lower() for token in THEVC_SOURCE_TOKENS)
+
+
+def _existing_needs_thevc_enrichment(path: Path, completeness: float) -> bool:
+    if completeness < 0:
+        return False
+    try:
+        content = path.read_text(encoding="utf-8")
+        data = parse_company_file(path)
+    except Exception:
+        return False
+    if _has_thevc_source(content):
+        return False
+
+    lowered = content.lower()
+    if any(token in lowered for token in FALSE_STARTUP_TOKENS):
+        return False
+    if "| 스타트업 여부 | yes |" in lowered or "| 스타트업 여부 | 예 |" in lowered:
+        return True
+    round_value = (data.investment_round or "").lower()
+    if any(token in round_value for token in REAL_STARTUP_ROUND_TOKENS):
+        return True
+    if data.investment_total:
+        return True
+    return data.is_startup and any(token in lowered for token in STARTUP_SIGNAL_TOKENS)
+
+
 def _fetch_url_text(url: str, timeout: int = 15) -> str:
     if not url.startswith(("https://", "http://")):
         raise ValueError(f"Unsupported URL scheme: {url}")
@@ -216,6 +262,7 @@ def _extract_thevc_investment(company: str) -> tuple[str, Optional[dict]]:
         {
             "round": round_match.group(1) if round_match else "정보 없음",
             "total": f"{investment_match.group(1)}억원" if investment_match else "정보 없음",
+            "investors": [],
             "source": search_url,
         },
     )
@@ -248,6 +295,7 @@ def _build_company_info_markdown(company: str, jd_url: str, startup: bool, thevc
 | 항목 | 내용 |
 |------|------|
 | 회사명 | {company} |
+| 스타트업 여부 | {'Yes' if startup else 'No'} |
 | 업종 | 정보 없음 |
 | 설립 | 정보 없음 |
 | 직원수 | 정보 없음 |
@@ -304,6 +352,7 @@ def _inject_thevc_into_file(file_path: Path, investment: dict) -> None:
 
     round_value = investment.get("round", "")
     total_value = investment.get("total", "")
+    investors = investment.get("investors") or []
     inv_source = investment.get("source", "https://thevc.kr")
 
     if "## 투자 정보" in content:
@@ -320,8 +369,19 @@ def _inject_thevc_into_file(file_path: Path, investment: dict) -> None:
                 f"| 누적 투자금 | {total_value} |",
                 content,
             )
+        if investors:
+            investor_row = f"| 주요 투자자 | {', '.join(investors[:5])} |"
+            if re.search(r"\| 주요 투자자 \| .+? \|", content):
+                content = re.sub(r"\| 주요 투자자 \| .+? \|", investor_row, content)
+            else:
+                content = re.sub(
+                    r"(\| 누적 투자금 \| [^\n]+\|)",
+                    f"\\1\n{investor_row}",
+                    content,
+                    count=1,
+                )
         # Add TheVC source note if not already present
-        if "TheVC" not in content and inv_source:
+        if not _has_thevc_source(content) and inv_source:
             content = content.replace(
                 "\n---\n",
                 f"\n> TheVC에서 투자정보를 보강했습니다. 출처: [{inv_source}]({inv_source})\n\n---\n",
@@ -350,6 +410,19 @@ def _inject_thevc_note_into_file(file_path: Path, thevc_note: str) -> None:
         file_path.write_text(content, encoding="utf-8")
 
 
+def _append_thevc_source_note(file_path: Path, source_url: str, note: str) -> None:
+    content = file_path.read_text(encoding="utf-8")
+    if _has_thevc_source(content):
+        return
+
+    note_line = f"> {note} 출처: [{source_url}]({source_url})\n"
+    if "\n---\n" in content:
+        content = content.replace("\n---\n", f"\n{note_line}\n---\n", 1)
+    else:
+        content += f"\n{note_line}"
+    file_path.write_text(content, encoding="utf-8")
+
+
 def _append_enrichment_queue(company: str) -> None:
     ENRICHMENT_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
     existing = set()
@@ -357,6 +430,16 @@ def _append_enrichment_queue(company: str) -> None:
         existing = {line.strip() for line in ENRICHMENT_QUEUE_PATH.read_text(encoding="utf-8").splitlines() if line.strip()}
     if company not in existing:
         with open(ENRICHMENT_QUEUE_PATH, "a", encoding="utf-8") as f:
+            f.write(company + "\n")
+
+
+def _append_saramin_enrichment_queue(company: str) -> None:
+    SARAMIN_ENRICHMENT_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    existing = set()
+    if SARAMIN_ENRICHMENT_QUEUE_PATH.exists():
+        existing = {line.strip() for line in SARAMIN_ENRICHMENT_QUEUE_PATH.read_text(encoding="utf-8").splitlines() if line.strip()}
+    if company not in existing:
+        with open(SARAMIN_ENRICHMENT_QUEUE_PATH, "a", encoding="utf-8") as f:
             f.write(company + "\n")
 
 
@@ -407,6 +490,38 @@ def ensure_company_info(
             )
 
         if completeness >= 0 and completeness >= min_completeness:
+            if (
+                thevc_mode != "skip"
+                and _existing_needs_thevc_enrichment(existing, completeness)
+            ):
+                thevc_status, investment_data = _extract_thevc_investment(company)
+                if thevc_status == "success" and investment_data:
+                    _inject_thevc_into_file(existing, investment_data)
+                    data = parse_company_file(existing)
+                    completeness = validate_company(data, existing).completeness_score
+                    return CompanyInfoResult(
+                        company=company,
+                        file_path=existing,
+                        used_existing=True,
+                        completeness=completeness,
+                        thevc_attempted=True,
+                        thevc_status=thevc_status,
+                        investment_data_source="thevc",
+                    )
+
+                _append_enrichment_queue(company)
+                if thevc_mode == "require":
+                    raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
+                return CompanyInfoResult(
+                    company=company,
+                    file_path=existing,
+                    used_existing=True,
+                    completeness=completeness,
+                    thevc_attempted=True,
+                    thevc_status=thevc_status,
+                    investment_data_source="existing",
+                )
+
             try:
                 ok, conf, mismatches = verify_company_match(existing, jd_path)
                 if not ok and mismatches:
@@ -473,6 +588,8 @@ def ensure_company_info(
             if has_extraction:
                 output_path = extraction.file_path
                 _log.info("회사 정보 추출 완료: %s (platforms=%s)", company, extraction.platforms_used)
+            if "saramin" in extraction.platforms_failed:
+                _append_saramin_enrichment_queue(company)
         except Exception as exc:
             _log.warning("회사 정보 추출 실패 (%s): %s — 스텁 fallback", company, exc)
             extraction = None
