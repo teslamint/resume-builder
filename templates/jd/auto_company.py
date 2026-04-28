@@ -119,7 +119,7 @@ def _resolve_company_alias(company: str) -> Optional[Path]:
             seen.add(p)
 
     _add(COMPANY_INFO_DIR / f"{slugify_company(company)}.md")
-    _add(COMPANY_INFO_DIR / f"{company}.md")
+    _add(COMPANY_INFO_DIR / f"{Path(company).name}.md")
 
     # Reverse-lookup by # heading. Cheap enough as fallback (one-line read per file).
     company_norm = _HEADING_PAREN_RE.sub("", company).strip().lower()
