@@ -121,6 +121,38 @@ def find_existing_jd(job_id: str) -> Optional[Path]:
     return None
 
 
+def find_jd_anywhere(job_id: str) -> Optional[Path]:
+    """Find existing JD by job_id including unprocessed/.
+
+    RESOLUTION PATHS ONLY — do not use for dedup checks (unprocessed JDs are
+    not yet classified and should not be treated as "already processed").
+    """
+    search_dirs = [
+        JOB_POSTINGS_DIR,
+        JOB_POSTINGS_DIR / "pass",
+        JOB_POSTINGS_DIR / "conditional",
+        JOB_POSTINGS_DIR / "conditional" / "high",
+        JOB_POSTINGS_DIR / "conditional" / "hold",
+        JOB_POSTINGS_DIR / "conditional" / "middle",
+        JOB_POSTINGS_DIR / "conditional" / "low",
+        JOB_POSTINGS_DIR / "applied",
+        JOB_POSTINGS_DIR / "rejected",
+        JOB_POSTINGS_DIR / "high_priority",
+        JOB_POSTINGS_DIR / "on_going",
+        JOB_POSTINGS_DIR / "unprocessed",
+    ]
+
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        for file in search_dir.glob(f"{job_id}-*.md"):
+            return file
+        for file in search_dir.glob(f"*-{job_id}-*.md"):
+            return file
+
+    return None
+
+
 def is_duplicate(job_id: str) -> Tuple[bool, Optional[Path]]:
     """Check if JD already exists and return the path if found."""
     existing = find_existing_jd(job_id)

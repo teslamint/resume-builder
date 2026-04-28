@@ -26,7 +26,7 @@ try:
     from .auto_screening import run_screening
     from .constants import JOB_POSTINGS_DIR
     from .naming import slugify_company
-    from .path_utils import extract_job_id, find_existing_jd
+    from .path_utils import extract_job_id, find_existing_jd, find_jd_anywhere
     from .pipeline import ProcessResult, classify_file
     from .search import JobPosting, load_config, run_search
     from .notifications import format_notification, send_notification
@@ -38,7 +38,7 @@ except ImportError:
     from constants import JOB_POSTINGS_DIR
     from naming import slugify_company
     from notifications import format_notification, send_notification
-    from path_utils import extract_job_id, find_existing_jd
+    from path_utils import extract_job_id, find_existing_jd, find_jd_anywhere
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
     from verdict import move_to_folder
@@ -176,7 +176,7 @@ def _resolve_jd_path_for_screening(url: str) -> Optional[Path]:
     job_id = extract_job_id(url)
     if not job_id:
         return None
-    return find_existing_jd(job_id)
+    return find_jd_anywhere(job_id)
 
 
 def _classify(jd_path: Path, dry_run: bool) -> tuple[str, str]:
