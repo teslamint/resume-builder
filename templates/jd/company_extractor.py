@@ -81,7 +81,10 @@ def extract_company_info(
         if own_playwright:
             from playwright.sync_api import sync_playwright
             pw_instance = sync_playwright().start()
-            browser = pw_instance.chromium.launch(headless=True)
+            browser = pw_instance.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
             browser_context = browser.new_context(
                 viewport={"width": 1280, "height": 800},
                 user_agent=USER_AGENT,
