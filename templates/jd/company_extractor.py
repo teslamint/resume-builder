@@ -33,10 +33,6 @@ except ImportError:
     from naming import slugify_company as _slugify_company
 
 
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-)
 REQUEST_DELAY = 1.5  # seconds between page navigations
 ALL_PLATFORMS = ("wanted", "saramin", "thevc")
 
@@ -87,7 +83,6 @@ def extract_company_info(
             )
             browser_context = browser.new_context(
                 viewport={"width": 1280, "height": 800},
-                user_agent=USER_AGENT,
             )
 
         try:
