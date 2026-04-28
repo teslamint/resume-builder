@@ -13,11 +13,13 @@ from typing import Optional
 
 try:
     from .company_extractor import extract_company_info
+    from .company_match_verify import verify_company_match
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .jd_content import extract_metadata_from_jd
     from .naming import slugify_company
 except ImportError:
     from company_extractor import extract_company_info
+    from company_match_verify import verify_company_match
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from jd_content import extract_metadata_from_jd
     from naming import slugify_company
@@ -69,20 +71,85 @@ def _extract_company_name_from_jd(jd_path: Path) -> Optional[str]:
     return None
 
 
-def _find_existing_company_file(company: str) -> Optional[Path]:
-    slug = slugify_company(company)
-    exact = COMPANY_INFO_DIR / f"{slug}.md"
-    if exact.exists():
-        return exact
+_HEADING_LINE_RE = re.compile(r"^#\s+(.+)$")
+_HEADING_PAREN_RE = re.compile(r"\([^)]*\)")
 
-    company_lower = company.lower()
-    for file in COMPANY_INFO_DIR.glob("*.md"):
-        if file.name.startswith("_"):
-            continue
-        stem = file.stem.lower()
-        if slug in stem or company_lower in stem:
-            return file
-    return None
+
+def _read_first_heading(path: Path) -> str:
+    """Read first '# ' heading from a markdown file. Lowercase, paren-stripped."""
+    try:
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                m = _HEADING_LINE_RE.match(line.rstrip("\n"))
+                if m:
+                    return _HEADING_PAREN_RE.sub("", m.group(1)).strip().lower()
+    except OSError:
+        return ""
+    return ""
+
+
+def _completeness_score(path: Path) -> float:
+    """Best-effort completeness score; 0.0 on parse failure."""
+    try:
+        data = parse_company_file(path)
+        return validate_company(data, path).completeness_score
+    except Exception:
+        return 0.0
+
+
+def _resolve_company_alias(company: str) -> Optional[Path]:
+    """Find the best existing company_info file across hangul/english slug aliases.
+
+    Tries direct slug, raw-name filename, and heading-reverse-lookup candidates,
+    then returns the one with the highest completeness score (mtime tiebreaker).
+    Returns None if no candidate file exists.
+
+    Heading-vs-filename mismatch is NOT filtered here — the homonym verifier
+    in ensure_company_info handles that signal separately.
+    """
+    if not company:
+        return None
+
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add(p: Path) -> None:
+        if p.exists() and p not in seen:
+            candidates.append(p)
+            seen.add(p)
+
+    _add(COMPANY_INFO_DIR / f"{slugify_company(company)}.md")
+    _add(COMPANY_INFO_DIR / f"{company}.md")
+
+    # Reverse-lookup by # heading. Cheap enough as fallback (one-line read per file).
+    company_norm = _HEADING_PAREN_RE.sub("", company).strip().lower()
+    if company_norm:
+        for file in COMPANY_INFO_DIR.glob("*.md"):
+            if file.name.startswith("_") or file in seen:
+                continue
+            head = _read_first_heading(file)
+            if head and head == company_norm:
+                _add(file)
+
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    def _exact_match(p: Path) -> int:
+        head = _read_first_heading(p)
+        return 1 if head and head == company_norm else 0
+
+    scored = [
+        (_exact_match(c), _completeness_score(c), c.stat().st_mtime, c)
+        for c in candidates
+    ]
+    scored.sort(key=lambda t: (-t[0], -t[1], -t[2]))
+    return scored[0][3]
+
+
+def _find_existing_company_file(company: str) -> Optional[Path]:
+    return _resolve_company_alias(company)
 
 
 def _looks_startup(jd_text: str) -> bool:
@@ -340,6 +407,18 @@ def ensure_company_info(
             )
 
         if completeness >= 0 and completeness >= min_completeness:
+            try:
+                ok, conf, mismatches = verify_company_match(existing, jd_path)
+                if not ok and mismatches:
+                    import sys
+                    print(
+                        f"WARN: company_info({existing.name}) vs JD({jd_path.name}) "
+                        f"동음이의 매칭 가능성 (confidence={conf}). "
+                        f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                _log.warning("company_match_verify 실패 (%s): %s", existing.name, exc)
             return CompanyInfoResult(
                 company=company,
                 file_path=existing,
@@ -419,6 +498,19 @@ def ensure_company_info(
             completeness = result.completeness_score
         except Exception:
             completeness = 0.0
+
+        try:
+            ok, conf, mismatches = verify_company_match(output_path, jd_path)
+            if not ok and mismatches:
+                import sys
+                print(
+                    f"WARN: company_info({output_path.name}) vs JD({jd_path.name}) "
+                    f"동음이의 매칭 가능성 (confidence={conf}). "
+                    f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
+                    file=sys.stderr,
+                )
+        except Exception as exc:
+            _log.warning("company_match_verify 실패 (%s): %s", output_path.name, exc)
 
     return CompanyInfoResult(
         company=company,
