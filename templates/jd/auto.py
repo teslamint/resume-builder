@@ -35,6 +35,7 @@ try:
         _CLOSED_MARKERS, _PRIOR_HISTORY_FOLDERS, _PRIOR_HISTORY_DAYS,
         _is_closed_jd, _extract_company_slug, _check_prior_application,
     )
+    from .pre_screen import pre_screen_jd
 except ImportError:
     from auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
     from auto_extractors import extract_jd_from_url
@@ -50,6 +51,7 @@ except ImportError:
         _CLOSED_MARKERS, _PRIOR_HISTORY_FOLDERS, _PRIOR_HISTORY_DAYS,
         _is_closed_jd, _extract_company_slug, _check_prior_application,
     )
+    from pre_screen import pre_screen_jd
 
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
@@ -161,6 +163,10 @@ class RunSummary:
     recommended: int = 0
     hold: int = 0
     passed: int = 0
+    closed: int = 0            # pre-screen 마감 감지
+    rejected_prior: int = 0    # pre-screen 직전 6개월 지원 이력
+    prescreened: int = 0       # pre-screen 컷 (closed/prior 제외, 실제 LLM 절감 건수)
+    prescreen_review: int = 0  # pre-screen counter_indicator 격리 (수동 검토 대기)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -331,6 +337,7 @@ def run_auto(
     min_completeness: float = DEFAULT_MIN_COMPLETENESS,
     allow_incomplete_company_info: bool = False,
     resume: bool = False,
+    no_prescreen: bool = False,
 ) -> tuple[List[AutoTaskResult], RunSummary]:
     config = load_config()
 
@@ -473,6 +480,58 @@ def run_auto(
 
             # Persist jd_path in state
             state_items[job_id]["jd_path"] = str(jd_path)
+
+            # 1.5) Pre-screening hook — short-circuit before company_info + LLM
+            # Skip when:
+            #  - --no-prescreen flag (CLI override)
+            #  - --screening-only mode (사용자가 LLM 재실행을 명시적 요청)
+            #  - --dry-run
+            #  - resume: saved_stage가 이미 pre-screen 이후 단계로 진입한 경우
+            if (
+                not no_prescreen
+                and not screening_only
+                and not dry_run
+                and saved_stage not in ("company_info", "screening", "classifying")
+            ):
+                state_items[job_id].update(stage="prescreening", status="in_progress")
+                _save_state(run_id, state_items)
+                pre = pre_screen_jd(jd_path, config)
+                if pre.hit:
+                    target = pre.target_folder
+                    moved = move_to_folder(jd_path, target)
+                    row.jd_path = str(moved)
+                    row.classified_folder = target
+                    row.error_stage = "prescreening"
+                    row.error_reason = pre.reason_detail
+
+                    if pre.reason_code == "closed":
+                        row.status = "prescreen_filtered"
+                        row.verdict = "지원 비추천"
+                        summary.closed += 1
+                    elif pre.reason_code == "prior_application":
+                        row.status = "prescreen_filtered"
+                        row.verdict = "지원 비추천"
+                        summary.rejected_prior += 1
+                    elif pre.is_review:
+                        row.status = "prescreen_review"
+                        row.verdict = "지원 보류"
+                        summary.prescreen_review += 1
+                    else:
+                        row.status = "prescreen_filtered"
+                        row.verdict = "지원 비추천"
+                        summary.prescreened += 1
+                        summary.passed += 1
+
+                    summary.processed += 1
+                    state_items[job_id].update(
+                        stage="done", status="done",
+                        jd_path=row.jd_path,
+                        prescreen_reason=pre.reason_code,
+                    )
+                    _save_state(run_id, state_items)
+                    results.append(row)
+                    print(f"   ⚡ Pre-screen 컷: {pre.reason_code} → {target}")
+                    continue
 
             # 2) company info (idempotent — reuses existing file)
             state_items[job_id].update(stage="company_info", status="in_progress")
@@ -648,6 +707,10 @@ def main() -> None:
     )
     parser.add_argument("--notify-test", action="store_true", help="알림 테스트")
     parser.add_argument(
+        "--no-prescreen", action="store_true",
+        help="Pre-screening 단계 비활성화 (LLM 진입 전 빠른 컷 안 함)",
+    )
+    parser.add_argument(
         "--resume", action="store_true", help="마지막 실행에서 미완료 항목만 재처리"
     )
 
@@ -677,6 +740,7 @@ def main() -> None:
         min_completeness=args.min_completeness,
         allow_incomplete_company_info=args.allow_incomplete_company_info,
         resume=args.resume,
+        no_prescreen=args.no_prescreen,
     )
 
     result_file = save_results(results, summary, dry_run=args.dry_run)
@@ -691,6 +755,8 @@ def main() -> None:
     print(
         f"추천: {summary.recommended} | 보류: {summary.hold} | 패스: {summary.passed}"
     )
+    print(f"Pre-screen 컷: {summary.prescreened} | Pre-screen 보류: {summary.prescreen_review}")
+    print(f"마감: {summary.closed} | 직전지원: {summary.rejected_prior}")
     print(f"결과 파일: {result_file}")
 
 

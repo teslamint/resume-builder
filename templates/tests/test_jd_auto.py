@@ -683,5 +683,230 @@ class TestAutoJdPathAfterClassify(unittest.TestCase):
             self.assertEqual(results[0].jd_path, str(pass_path))
 
 
+class TestAutoPipelinePreScreening(unittest.TestCase):
+    def _setup(self, tmp_path: Path, jd_filename: str, jd_body: str):
+        jd = tmp_path / jd_filename
+        jd.write_text(jd_body, encoding="utf-8")
+        urls = tmp_path / "urls.txt"
+        urls.write_text(f"https://www.wanted.co.kr/wd/{jd_filename.split('-')[0]}\n",
+                        encoding="utf-8")
+        return jd, urls
+
+    def test_prescreen_title_exclude_skips_company_info_and_screening(self):
+        from auto import run_auto
+        from pre_screen import PreScreenResult
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd, urls = self._setup(tmp, "888001-x-frontend.md",
+                "# Frontend\n## 포지션\n프론트엔드 개발자")
+            extracted = MagicMock(output_path=jd, company="X", title="프론트엔드")
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {},
+                       "quick_filters": {"title_include": [], "title_exclude": ["프론트엔드"]}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                     hit=True, reason_code="title_exclude",
+                     reason_detail="title_exclude: 프론트엔드", target_folder="pass")), \
+                 patch("auto.move_to_folder") as mock_move, \
+                 patch("auto.ensure_company_info") as mock_ci, \
+                 patch("auto.run_screening") as mock_scr:
+                mock_move.return_value = jd
+                results, summary = run_auto(
+                    from_urls=urls, run_id="test-prescreen-title",
+                )
+            mock_ci.assert_not_called()
+            mock_scr.assert_not_called()
+            self.assertEqual(summary.prescreened, 1)
+            self.assertEqual(summary.passed, 1)
+            self.assertEqual(summary.closed, 0)
+            self.assertEqual(summary.rejected_prior, 0)
+            self.assertEqual(summary.prescreen_review, 0)
+            self.assertEqual(summary.hold, 0)
+            self.assertEqual(results[0].status, "prescreen_filtered")
+            self.assertEqual(results[0].verdict, "지원 비추천")
+
+    def test_prescreen_counter_indicator_routes_to_review(self):
+        from auto import run_auto
+        from pre_screen import PreScreenResult
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd, urls = self._setup(tmp, "888002-x-fe-be.md",
+                "# Hybrid\n## 포지션\nFrontend Backend Engineer")
+            extracted = MagicMock(output_path=jd, company="X", title="Hybrid")
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                     hit=True, reason_code="domain_frontend",
+                     reason_detail="frontend + counter",
+                     target_folder="conditional/hold", is_review=True)), \
+                 patch("auto.move_to_folder") as mock_move, \
+                 patch("auto.ensure_company_info") as mock_ci, \
+                 patch("auto.run_screening") as mock_scr:
+                mock_move.return_value = jd
+                results, summary = run_auto(
+                    from_urls=urls, run_id="test-prescreen-review",
+                )
+            mock_ci.assert_not_called()
+            mock_scr.assert_not_called()
+            self.assertEqual(summary.prescreen_review, 1)
+            self.assertEqual(summary.hold, 0)
+            self.assertEqual(summary.passed, 0)
+            self.assertEqual(summary.prescreened, 0)
+            self.assertEqual(results[0].status, "prescreen_review")
+            self.assertEqual(results[0].classified_folder, "conditional/hold")
+
+    def test_prescreen_closed_routes_to_closed_counter(self):
+        from auto import run_auto
+        from pre_screen import PreScreenResult
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd, urls = self._setup(tmp, "888005-x-be.md",
+                "# Backend\n채용 마감\n## 포지션\nBackend Engineer")
+            extracted = MagicMock(output_path=jd, company="X", title="Backend")
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                     hit=True, reason_code="closed",
+                     reason_detail="채용 마감 감지", target_folder="closed")), \
+                 patch("auto.move_to_folder") as mock_move, \
+                 patch("auto.ensure_company_info") as mock_ci, \
+                 patch("auto.run_screening") as mock_scr:
+                mock_move.return_value = jd
+                results, summary = run_auto(
+                    from_urls=urls, run_id="test-prescreen-closed",
+                )
+            mock_ci.assert_not_called()
+            mock_scr.assert_not_called()
+            self.assertEqual(summary.closed, 1)
+            self.assertEqual(summary.passed, 0)
+            self.assertEqual(summary.prescreened, 0)
+            self.assertEqual(results[0].classified_folder, "closed")
+
+    def test_prescreen_prior_application_routes_to_rejected_counter(self):
+        from auto import run_auto
+        from pre_screen import PreScreenResult
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd, urls = self._setup(tmp, "888006-acme-be.md",
+                "**회사**: Acme\n## 포지션\nBackend")
+            extracted = MagicMock(output_path=jd, company="Acme", title="Backend")
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                     hit=True, reason_code="prior_application",
+                     reason_detail="직전 지원 이력: 2025-12-01",
+                     target_folder="rejected")), \
+                 patch("auto.move_to_folder") as mock_move, \
+                 patch("auto.ensure_company_info") as mock_ci, \
+                 patch("auto.run_screening") as mock_scr:
+                mock_move.return_value = jd
+                results, summary = run_auto(
+                    from_urls=urls, run_id="test-prescreen-prior",
+                )
+            mock_ci.assert_not_called()
+            mock_scr.assert_not_called()
+            self.assertEqual(summary.rejected_prior, 1)
+            self.assertEqual(summary.passed, 0)
+            self.assertEqual(summary.prescreened, 0)
+            self.assertEqual(results[0].classified_folder, "rejected")
+
+    def test_prescreen_no_hit_continues_to_company_info(self):
+        from auto import run_auto
+        from pre_screen import PreScreenResult
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd, urls = self._setup(tmp, "888003-x-be.md",
+                "# Backend\n## 포지션\nBackend Engineer")
+            extracted = MagicMock(output_path=jd, company="X", title="Backend")
+            company_info = MagicMock(company="X", file_path=tmp / "co.md",
+                completeness=80.0, thevc_attempted=False, thevc_status="skipped",
+                investment_data_source="none")
+            screening = MagicMock(screening_path=tmp / "scr.md",
+                verdict="지원 보류", used_fallback=False)
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                     False, "", "", "")), \
+                 patch("auto.ensure_company_info", return_value=company_info) as mock_ci, \
+                 patch("auto.run_screening", return_value=screening) as mock_scr, \
+                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                results, summary = run_auto(
+                    from_urls=urls, run_id="test-prescreen-pass-through",
+                )
+            mock_ci.assert_called_once()
+            mock_scr.assert_called_once()
+            self.assertEqual(summary.prescreened, 0)
+
+    def test_no_prescreen_flag_disables_hook(self):
+        from auto import run_auto
+        from pre_screen import PreScreenResult
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd, urls = self._setup(tmp, "888004-x-fe.md",
+                "# Frontend\n## 포지션\n프론트엔드")
+            extracted = MagicMock(output_path=jd, company="X", title="프론트엔드")
+            company_info = MagicMock(company="X", file_path=tmp / "co.md",
+                completeness=80.0, thevc_attempted=False, thevc_status="skipped",
+                investment_data_source="none")
+            screening = MagicMock(screening_path=tmp / "scr.md",
+                verdict="지원 보류", used_fallback=False)
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.pre_screen_jd") as mock_pre, \
+                 patch("auto.ensure_company_info", return_value=company_info) as mock_ci, \
+                 patch("auto.run_screening", return_value=screening), \
+                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                results, summary = run_auto(
+                    from_urls=urls, run_id="test-no-prescreen", no_prescreen=True,
+                )
+            mock_pre.assert_not_called()
+            mock_ci.assert_called_once()
+
+    def test_resume_skips_prescreen_when_past_stage(self):
+        """resume + saved_stage가 pre-screen 이후 단계 → pre-screen 스킵."""
+        from auto import run_auto
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            jd = tmp / "888007-x-be.md"
+            jd.write_text("# Backend\n## 포지션\nBackend Engineer", encoding="utf-8")
+            prev_state = {
+                "888007": {
+                    "url": "https://www.wanted.co.kr/wd/888007",
+                    "stage": "company_info",
+                    "status": "in_progress",
+                    "jd_path": str(jd),
+                }
+            }
+            company_info = MagicMock(company="X", file_path=tmp / "co.md",
+                completeness=80.0, thevc_attempted=False, thevc_status="skipped",
+                investment_data_source="none")
+            screening = MagicMock(screening_path=tmp / "scr.md",
+                verdict="지원 보류", used_fallback=False)
+            with patch("auto.STATE_DIR", tmp / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto._find_latest_state", return_value="prev-run"), \
+                 patch("auto._load_state", return_value=prev_state), \
+                 patch("auto.find_existing_jd", return_value=jd), \
+                 patch("auto.pre_screen_jd") as mock_pre, \
+                 patch("auto.ensure_company_info", return_value=company_info) as mock_ci, \
+                 patch("auto.run_screening", return_value=screening), \
+                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                results, summary = run_auto(resume=True)
+            mock_pre.assert_not_called()
+            mock_ci.assert_called_once()
+            self.assertEqual(summary.prescreened, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
