@@ -5,23 +5,41 @@ import sys
 import re
 from pathlib import Path
 
-def load_config():
-    """필터 조건 반환"""
-    return {
-        "quick_filters": {
-            "title_include": [
-                "백엔드", "Backend", "Back-end", "Back End",
-                "개발자", "Developer", "엔지니어", "Engineer",
-                "서버", "Server", "Software"
-            ],
-            "title_exclude": [
-                "인턴", "주니어", "Junior", "신입", "리더", "CTO", "VP", "Head of",
-                "프론트엔드", "Frontend", "풀스택", "Infra", "인프라",
-                "데브옵스", "DevOps", "SRE", "QA", "팀장", "리드", "Lead",
-                "프리랜서", "기술영업", "세일즈"
-            ]
-        }
+import yaml
+
+# search.py와 동일 경로
+_CONFIG_PATH = Path(__file__).parent.parent.parent / "private" / "job_postings" / "search_config.yaml"
+
+_FALLBACK_CONFIG = {
+    "quick_filters": {
+        "title_include": [
+            "백엔드", "Backend", "Back-end", "Back End",
+            "개발자", "Developer", "엔지니어", "Engineer",
+            "서버", "Server", "Software"
+        ],
+        "title_exclude": [
+            "인턴", "주니어", "Junior", "신입", "리더", "CTO", "VP", "Head of",
+            "프론트엔드", "Frontend", "풀스택", "Infra", "인프라",
+            "데브옵스", "DevOps", "SRE", "QA", "팀장", "리드", "Lead",
+            "프리랜서", "기술영업", "세일즈"
+        ]
     }
+}
+
+
+def load_config():
+    """search_config.yaml의 quick_filters를 우선 로드. 없으면 fallback."""
+    if not _CONFIG_PATH.exists():
+        return _FALLBACK_CONFIG
+    try:
+        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        qf = data.get("quick_filters")
+        if not qf or "title_include" not in qf or "title_exclude" not in qf:
+            return _FALLBACK_CONFIG
+        return {"quick_filters": qf}
+    except Exception:
+        return _FALLBACK_CONFIG
 
 def apply_quick_filter(batch_result, config):
     """
