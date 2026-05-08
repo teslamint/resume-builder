@@ -25,9 +25,13 @@ python3 templates/jd/auto.py --company-enrichment-only  # reprocess TheVC queue
 python3 templates/jd/auto.py --min-completeness 60      # re-collect if existing company info < 60%
 python3 templates/jd/auto.py --thevc-mode auto|skip|require  # TheVC login failure handling
 python3 templates/jd/auto.py --resume                        # resume from last incomplete run
+python3 templates/jd/auto.py --no-prescreen                  # disable LLM 직전 빠른 컷
 ```
 
 - `--min-completeness N`: skip re-collection when existing `company_info` completeness ≥ N% (0–100)
+- `--no-prescreen`: closed/직전지원/title_exclude/도메인 매칭으로 LLM 진입 전 자동 컷 비활성화 (기본 활성화)
+- Pre-screen은 `--screening-only` 모드 또는 resume 시 `saved_stage in ("company_info", "screening", "classifying")` 인 경우 자동으로 스킵 (사용자 의도 보존 + idempotent)
+- Pre-screen은 `--no-classify`와 독립적으로 동작 — 어떤 자동 이동도 원치 않으면 `--no-prescreen --no-classify` 조합 사용
 - Headhunting companies (써치/서치펌/헤드헌팅/리크루팅/인력파견) are auto-detected and excluded from info collection
 - `find_existing_jd()` searches all `conditional/` subdirs: `high/`, `hold/`, `middle/`, `low/`
 
