@@ -22,6 +22,7 @@ from enum import Enum
 
 try:
     from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
+    from .domain_filter import scan_folder as domain_scan_folder, build_manifest, write_manifest
     from .jd_content import (
         add_frontmatter_status,
         extract_metadata_from_jd,
@@ -42,6 +43,7 @@ try:
     from .verdict import classify_by_verdict, move_to_folder, parse_verdict_from_screening
 except ImportError:
     from constants import JOB_POSTINGS_DIR, SCREENING_DIR
+    from domain_filter import scan_folder as domain_scan_folder, build_manifest, write_manifest
     from jd_content import (
         add_frontmatter_status,
         extract_metadata_from_jd,
@@ -613,8 +615,13 @@ Examples:
         action="store_true",
         help="Migrate files in applied/rejected folders to have frontmatter status",
     )
+    group.add_argument(
+        "--filter-domain",
+        help="Scan folder for non-backend JDs and filter them",
+    )
 
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without moving files")
+    parser.add_argument("--delete", action="store_true", help="Delete filtered files (used with --filter-domain)")
     parser.add_argument("--reason", help="Reason for status change (used with --set-status)")
     parser.add_argument("--report-out", help="Dry-run report output path (directory or file prefix)")
     parser.add_argument(
@@ -699,6 +706,48 @@ Examples:
             print(f"✅ {path.name}: status -> {status_value}")
             if args.reason:
                 print(f"   reason: {args.reason}")
+
+    elif args.filter_domain:
+        folder = Path(args.filter_domain)
+        items = domain_scan_folder(folder, dry_run=args.dry_run, delete=args.delete)
+
+        delete_items = [i for i in items if i.action == "delete"]
+        manual_items = [i for i in items if i.action == "needs_manual"]
+
+        category_counts: Counter = Counter()
+        for item in delete_items:
+            category_counts[item.category or "unknown"] += 1
+
+        print(f"\n{'=' * 70}")
+        print(f"도메인 필터 결과: {folder}")
+        print(f"{'=' * 70}")
+
+        if delete_items:
+            print(f"\n🔴 삭제 대상: {len(delete_items)}건")
+            for cat, count in sorted(category_counts.items()):
+                print(f"   {cat}: {count}건")
+            if not args.dry_run and not args.delete:
+                print("\n   실행하려면 --delete 플래그를 추가하세요.")
+        else:
+            print("\n삭제 대상 없음")
+
+        if manual_items:
+            print(f"\n📝 수동 확인 필요: {len(manual_items)}건")
+            for item in manual_items:
+                print(f"   {Path(item.jd_path).name}: {item.reason}")
+
+        action_label = "delete" if args.delete else "dry-run"
+        if args.dry_run:
+            action_label = "dry-run"
+
+        manifest = build_manifest(items, action_label)
+        manifest_path = write_manifest(manifest)
+        print(f"\n📄 manifest: {manifest_path}")
+
+        if args.dry_run:
+            print("\n⚠️ DRY-RUN 모드: 실제 파일 삭제 없음")
+        elif args.delete:
+            print(f"\n✅ {len(delete_items)}건 삭제 완료")
 
     elif args.migrate_status:
         results = migrate_status(JOB_POSTINGS_DIR, dry_run=args.dry_run)
