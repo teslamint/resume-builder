@@ -31,6 +31,10 @@ try:
     from .search import JobPosting, load_config, run_search
     from .notifications import format_notification, send_notification
     from .verdict import move_to_folder
+    from .pre_screen_helpers import (
+        _CLOSED_MARKERS, _PRIOR_HISTORY_FOLDERS, _PRIOR_HISTORY_DAYS,
+        _is_closed_jd, _extract_company_slug, _check_prior_application,
+    )
 except ImportError:
     from auto_company import ENRICHMENT_QUEUE_PATH, ensure_company_info
     from auto_extractors import extract_jd_from_url
@@ -42,6 +46,10 @@ except ImportError:
     from pipeline import ProcessResult, classify_file
     from search import JobPosting, load_config, run_search
     from verdict import move_to_folder
+    from pre_screen_helpers import (
+        _CLOSED_MARKERS, _PRIOR_HISTORY_FOLDERS, _PRIOR_HISTORY_DAYS,
+        _is_closed_jd, _extract_company_slug, _check_prior_application,
+    )
 
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
@@ -178,86 +186,6 @@ def _resolve_jd_path_for_screening(url: str) -> Optional[Path]:
     if not job_id:
         return None
     return find_jd_anywhere(job_id)
-
-
-_CLOSED_MARKERS = (
-    "채용 마감",
-    "채용이 마감",
-    "마감되었습니다",
-    "이 공고는 마감",
-    "지원 기간이 종료",
-    "상시채용 종료",
-    "Position closed",
-    "이 포지션은 마감",
-)
-
-_PRIOR_HISTORY_FOLDERS = ("applied", "rejected", "submitted")
-_PRIOR_HISTORY_DAYS = 180  # 6개월
-
-
-def _is_closed_jd(jd_path: Path) -> bool:
-    try:
-        text = jd_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    return any(marker in text for marker in _CLOSED_MARKERS)
-
-
-def _extract_company_slug(jd_path: Path) -> str | None:
-    """JD에서 회사 슬러그 추출. naming.slugify_company 활용."""
-    try:
-        from naming import slugify_company
-    except ImportError:
-        from .naming import slugify_company
-    try:
-        text = jd_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    # 표/볼릿/콜론 형식 모두 처리
-    import re as _re
-    for pat in (
-        r"\|\s*회사명?\s*\|\s*([^|\n]+?)\s*\|",
-        r"\*\*회사\*\*\s*:\s*([^\n]+)",
-        r"^회사명?\s*:\s*([^\n]+)",
-    ):
-        m = _re.search(pat, text, _re.MULTILINE)
-        if m:
-            raw = m.group(1).split("/")[0].split("(")[0].strip()
-            return slugify_company(raw, max_len=30, fallback="")
-    # filename fallback
-    parts = jd_path.stem.split("-", 2)
-    if len(parts) > 1:
-        return slugify_company(parts[1], max_len=30, fallback="")
-    return None
-
-
-def _check_prior_application(jd_path: Path) -> tuple[Path, datetime] | None:
-    """직전 6개월 내 동일 회사 지원/탈락 이력 검사.
-
-    Returns: (matched_file, mtime) 또는 None
-    """
-    company_slug = _extract_company_slug(jd_path)
-    if not company_slug or len(company_slug) < 2:
-        return None
-
-    cutoff = datetime.now().timestamp() - _PRIOR_HISTORY_DAYS * 86400
-    for folder_name in _PRIOR_HISTORY_FOLDERS:
-        folder = JOB_POSTINGS_DIR / folder_name
-        if not folder.exists():
-            continue
-        for prior in folder.glob("*.md"):
-            if prior.stat().st_mtime < cutoff:
-                continue
-            prior_slug = _extract_company_slug(prior)
-            if not prior_slug:
-                continue
-            # 양방향 부분 매칭 (짧은 쪽이 긴 쪽 부분문자열)
-            if company_slug == prior_slug:
-                return prior, datetime.fromtimestamp(prior.stat().st_mtime)
-            if len(company_slug) >= 4 and len(prior_slug) >= 4:
-                if company_slug in prior_slug or prior_slug in company_slug:
-                    return prior, datetime.fromtimestamp(prior.stat().st_mtime)
-    return None
 
 
 def _classify(jd_path: Path, dry_run: bool) -> tuple[str, str]:
