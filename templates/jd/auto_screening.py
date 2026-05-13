@@ -245,6 +245,46 @@ def _screening_filename(jd_path: Path) -> str:
     return f"{job_id}-{jd_path.stem.split('-', 1)[1]}.md" if "-" in jd_path.stem else f"{job_id}.md"
 
 
+_REQUIRED_SECTIONS = (
+    "## 기본 정보",
+    "## 스크리닝 결과",
+    "## 이력/경험 매칭",
+    "## 최종 판정",
+    "## 핵심 근거",
+)
+
+_CONVERSATIONAL_PATTERNS = (
+    "승인 대기",
+    "권한을 요청",
+    "권한이 필요",
+    "Plan 파일",
+    "진행 방식을 확인",
+    "어디에 저장할",
+    "저장할 위치",
+    "진행해도 될까",
+    "진행하겠습니다",
+    "도와드리",
+)
+
+MIN_VALID_LINES = 20
+
+
+def _validate_screening_structure(markdown: str) -> tuple[bool, str]:
+    lines = [l for l in markdown.splitlines() if l.strip()]
+    if len(lines) < MIN_VALID_LINES:
+        return False, f"줄 수 부족 ({len(lines)}줄 < {MIN_VALID_LINES})"
+
+    missing = [s for s in _REQUIRED_SECTIONS if s not in markdown]
+    if missing:
+        return False, f"필수 섹션 누락: {', '.join(missing)}"
+
+    for pat in _CONVERSATIONAL_PATTERNS:
+        if pat in markdown:
+            return False, f"대화형 패턴 탐지: '{pat}'"
+
+    return True, ""
+
+
 def _normalize_output(markdown: str, verdict: str) -> str:
     if "### 최종 판정:" in markdown:
         return markdown
@@ -273,6 +313,20 @@ def run_screening(
         provider, raw_output = _run_llm(prompt, timeout=llm_timeout)
         verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
         normalized_output = _normalize_output(raw_output, verdict)
+
+        valid, reason = _validate_screening_structure(normalized_output)
+        if not valid:
+            retry_prefix = (
+                "이전 응답이 필수 섹션을 누락했습니다. "
+                "반드시 ## 기본 정보 / ## 스크리닝 결과 / ## 이력/경험 매칭 / "
+                "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
+            )
+            provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
+            verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
+            normalized_output = _normalize_output(raw_output, verdict)
+            valid, reason = _validate_screening_structure(normalized_output)
+            if not valid:
+                raise RuntimeError(f"구조 검증 실패 (재시도 후): {reason}")
     except Exception as exc:
         used_fallback = True
         verdict = "지원 보류"

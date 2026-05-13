@@ -446,7 +446,7 @@ def run_auto(
             jd_path: Optional[Path] = None
 
             # 1) JD extraction — skip if already done (resume or screening_only)
-            if saved_stage in ("company_info", "screening", "classifying") and resolved_jd_path:
+            if saved_stage in ("prescreening", "company_info", "screening", "classifying") and resolved_jd_path:
                 jd_path = resolved_jd_path
                 row.jd_path = str(jd_path)
                 print(f"   ⏩ Extraction 스킵 (이미 완료)")
@@ -498,9 +498,12 @@ def run_auto(
                 pre = pre_screen_jd(jd_path, config)
                 if pre.hit:
                     target = pre.target_folder
-                    moved = move_to_folder(jd_path, target)
-                    row.jd_path = str(moved)
-                    row.classified_folder = target
+                    if not no_classify:
+                        moved = move_to_folder(jd_path, target)
+                        row.jd_path = str(moved)
+                        row.classified_folder = target
+                    else:
+                        row.classified_folder = ""
                     row.error_stage = "prescreening"
                     row.error_reason = pre.reason_detail
 
@@ -520,8 +523,8 @@ def run_auto(
                         row.status = "prescreen_filtered"
                         row.verdict = "지원 비추천"
                         summary.prescreened += 1
-                        summary.passed += 1
 
+                    _update_verdict_count(summary, row.verdict)
                     summary.processed += 1
                     state_items[job_id].update(
                         stage="done", status="done",
@@ -579,7 +582,7 @@ def run_auto(
             saved_screening_path = saved.get("screening_path", "")
             saved_verdict = saved.get("verdict", "")
             if (
-                saved_stage == "classifying"
+                saved_stage in ("screening", "classifying")
                 and saved_screening_path
                 and Path(saved_screening_path).exists()
                 and saved_verdict

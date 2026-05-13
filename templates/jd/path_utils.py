@@ -108,6 +108,7 @@ def find_existing_jd(job_id: str) -> Optional[Path]:
         JOB_POSTINGS_DIR / "rejected",
         JOB_POSTINGS_DIR / "high_priority",
         JOB_POSTINGS_DIR / "on_going",
+        JOB_POSTINGS_DIR / "closed",
     ]
 
     for search_dir in search_dirs:
@@ -139,6 +140,7 @@ def find_jd_anywhere(job_id: str) -> Optional[Path]:
         JOB_POSTINGS_DIR / "rejected",
         JOB_POSTINGS_DIR / "high_priority",
         JOB_POSTINGS_DIR / "on_going",
+        JOB_POSTINGS_DIR / "closed",
         JOB_POSTINGS_DIR / "unprocessed",
     ]
 
