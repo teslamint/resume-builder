@@ -265,7 +265,7 @@ _CONVERSATIONAL_PATTERNS = (
     "진행해도 될까",
     "스크리닝을 진행하겠습니다",
     "분석을 진행하겠습니다",
-    "도와드리",
+    "도와드리겠습니다",
 )
 
 def _validate_screening_structure(markdown: str) -> tuple[bool, str]:
