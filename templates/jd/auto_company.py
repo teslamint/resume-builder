@@ -529,6 +529,7 @@ def ensure_company_info(
                         completeness=completeness,
                         thevc_attempted=False,
                         thevc_status="skipped_dry_run",
+                        investment_data_source="",
                     )
                 else:
                     thevc_status, investment_data = _extract_thevc_investment(company)
