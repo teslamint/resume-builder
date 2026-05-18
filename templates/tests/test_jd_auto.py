@@ -404,7 +404,13 @@ class TestAutoScreening(unittest.TestCase):
 
         def fake_run_llm(prompt, timeout):
             captured["prompt"] = prompt
-            return "test", "## 최종 판정\n\n### 최종 판정: 지원 보류\n"
+            return "test", (
+                "## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n\n"
+                "## 스크리닝 결과\n\n요약\n\n"
+                "## 이력/경험 매칭\n\n| 요건 | 매칭 |\n|------|------|\n\n"
+                "## 최종 판정\n\n### 최종 판정: 지원 보류\n\n"
+                "## 핵심 근거\n\n- 테스트\n"
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

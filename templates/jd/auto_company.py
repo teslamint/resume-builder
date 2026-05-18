@@ -479,7 +479,7 @@ def ensure_company_info(
         from datetime import date
         slug = slugify_company(company)
         file_path = COMPANY_INFO_DIR / f"{slug}.md"
-        if not file_path.exists():
+        if not file_path.exists() and not dry_run:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(
                 f"# {company}\n\n⚠️ 헤드헌팅/서치펌 — 정보 수집 제외 대상.\n\n---\n\n*확인일: {date.today().isoformat()}*\n",
@@ -519,22 +519,35 @@ def ensure_company_info(
 
         if completeness >= 0 and completeness >= min_completeness:
             if startup_needs_thevc and thevc_mode != "skip":
-                thevc_status, investment_data = _extract_thevc_investment(company)
-                if thevc_status == "success" and investment_data:
-                    _inject_thevc_into_file(existing, investment_data)
-                    completeness = _completeness_score(existing)
+                if dry_run:
+                    if thevc_mode == "require":
+                        raise RuntimeError("TheVC 투자정보 수집 필요(dry-run에서 스킵) - require 모드")
                     return CompanyInfoResult(
                         company=company,
                         file_path=existing,
                         used_existing=True,
                         completeness=completeness,
-                        thevc_attempted=True,
-                        thevc_status=thevc_status,
-                        investment_data_source="thevc",
+                        thevc_attempted=False,
+                        thevc_status="skipped_dry_run",
+                        investment_data_source="",
                     )
+                else:
+                    thevc_status, investment_data = _extract_thevc_investment(company)
+                    if thevc_status == "success" and investment_data:
+                        _inject_thevc_into_file(existing, investment_data)
+                        completeness = _completeness_score(existing)
+                        return CompanyInfoResult(
+                            company=company,
+                            file_path=existing,
+                            used_existing=True,
+                            completeness=completeness,
+                            thevc_attempted=True,
+                            thevc_status=thevc_status,
+                            investment_data_source="thevc",
+                        )
 
-                if thevc_mode == "require":
-                    raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
+                    if thevc_mode == "require":
+                        raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
 
                 thevc_note = _thevc_failure_note(thevc_status)
                 _inject_thevc_note_into_file(existing, thevc_note)
@@ -588,7 +601,8 @@ def ensure_company_info(
             thevc_note = "TheVC에서 투자정보를 추출했습니다."
         else:
             thevc_note = _thevc_failure_note(thevc_status)
-            _append_enrichment_queue(company)
+            if not dry_run:
+                _append_enrichment_queue(company)
 
         if thevc_mode == "require" and thevc_status != "success":
             raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")

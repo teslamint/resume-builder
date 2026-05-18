@@ -49,3 +49,23 @@ Facts captured:
 - Salary signals: Wanted average salary 4,313만원; Saramin average salary 5,676만원.
 - Funding signals are inconsistent across sources: Series A / Pre-Series B and 65~77억원 total funding. Record the inconsistency rather than normalizing it.
 - Screening implication for 356935: technical stack matches backend experience. Treat the body requirement as "7+ years"; do not use the extractor's 7~10 year display as a hard upper-bound reason. Salary signals and broad architecture/infrastructure ownership keep it in hold status pending compensation and responsibility-scope verification.
+
+## Neosapience / Typecast
+
+Sources:
+- Wanted company page: https://www.wanted.co.kr/company/4666
+- Remember company page: https://career.rememberapp.co.kr/job/company/1471241
+- JobKorea company page: https://www.jobkorea.co.kr/company/45475070
+- JobKorea salary page: https://www.jobkorea.co.kr/company/45475070/salary
+- Saramin finance page: https://www.saramin.co.kr/zf_user/company-info/view-inner-finance/csn/bFExeG9RSkwzQXF0RDcvNDJJdjhWQT09/company_nm/%EB%84%A4%EC%98%A4%EC%82%AC%ED%94%BC%EC%97%94%EC%8A%A4%28%EC%A3%BC%29
+- Saramin salary page: https://www.saramin.co.kr/zf_user/company-info/view-inner-salary/csn/bFExeG9RSkwzQXF0RDcvNDJJdjhWQT09/company_nm/%EB%84%A4%EC%98%A4%EC%82%AC%ED%94%BC%EC%97%94%EC%8A%A4
+- KM&A News funding article: https://www.kmnanews.com/news/articleView.html?idxno=9656
+- beSUCCESS funding article: https://besuccess.com/?p=177861
+
+Facts captured:
+- Founded in 2017/2018 depending on source date granularity; company registration-style sources point to November 2017.
+- Business: AI voice generation / synthetic media / Typecast content SaaS.
+- Headcount signals: Wanted 56, Remember 57~58, JobKorea 64.
+- Salary signals vary materially: Wanted 5,932만원, Remember 6,524만원, JobKorea 5,779만원, Saramin 8,667만원. Treat salary as source-sensitive rather than a single hard fact.
+- Funding: Pre-IPO round, 165억원 newly raised, 427억원 cumulative funding, with InterVest, HB Investment, K2 Investment, and Bokwang Investment among participating investors.
+- Screening implication for 361158: company-info completeness block was caused by extractor search failure on the parenthesized Wanted company name. Use the manually enriched `private/company_info/네오사피엔스-타입캐스트.md` file for screening.

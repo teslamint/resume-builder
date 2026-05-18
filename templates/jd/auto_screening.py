@@ -245,6 +245,65 @@ def _screening_filename(jd_path: Path) -> str:
     return f"{job_id}-{jd_path.stem.split('-', 1)[1]}.md" if "-" in jd_path.stem else f"{job_id}.md"
 
 
+_REQUIRED_SECTIONS = (
+    "## 기본 정보",
+    "## 스크리닝 결과",
+    "## 이력/경험 매칭",
+    "## 최종 판정",
+    "## 핵심 근거",
+)
+
+_CONVERSATIONAL_PATTERNS = (
+    "승인 대기 중",
+    "권한을 요청합니다",
+    "저장 권한이 필요",
+    "실행 권한이 필요",
+    "Plan 파일을 작성",
+    "진행 방식을 확인하겠습니다",
+    "어디에 저장할까",
+    "저장할 위치를 알려",
+    "진행해도 될까",
+    "스크리닝을 진행하겠습니다",
+    "분석을 진행하겠습니다",
+    "도와드리겠습니다",
+)
+
+_MIN_CONTENT_LINES = 5
+
+_FILLER_PREFIXES = ("|---", "|-", "| ---", "| -")
+
+
+def _is_substantive_line(line: str) -> bool:
+    """Return True if line is non-empty, non-heading, non-filler."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("#"):
+        return False
+    for prefix in _FILLER_PREFIXES:
+        if stripped.startswith(prefix) and set(stripped.replace("|", "").strip()) <= {"-", " "}:
+            return False
+    return True
+
+
+def _validate_screening_structure(markdown: str) -> tuple[bool, str]:
+    lines = markdown.splitlines()
+    heading_lines = {l.strip() for l in lines if l.strip().startswith("#")}
+    missing = [s for s in _REQUIRED_SECTIONS if s not in heading_lines]
+    if missing:
+        return False, f"필수 섹션 누락: {', '.join(missing)}"
+
+    content_lines = [l for l in lines if _is_substantive_line(l)]
+    if len(content_lines) < _MIN_CONTENT_LINES:
+        return False, f"섹션 내용 부족 (헤더/구분선 제외 {len(content_lines)}줄 < {_MIN_CONTENT_LINES})"
+
+    for pat in _CONVERSATIONAL_PATTERNS:
+        if pat in markdown:
+            return False, f"대화형 패턴 탐지: '{pat}'"
+
+    return True, ""
+
+
 def _normalize_output(markdown: str, verdict: str) -> str:
     if "### 최종 판정:" in markdown:
         return markdown
@@ -292,6 +351,24 @@ def run_screening(
 - LLM 스크리닝 실행 실패로 자동 보류 처리
 - 사유: {exc}
 """
+
+    if not used_fallback:
+        valid, reason = _validate_screening_structure(normalized_output)
+        if not valid:
+            retry_prefix = (
+                "이전 응답이 필수 섹션을 누락했습니다. "
+                "반드시 ## 기본 정보 / ## 스크리닝 결과 / ## 이력/경험 매칭 / "
+                "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
+            )
+            try:
+                provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
+                verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
+                normalized_output = _normalize_output(raw_output, verdict)
+            except Exception:
+                raise RuntimeError(f"구조 검증 실패 + 재시도 LLM 오류: {reason}")
+            valid, reason = _validate_screening_structure(normalized_output)
+            if not valid:
+                raise RuntimeError(f"구조 검증 실패 (재시도 후): {reason}")
 
     screening_path = SCREENING_DIR / _screening_filename(jd_path)
 
