@@ -523,8 +523,8 @@ def run_auto(
                         row.status = "prescreen_filtered"
                         row.verdict = "지원 비추천"
                         summary.prescreened += 1
+                        summary.passed += 1
 
-                    _update_verdict_count(summary, row.verdict)
                     summary.processed += 1
                     state_items[job_id].update(
                         stage="done", status="done",
