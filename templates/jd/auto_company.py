@@ -522,6 +522,14 @@ def ensure_company_info(
                 if dry_run:
                     if thevc_mode == "require":
                         raise RuntimeError("TheVC 투자정보 수집 필요(dry-run에서 스킵) - require 모드")
+                    return CompanyInfoResult(
+                        company=company,
+                        file_path=existing,
+                        used_existing=True,
+                        completeness=completeness,
+                        thevc_attempted=False,
+                        thevc_status="skipped_dry_run",
+                    )
                 else:
                     thevc_status, investment_data = _extract_thevc_investment(company)
                     if thevc_status == "success" and investment_data:
