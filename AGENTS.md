@@ -52,6 +52,22 @@ Override content must not add technologies, roles, or achievements absent from b
 
 AI-generated content (interview sheets, mock interviews) must not infer specific technical experiences from general resume statements. "Used Spring Boot" ≠ "solved JPA N+1". State only what the resume explicitly documents. Verify with: `python3 templates/build/verify_content.py private/jd_analysis/interview/<file>.md`
 
+## Review Guidelines
+
+When reviewing pull requests, inspect the diff first, then read surrounding files only as needed to verify behavior. Keep the review scoped to changes introduced by the pull request.
+
+Prioritize correctness, regressions, missing tests, and repository-specific rule violations over general advice. Report actionable findings first, ordered by severity, with concrete file/line references when possible. Do not suggest broad refactors unless they prevent a concrete bug or regression.
+
+Review focus:
+- **Resume source of truth**: Markdown source files are authoritative. Do not recommend editing generated files under `private/build/`.
+- **Content integrity**: Reject changes that add technologies, roles, scope, or achievements not evidenced by `private/profile/` or `private/companies/`.
+- **Builder behavior**: Check variant tag handling, summary extraction behavior, override behavior, company key case sensitivity, and example build compatibility.
+- **JD pipeline behavior**: Check classification paths, validation behavior, false positives, Korean screening wording constraints, duplicate detection, and queue/status handling.
+- **Generated analysis content**: Check that prompts and validators prevent unsupported inference from general resume statements.
+- **Workflow automation**: Check secret exposure, fork PR behavior, permissions, and whether generated comments can spam a PR.
+
+If there are no actionable findings, say that clearly and mention any residual verification gap.
+
 ## Build & Test Commands
 
 ```bash
