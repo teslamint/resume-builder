@@ -428,7 +428,7 @@ def run_auto(
         # Even resume items should not be reprocessed if they've been moved
         # to a non-conditional folder (pass, applied, rejected, on_going, high_priority)
         if is_resume_item and resolved_jd_path:
-            non_reprocessable = {"pass", "applied", "rejected", "on_going", "high_priority"}
+            non_reprocessable = {"pass", "applied", "rejected", "on_going", "high_priority", "closed"}
             if any(part in non_reprocessable for part in resolved_jd_path.parts):
                 is_resume_item = False
 
