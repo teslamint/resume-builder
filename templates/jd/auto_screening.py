@@ -258,10 +258,10 @@ _CONVERSATIONAL_PATTERNS = (
     "권한을 요청합니다",
     "저장 권한이 필요",
     "실행 권한이 필요",
-    "Plan 파일",
-    "진행 방식을 확인",
-    "어디에 저장할",
-    "저장할 위치",
+    "Plan 파일을 작성",
+    "진행 방식을 확인하겠습니다",
+    "어디에 저장할까",
+    "저장할 위치를 알려",
     "진행해도 될까",
     "스크리닝을 진행하겠습니다",
     "분석을 진행하겠습니다",
@@ -270,18 +270,32 @@ _CONVERSATIONAL_PATTERNS = (
 
 _MIN_CONTENT_LINES = 5
 
+_FILLER_PREFIXES = ("|---", "|-", "| ---", "| -")
+
+
+def _is_substantive_line(line: str) -> bool:
+    """Return True if line is non-empty, non-heading, non-filler."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if stripped.startswith("#"):
+        return False
+    for prefix in _FILLER_PREFIXES:
+        if stripped.startswith(prefix) and set(stripped.replace("|", "").strip()) <= {"-", " "}:
+            return False
+    return True
+
 
 def _validate_screening_structure(markdown: str) -> tuple[bool, str]:
-    missing = [s for s in _REQUIRED_SECTIONS if s not in markdown]
+    lines = markdown.splitlines()
+    heading_lines = {l.strip() for l in lines if l.strip().startswith("#")}
+    missing = [s for s in _REQUIRED_SECTIONS if s not in heading_lines]
     if missing:
         return False, f"필수 섹션 누락: {', '.join(missing)}"
 
-    content_lines = [
-        l for l in markdown.splitlines()
-        if l.strip() and not l.strip().startswith("#")
-    ]
+    content_lines = [l for l in lines if _is_substantive_line(l)]
     if len(content_lines) < _MIN_CONTENT_LINES:
-        return False, f"섹션 내용 부족 (헤더 제외 {len(content_lines)}줄 < {_MIN_CONTENT_LINES})"
+        return False, f"섹션 내용 부족 (헤더/구분선 제외 {len(content_lines)}줄 < {_MIN_CONTENT_LINES})"
 
     for pat in _CONVERSATIONAL_PATTERNS:
         if pat in markdown:

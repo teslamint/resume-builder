@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from auto_screening import run_screening
 from constants import COMPANY_INFO_DIR, JOB_POSTINGS_DIR, SCREENING_DIR
 from jd_content import load_company_info, extract_metadata_from_jd
+from path_utils import find_existing_jd
 from pipeline import classify_file
 
 TARGET_IDS = [
@@ -31,9 +32,7 @@ TARGET_IDS = [
 
 
 def _find_jd_file(job_id: str) -> Path | None:
-    for folder in JOB_POSTINGS_DIR.rglob(f"{job_id}-*.md"):
-        return folder
-    return None
+    return find_existing_jd(job_id)
 
 
 def _find_screening_file(job_id: str) -> Path | None:
