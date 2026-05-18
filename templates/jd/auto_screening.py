@@ -270,13 +270,13 @@ MIN_VALID_LINES = 20
 
 
 def _validate_screening_structure(markdown: str) -> tuple[bool, str]:
-    lines = [l for l in markdown.splitlines() if l.strip()]
-    if len(lines) < MIN_VALID_LINES:
-        return False, f"줄 수 부족 ({len(lines)}줄 < {MIN_VALID_LINES})"
-
     missing = [s for s in _REQUIRED_SECTIONS if s not in markdown]
     if missing:
         return False, f"필수 섹션 누락: {', '.join(missing)}"
+
+    lines = [l for l in markdown.splitlines() if l.strip()]
+    if len(lines) < MIN_VALID_LINES:
+        return False, f"줄 수 부족 ({len(lines)}줄 < {MIN_VALID_LINES})"
 
     for pat in _CONVERSATIONAL_PATTERNS:
         if pat in markdown:

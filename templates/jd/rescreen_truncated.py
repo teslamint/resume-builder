@@ -108,7 +108,7 @@ def main() -> None:
             continue
 
         if not dry_run:
-            classify_result = classify_file(result.screening_path)
+            classify_result = classify_file(jd_path)
             classify_info = f" -> {classify_result.target_folder}" if classify_result.target_folder else ""
         else:
             classify_info = " (dry-run, skip classify)"

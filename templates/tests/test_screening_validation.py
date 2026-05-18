@@ -171,12 +171,18 @@ class TestValidateScreeningStructure(unittest.TestCase):
     def test_truncated_insight_only(self):
         valid, reason = self.validate(TRUNCATED_INSIGHT_ONLY)
         self.assertFalse(valid)
-        self.assertIn("줄 수 부족", reason)
+        self.assertTrue(
+            "필수 섹션 누락" in reason or "줄 수 부족" in reason,
+            f"Should fail for missing sections or line count, got: {reason}",
+        )
 
     def test_truncated_summary_only(self):
         valid, reason = self.validate(TRUNCATED_SUMMARY_ONLY)
         self.assertFalse(valid)
-        self.assertIn("줄 수 부족", reason)
+        self.assertTrue(
+            "필수 섹션 누락" in reason or "줄 수 부족" in reason,
+            f"Should fail for missing sections or line count, got: {reason}",
+        )
 
     def test_truncated_conversational_patterns(self):
         valid, reason = self.validate(TRUNCATED_CONVERSATIONAL)
@@ -189,7 +195,10 @@ class TestValidateScreeningStructure(unittest.TestCase):
     def test_truncated_fallback_template(self):
         valid, reason = self.validate(TRUNCATED_FALLBACK)
         self.assertFalse(valid)
-        self.assertIn("줄 수 부족", reason)
+        self.assertTrue(
+            "필수 섹션 누락" in reason or "줄 수 부족" in reason,
+            f"Should fail for missing sections or line count, got: {reason}",
+        )
 
     def test_missing_section_screening_result(self):
         md = VALID_FULL.replace("## 스크리닝 결과", "## 스크리닝 요약")
