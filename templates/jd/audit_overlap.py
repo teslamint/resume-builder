@@ -20,6 +20,7 @@ import sys
 from collections import Counter
 from datetime import date
 from pathlib import Path
+from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _JD_DIR = Path(__file__).resolve().parent
@@ -66,7 +67,7 @@ def _pct(numerator: int, denominator: int) -> float:
     return numerator / denominator * 100 if denominator else 0.0
 
 
-def _has_any(text: str, patterns) -> bool:
+def _has_any(text: str, patterns: Sequence[re.Pattern[str]]) -> bool:
     return any(p.search(text) for p in patterns)
 
 

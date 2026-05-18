@@ -200,3 +200,144 @@ def test_main_counts_pass_folder_cut_even_with_stale_screening_verdict(tmp_path,
     assert [row["filename"] for row in h1_rows] == [filename]
     assert [row["filename"] for row in h2_rows] == [filename]
     assert h2_rows[0]["tier"] == "T1"
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: negated 검토 → 비추천 (extract_last_verdict propagation)
+# ---------------------------------------------------------------------------
+
+def test_extract_last_verdict_negated_review_not_hold():
+    text = "분석 본문\n## 최종 판정: 🔴 검토 대상이 아닙니다\n"
+    label, raw = audit.extract_last_verdict(text)
+    assert label == "pass"
+    assert "검토 대상이 아닙니다" in raw
+
+
+# ---------------------------------------------------------------------------
+# Phase 2A: strip_job_id_prefix
+# ---------------------------------------------------------------------------
+
+class TestStripJobIdPrefix:
+    def test_numeric_prefix(self):
+        assert audit.strip_job_id_prefix("123456-acme-backend.md") == "acme-backend"
+
+    def test_groupby_prefix(self):
+        assert audit.strip_job_id_prefix("groupby-8807-some-company-dev.md") == "some-company-dev"
+
+    def test_digit_x_digit_prefix(self):
+        assert audit.strip_job_id_prefix("remember-12345-corp-frontend.md") == "corp-frontend"
+
+    def test_no_prefix(self):
+        assert audit.strip_job_id_prefix("company-backend.md") == "company-backend"
+
+    def test_single_token(self):
+        assert audit.strip_job_id_prefix("private.md") == "private"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2A: derive_company_slug
+# ---------------------------------------------------------------------------
+
+class TestDeriveCompanySlug:
+    def test_longest_prefix_match(self):
+        slugs = {"my", "my-company", "my-company-inc"}
+        assert audit.derive_company_slug("123-my-company-inc-backend.md", slugs) == "my-company-inc"
+
+    def test_single_token(self):
+        slugs = {"acme"}
+        assert audit.derive_company_slug("999-acme-dev.md", slugs) == "acme"
+
+    def test_no_match_fallback(self):
+        slugs = {"other"}
+        assert audit.derive_company_slug("999-acme-dev.md", slugs) == "acme"
+
+    def test_empty_slugs(self):
+        assert audit.derive_company_slug("999-acme-dev.md", set()) == "acme"
+
+    def test_groupby_prefix(self):
+        slugs = {"corp"}
+        assert audit.derive_company_slug("groupby-8807-corp-backend.md", slugs) == "corp"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2A: parse_summary_verdicts
+# ---------------------------------------------------------------------------
+
+class TestParseSummaryVerdicts:
+    def test_numeric_id(self, tmp_path, monkeypatch):
+        md = tmp_path / "SUMMARY.md"
+        md.write_text(
+            "| 날짜 | ID | 회사 | 포지션 | 판정 |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 2026-01-01 | 123456 | Acme | Dev | 🔴 지원 비추천 |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(audit, "SUMMARY_MD", md)
+        verdicts = audit.parse_summary_verdicts()
+        assert verdicts["123456"] == "pass"
+
+    def test_platform_prefixed_id(self, tmp_path, monkeypatch):
+        md = tmp_path / "SUMMARY.md"
+        md.write_text(
+            "| 2026-02-01 | groupby-8807 | Corp | Dev | 🟢 지원 추천 |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(audit, "SUMMARY_MD", md)
+        verdicts = audit.parse_summary_verdicts()
+        assert verdicts["groupby-8807"] == "high"
+
+    def test_slug_like_id(self, tmp_path, monkeypatch):
+        md = tmp_path / "SUMMARY.md"
+        md.write_text(
+            "| 2026-03-01 | private | Corp | Dev | 🟡 지원 보류 |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(audit, "SUMMARY_MD", md)
+        verdicts = audit.parse_summary_verdicts()
+        assert verdicts["private"] == "hold"
+
+    def test_applied_marker(self, tmp_path, monkeypatch):
+        md = tmp_path / "SUMMARY.md"
+        md.write_text(
+            "| 2026-04-01 | 999999 | BigCo | Dev | ✅ 이미 지원 |\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(audit, "SUMMARY_MD", md)
+        verdicts = audit.parse_summary_verdicts()
+        assert verdicts["999999"] == "applied"
+
+    def test_empty_file(self, tmp_path, monkeypatch):
+        md = tmp_path / "SUMMARY.md"
+        md.write_text("", encoding="utf-8")
+        monkeypatch.setattr(audit, "SUMMARY_MD", md)
+        assert audit.parse_summary_verdicts() == {}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2A: classify_salary_tier
+# ---------------------------------------------------------------------------
+
+class TestClassifySalaryTier:
+    def test_t2_only(self):
+        text = "연봉 구조 ❌ 시니어 추정 × 1.5 적용 시 하한 미달"
+        result = audit.classify_salary_tier(text)
+        assert result["has_salary_cut"] is True
+        assert result["tier"] == "T2"
+
+    def test_t3_only(self):
+        text = "연봉 ❌ 추정 불가 — 데이터 부재"
+        result = audit.classify_salary_tier(text)
+        assert result["has_salary_cut"] is True
+        assert result["tier"] == "T3"
+
+    def test_no_salary_cut(self):
+        text = "연봉 구조 ⭕ 적정 수준"
+        result = audit.classify_salary_tier(text)
+        assert result["has_salary_cut"] is False
+        assert result["tier"] == "no_salary_cut"
+
+    def test_unknown_cut_no_tier(self):
+        text = "연봉 구조 ❌ 기타 사유"
+        result = audit.classify_salary_tier(text)
+        assert result["has_salary_cut"] is True
+        assert result["tier"] == "unknown"

@@ -27,6 +27,13 @@ def normalize_verdict(verdict: str) -> Optional[VerdictType]:
     if any(token in verdict_lower for token in ("비추천", "pass", "지원 안 함", "지원안함", "컷", "패스")):
         return "지원 비추천"
 
+    _NEGATED_REVIEW = (
+        "검토 대상이 아닙니다", "검토 대상이 아닌", "검토 대상 아님",
+        "검토 불필요", "추가 검토 없이", "검토 여지 없",
+    )
+    if "검토" in verdict_lower and any(neg in verdict_lower for neg in _NEGATED_REVIEW):
+        return "지원 비추천"
+
     if any(token in verdict_lower for token in ("조건부", "보류", "hold", "검토", "킵", "keep", "우선")):
         return "지원 보류"
 

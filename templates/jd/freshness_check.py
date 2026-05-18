@@ -73,6 +73,7 @@ def main() -> int:
 
     total = len(rows)
     in_pass = sum(1 for r in rows if r["in_pass"] == "1")
+    print("기준: 로컬 파일 mtime (JD 페이지 변경 시각 아님)")
     print(f"threshold:   {args.days}일+")
     print(f"총 stale:    {total}")
     print(f"pass/ 내:    {in_pass}")
