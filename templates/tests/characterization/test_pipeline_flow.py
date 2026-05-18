@@ -29,6 +29,12 @@ class TestNormalizeVerdict:
         "\uc9c0\uc6d0 \uc548 \ud568",              # 지원 안 함
         "\uc9c0\uc6d0\uc548\ud568",                # 지원안함
         "\ucef7",                                   # 컷
+        "검토 대상이 아닙니다",
+        "검토 불필요",
+        "추가 검토 없이 비추천",
+        "검토 여지 없음",
+        "검토 대상 아님",
+        "검토 대상이 아닌 포지션",
     ])
     def test_reject_variants(self, inp):
         assert normalize_verdict(inp) == "\uc9c0\uc6d0 \ube44\ucd94\ucc9c"  # 지원 비추천
@@ -44,6 +50,11 @@ class TestNormalizeVerdict:
         "\ud0b5",                                   # 킵
         "keep",
         "\uc6b0\uc120",                             # 우선
+        "수동 검토",
+        "조건부 지원 검토",
+        "최우선 검토 대상",
+        "검토 가치 있음",
+        "재검토 권장",
     ])
     def test_hold_variants(self, inp):
         assert normalize_verdict(inp) == "\uc9c0\uc6d0 \ubcf4\ub958"  # 지원 보류
