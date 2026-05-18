@@ -268,10 +268,20 @@ _CONVERSATIONAL_PATTERNS = (
     "도와드리겠습니다",
 )
 
+_MIN_CONTENT_LINES = 5
+
+
 def _validate_screening_structure(markdown: str) -> tuple[bool, str]:
     missing = [s for s in _REQUIRED_SECTIONS if s not in markdown]
     if missing:
         return False, f"필수 섹션 누락: {', '.join(missing)}"
+
+    content_lines = [
+        l for l in markdown.splitlines()
+        if l.strip() and not l.strip().startswith("#")
+    ]
+    if len(content_lines) < _MIN_CONTENT_LINES:
+        return False, f"섹션 내용 부족 (헤더 제외 {len(content_lines)}줄 < {_MIN_CONTENT_LINES})"
 
     for pat in _CONVERSATIONAL_PATTERNS:
         if pat in markdown:

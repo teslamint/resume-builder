@@ -205,6 +205,19 @@ class TestValidateScreeningStructure(unittest.TestCase):
         valid, reason = self.validate(md)
         self.assertFalse(valid)
 
+    def test_headers_only_no_content(self):
+        md = (
+            "## 기본 정보\n\n"
+            "## 스크리닝 결과\n\n"
+            "## 이력/경험 매칭\n\n"
+            "## 최종 판정\n\n"
+            "### 최종 판정: 지원 보류\n\n"
+            "## 핵심 근거\n"
+        )
+        valid, reason = self.validate(md)
+        self.assertFalse(valid)
+        self.assertIn("섹션 내용 부족", reason)
+
     def test_each_conversational_pattern(self):
         from auto_screening import _CONVERSATIONAL_PATTERNS
         base = VALID_FULL
