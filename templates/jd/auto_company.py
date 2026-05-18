@@ -518,23 +518,27 @@ def ensure_company_info(
         startup_needs_thevc = startup_signal and missing_investment_data
 
         if completeness >= 0 and completeness >= min_completeness:
-            if startup_needs_thevc and thevc_mode != "skip" and not dry_run:
-                thevc_status, investment_data = _extract_thevc_investment(company)
-                if thevc_status == "success" and investment_data:
-                    _inject_thevc_into_file(existing, investment_data)
-                    completeness = _completeness_score(existing)
-                    return CompanyInfoResult(
-                        company=company,
-                        file_path=existing,
-                        used_existing=True,
-                        completeness=completeness,
-                        thevc_attempted=True,
-                        thevc_status=thevc_status,
-                        investment_data_source="thevc",
-                    )
+            if startup_needs_thevc and thevc_mode != "skip":
+                if dry_run:
+                    if thevc_mode == "require":
+                        raise RuntimeError("TheVC 투자정보 수집 필요(dry-run에서 스킵) - require 모드")
+                else:
+                    thevc_status, investment_data = _extract_thevc_investment(company)
+                    if thevc_status == "success" and investment_data:
+                        _inject_thevc_into_file(existing, investment_data)
+                        completeness = _completeness_score(existing)
+                        return CompanyInfoResult(
+                            company=company,
+                            file_path=existing,
+                            used_existing=True,
+                            completeness=completeness,
+                            thevc_attempted=True,
+                            thevc_status=thevc_status,
+                            investment_data_source="thevc",
+                        )
 
-                if thevc_mode == "require":
-                    raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
+                    if thevc_mode == "require":
+                        raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
 
                 thevc_note = _thevc_failure_note(thevc_status)
                 _inject_thevc_note_into_file(existing, thevc_note)
