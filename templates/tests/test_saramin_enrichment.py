@@ -311,13 +311,27 @@ class TestBrowserUtilsFallback(unittest.TestCase):
         """browser_utils falls back to playwright when patchright is missing."""
         import importlib
         import sys
+        from types import ModuleType
 
         patchright_backup = sys.modules.get("patchright")
         patchright_sync_backup = sys.modules.get("patchright.sync_api")
+        playwright_backup = sys.modules.get("playwright")
+        playwright_sync_backup = sys.modules.get("playwright.sync_api")
         browser_utils_backup = sys.modules.get("browser_utils")
+
+        def fake_sync_playwright():
+            return None
+
+        fake_sync_playwright.__module__ = "playwright.sync_api"
+        playwright_module = ModuleType("playwright")
+        playwright_sync_module = ModuleType("playwright.sync_api")
+        playwright_sync_module.sync_playwright = fake_sync_playwright
+        playwright_module.sync_api = playwright_sync_module
 
         sys.modules["patchright"] = None
         sys.modules["patchright.sync_api"] = None
+        sys.modules["playwright"] = playwright_module
+        sys.modules["playwright.sync_api"] = playwright_sync_module
         sys.modules.pop("browser_utils", None)
 
         try:
@@ -333,6 +347,14 @@ class TestBrowserUtilsFallback(unittest.TestCase):
                 sys.modules.pop("patchright.sync_api", None)
             else:
                 sys.modules["patchright.sync_api"] = patchright_sync_backup
+            if playwright_backup is None:
+                sys.modules.pop("playwright", None)
+            else:
+                sys.modules["playwright"] = playwright_backup
+            if playwright_sync_backup is None:
+                sys.modules.pop("playwright.sync_api", None)
+            else:
+                sys.modules["playwright.sync_api"] = playwright_sync_backup
             if browser_utils_backup is not None:
                 sys.modules["browser_utils"] = browser_utils_backup
             else:
