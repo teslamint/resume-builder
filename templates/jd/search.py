@@ -66,6 +66,7 @@ _logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent.parent.parent
 CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
+_PLAYWRIGHT_DISABLED: Set[str] = set()
 
 
 @dataclass
@@ -133,6 +134,22 @@ def load_state() -> SearchState:
     except Exception as e:
         print(f"⚠️  Error loading state: {e}")
         return SearchState()
+
+
+def _playwright_allowed(platform: str, config: dict) -> bool:
+    if platform in _PLAYWRIGHT_DISABLED:
+        return False
+    platform_cfg = config.get("platforms", {}).get(platform, {})
+    return platform_cfg.get("enable_playwright", platform_cfg.get("use_playwright", True))
+
+
+def _mark_playwright_unavailable(platform: str, error: Exception) -> None:
+    if platform in ("wanted", "remember"):
+        error_text = str(error).lower()
+        if "mach_port_rendezvous" in error_text or "permission denied" in error_text:
+            _PLAYWRIGHT_DISABLED.add(platform)
+            return
+    _PLAYWRIGHT_DISABLED.add(platform)
 
 
 def save_state(state: SearchState) -> None:
@@ -211,7 +228,10 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     Search Wanted for job postings.
     Uses Playwright for browser automation via search_helpers.
     """
-    from browser_utils import sync_playwright
+    try:
+        from .browser_utils import sync_playwright
+    except Exception:
+        from browser_utils import sync_playwright
 
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()
@@ -235,18 +255,23 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     )
 
     outcome: ScrapeOutcome | None = None
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-            )
-            page = context.new_page()
-            outcome = load_and_scrape_wanted(page, search_url, page_config)
-            browser.close()
-    except Exception as e:
-        print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
+    if _playwright_allowed("wanted", config):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                )
+                page = context.new_page()
+                outcome = load_and_scrape_wanted(page, search_url, page_config)
+                browser.close()
+        except Exception as e:
+            _mark_playwright_unavailable("wanted", e)
+            print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
+            outcome = load_and_scrape_wanted_http(search_url, page_config)
+    else:
+        print("   ℹ️  Playwright 비활성화 상태, HTTP 폴백 사용")
         outcome = load_and_scrape_wanted_http(search_url, page_config)
 
     if outcome is None:
@@ -313,7 +338,10 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     Search Remember (career.rememberapp.co.kr) for job postings.
     Uses Playwright for browser automation via search_helpers.
     """
-    from browser_utils import sync_playwright
+    try:
+        from .browser_utils import sync_playwright
+    except Exception:
+        from browser_utils import sync_playwright
 
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()
@@ -345,18 +373,23 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     )
 
     outcome: ScrapeOutcome | None = None
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            )
-            page = context.new_page()
-            outcome = load_and_scrape_remember(page, search_url, page_config)
-            browser.close()
-    except Exception as e:
-        print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
+    if _playwright_allowed("remember", config):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                )
+                page = context.new_page()
+                outcome = load_and_scrape_remember(page, search_url, page_config)
+                browser.close()
+        except Exception as e:
+            _mark_playwright_unavailable("remember", e)
+            print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
+            outcome = load_and_scrape_remember_http(search_url, page_config)
+    else:
+        print("   ℹ️  Playwright 비활성화 상태, HTTP 폴백 사용")
         outcome = load_and_scrape_remember_http(search_url, page_config)
 
     if outcome is None:

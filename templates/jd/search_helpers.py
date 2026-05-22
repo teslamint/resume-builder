@@ -34,7 +34,7 @@ def _fetch_html(url: str, timeout_seconds: int = 15) -> str:
 
 
 def _split_html_lines(raw: str) -> list[str]:
-    cleaned = re.sub(r"(?i)<br\\s*/?>", "\n", raw)
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", raw)
     cleaned = re.sub(r"<[^>]+>", "", cleaned)
     cleaned = html.unescape(cleaned)
     return [line.strip() for line in cleaned.splitlines() if line.strip()]

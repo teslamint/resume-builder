@@ -77,7 +77,10 @@ def extract_company_info(
         from contextlib import nullcontext
 
         if own_playwright:
-            from browser_utils import sync_playwright
+            try:
+                from .browser_utils import sync_playwright
+            except Exception:
+                from browser_utils import sync_playwright
             pw_cm = sync_playwright()
         else:
             pw_cm = nullcontext()
