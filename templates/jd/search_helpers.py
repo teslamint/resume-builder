@@ -10,7 +10,9 @@ Extracts raw job listing data from search result pages. Does NOT own:
 from __future__ import annotations
 
 import logging
+import html
 import re
+import urllib.request
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
@@ -20,6 +22,22 @@ except ImportError:
     from jd_content import parse_remember_experience
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_html(url: str, timeout_seconds: int = 15) -> str:
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+        return response.read().decode("utf-8", errors="ignore")
+
+
+def _split_html_lines(raw: str) -> list[str]:
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", raw)
+    cleaned = re.sub(r"<[^>]+>", "", cleaned)
+    cleaned = html.unescape(cleaned)
+    return [line.strip() for line in cleaned.splitlines() if line.strip()]
 
 
 @dataclass
@@ -233,6 +251,121 @@ def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) ->
     except Exception as e:
         outcome.error = e
 
+    return outcome
+
+
+def load_and_scrape_wanted_http(search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
+    """Fallback Wanted search path without Playwright (raw HTML parse)."""
+    outcome = ScrapeOutcome()
+
+    try:
+        html_text = _fetch_html(search_url, timeout_seconds=max(15, int(config.timeout_ms / 1000)))
+    except Exception as e:
+        outcome.error = e
+        return outcome
+
+    if "검색 결과가 없습니다" in html_text or "일치하는 결과가 없습니다" in html_text:
+        outcome.no_results = True
+        return outcome
+
+    pattern = re.compile(
+        r'<a[^>]*href=["\']([^"\']*?/wd/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    seen_in_page: set[str] = set()
+    for href, job_id, inner_html in pattern.findall(html_text):
+        if "/wd/" not in href or job_id in seen_in_page:
+            continue
+
+        lines = _split_html_lines(inner_html)
+        if len(lines) < 2:
+            continue
+
+        seen_in_page.add(job_id)
+        outcome.candidate_count += 1
+
+        title = lines[0]
+        company = lines[1]
+        experience = lines[2] if len(lines) > 2 else ""
+
+        outcome.results.append(RawJobResult(
+            raw_id=job_id,
+            canonical_id=job_id,
+            title=title,
+            company=company,
+            experience=experience,
+            url=f"{config.base_url}/wd/{job_id}" if href.startswith("/wd/") else href,
+            href=href,
+            platform="wanted",
+        ))
+
+    if outcome.results:
+        return outcome
+
+    outcome.error = ValueError("Wanted HTTP 검색에서 공고 링크를 추출하지 못했습니다.")
+    return outcome
+
+
+def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
+    """Fallback Remember search path without Playwright (raw HTML parse)."""
+    outcome = ScrapeOutcome()
+
+    try:
+        html_text = _fetch_html(search_url, timeout_seconds=max(15, int(config.timeout_ms / 1000)))
+    except Exception as e:
+        outcome.error = e
+        return outcome
+
+    if "총 0개 공고" in html_text:
+        outcome.no_results = True
+        return outcome
+
+    pattern = re.compile(
+        r'<a[^>]*href=["\']([^"\']*?/job/posting/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    seen_in_page: set[str] = set()
+    for href, raw_id, inner_html in pattern.findall(html_text):
+        if raw_id in seen_in_page:
+            continue
+        if "jdViewSource=inweb_list" not in href:
+            continue
+
+        lines = _split_html_lines(inner_html)
+        if len(lines) < 2:
+            continue
+
+        seen_in_page.add(raw_id)
+        outcome.candidate_count += 1
+
+        company = lines[0]
+        title = lines[1]
+        experience = parse_remember_experience(lines[2:])
+
+        canonical_id = f"remember-{raw_id}"
+        full_url = (
+            f"{config.base_url}/job/posting/{raw_id}"
+            if href.startswith("/job/posting/")
+            else href
+        )
+
+        outcome.results.append(RawJobResult(
+            raw_id=raw_id,
+            canonical_id=canonical_id,
+            title=title,
+            company=company,
+            experience=experience,
+            url=full_url,
+            href=href,
+            platform="remember",
+        ))
+
+    if outcome.results:
+        return outcome
+
+    outcome.error = ValueError("Remember HTTP 검색에서 공고 링크를 추출하지 못했습니다.")
     return outcome
 
 

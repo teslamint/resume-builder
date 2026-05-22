@@ -74,38 +74,45 @@ def extract_company_info(
         pw_instance = None
         browser = None
 
-        if own_playwright:
-            from playwright.sync_api import sync_playwright
-            pw_instance = sync_playwright().start()
-            browser = pw_instance.chromium.launch(
-                headless=True,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
-            browser_context = browser.new_context(
-                viewport={"width": 1280, "height": 800},
-            )
+        from contextlib import nullcontext
 
-        try:
-            for i, (platform_name, extract_fn) in enumerate(selected):
-                try:
-                    result = extract_fn(company_name, browser_context)
-                    if result:
-                        data_list.append(result)
-                        platforms_used.append(platform_name)
-                        source_urls.append(result.source_url)
-                    else:
-                        platforms_failed.append(platform_name)
-                except Exception as e:
-                    print(f"   [{platform_name}] 예외: {e}")
-                    platforms_failed.append(platform_name)
-                if i < len(selected) - 1:
-                    time.sleep(REQUEST_DELAY)
-        finally:
+        if own_playwright:
+            try:
+                from .browser_utils import sync_playwright
+            except Exception:
+                from browser_utils import sync_playwright
+            pw_cm = sync_playwright()
+        else:
+            pw_cm = nullcontext()
+
+        with pw_cm as pw:
             if own_playwright:
-                if browser:
+                browser = pw.chromium.launch(
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+                browser_context = browser.new_context(
+                    viewport={"width": 1280, "height": 800},
+                )
+
+            try:
+                for i, (platform_name, extract_fn) in enumerate(selected):
+                    try:
+                        result = extract_fn(company_name, browser_context)
+                        if result:
+                            data_list.append(result)
+                            platforms_used.append(platform_name)
+                            source_urls.append(result.source_url)
+                        else:
+                            platforms_failed.append(platform_name)
+                    except Exception as e:
+                        print(f"   [{platform_name}] 예외: {e}")
+                        platforms_failed.append(platform_name)
+                    if i < len(selected) - 1:
+                        time.sleep(REQUEST_DELAY)
+            finally:
+                if own_playwright and browser:
                     browser.close()
-                if pw_instance:
-                    pw_instance.stop()
 
     # JD file extraction (no browser needed, always attempted)
     try:

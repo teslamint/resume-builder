@@ -50,11 +50,15 @@ class _DummySyncPlaywright:
 
 
 def _fake_playwright_modules() -> dict[str, ModuleType]:
+    sync_playwright = lambda: _DummySyncPlaywright()
+    browser_utils_module = ModuleType("browser_utils")
     playwright_module = ModuleType("playwright")
     sync_api_module = ModuleType("playwright.sync_api")
-    sync_api_module.sync_playwright = lambda: _DummySyncPlaywright()
+    browser_utils_module.sync_playwright = sync_playwright
+    sync_api_module.sync_playwright = sync_playwright
     playwright_module.sync_api = sync_api_module
     return {
+        "browser_utils": browser_utils_module,
         "playwright": playwright_module,
         "playwright.sync_api": sync_api_module,
     }
@@ -104,3 +108,64 @@ def test_run_quick_search_groupby_populates_queue_item_fields():
     assert items[0].query == "(groupby)"
     assert items[0].platform == "groupby"
     assert stats["new"] == 1
+
+
+def test_search_wanted_http_fallback_does_not_import_playwright_when_disabled():
+    import search
+
+    search._PLAYWRIGHT_DISABLED.clear()
+    config = {
+        "platforms": {
+            "wanted": {
+                "base_url": "https://www.wanted.co.kr",
+                "enable_playwright": False,
+            },
+        },
+        "execution": {},
+    }
+    outcome = ScrapeOutcome(results=[])
+
+    with patch.dict(sys.modules, {"browser_utils": None}), \
+         patch("search.get_rejected_companies", return_value=set()), \
+         patch("search.load_and_scrape_wanted_http", return_value=outcome) as http_scrape:
+        result = search.search_wanted("backend", config, search.SearchState())
+
+    assert result.total_found == 0
+    http_scrape.assert_called_once()
+    assert "wanted" not in search._PLAYWRIGHT_DISABLED
+
+
+def test_search_wanted_falls_back_to_http_when_playwright_import_missing():
+    import search
+
+    search._PLAYWRIGHT_DISABLED.clear()
+    config = {
+        "platforms": {
+            "wanted": {"base_url": "https://www.wanted.co.kr"},
+        },
+        "execution": {},
+    }
+    outcome = ScrapeOutcome(results=[])
+
+    with patch.dict(sys.modules, {"browser_utils": None}), \
+         patch("search.get_rejected_companies", return_value=set()), \
+         patch("search.load_and_scrape_wanted_http", return_value=outcome) as http_scrape:
+        result = search.search_wanted("backend", config, search.SearchState())
+
+    assert result.total_found == 0
+    http_scrape.assert_called_once()
+    assert "wanted" in search._PLAYWRIGHT_DISABLED
+
+
+def test_playwright_disablement_only_persists_for_hard_failures():
+    import search
+
+    search._PLAYWRIGHT_DISABLED.clear()
+    try:
+        search._mark_playwright_unavailable("wanted", RuntimeError("selector timeout"))
+        assert "wanted" not in search._PLAYWRIGHT_DISABLED
+
+        search._mark_playwright_unavailable("wanted", RuntimeError("mach_port_rendezvous Permission denied"))
+        assert "wanted" in search._PLAYWRIGHT_DISABLED
+    finally:
+        search._PLAYWRIGHT_DISABLED.clear()
