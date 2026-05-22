@@ -19,7 +19,7 @@ try:
     from .ce_saramin import extract_saramin
     from .ce_thevc import extract_thevc
     from .ce_types import ExtractionResult, PlatformData
-    from .ce_wanted import extract_wanted
+    from .ce_wanted import extract_wanted, extract_wanted_http
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .naming import slugify_company as _slugify_company
 except ImportError:
@@ -28,10 +28,13 @@ except ImportError:
     from ce_saramin import extract_saramin
     from ce_thevc import extract_thevc
     from ce_types import ExtractionResult, PlatformData
-    from ce_wanted import extract_wanted
+    from ce_wanted import extract_wanted, extract_wanted_http
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from naming import slugify_company as _slugify_company
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 REQUEST_DELAY = 1.5  # seconds between page navigations
 ALL_PLATFORMS = ("wanted", "saramin", "thevc")
@@ -40,6 +43,10 @@ BROWSER_EXTRACTORS: dict[str, callable] = {
     "wanted": extract_wanted,
     "saramin": extract_saramin,
     "thevc": extract_thevc,
+}
+
+HTTP_EXTRACTORS: dict[str, callable] = {
+    "wanted": extract_wanted_http,
 }
 
 
@@ -69,9 +76,20 @@ def extract_company_info(
 
     selected = [(name, fn) for name, fn in BROWSER_EXTRACTORS.items() if name in platforms]
 
-    if selected:
+    playwright_available = browser_context is not None
+    if selected and not browser_context:
+        try:
+            try:
+                from .browser_utils import sync_playwright
+            except Exception:
+                from browser_utils import sync_playwright
+            playwright_available = True
+        except Exception as e:
+            logger.warning("Playwright 사용 불가 — HTTP 폴백으로 전환: %s", e)
+            playwright_available = False
+
+    if selected and playwright_available:
         own_playwright = browser_context is None
-        pw_instance = None
         browser = None
 
         from contextlib import nullcontext
@@ -85,34 +103,57 @@ def extract_company_info(
         else:
             pw_cm = nullcontext()
 
-        with pw_cm as pw:
-            if own_playwright:
-                browser = pw.chromium.launch(
-                    headless=True,
-                    args=["--disable-blink-features=AutomationControlled"],
-                )
-                browser_context = browser.new_context(
-                    viewport={"width": 1280, "height": 800},
-                )
+        try:
+            with pw_cm as pw:
+                if own_playwright:
+                    browser = pw.chromium.launch(
+                        headless=True,
+                        args=["--disable-blink-features=AutomationControlled"],
+                    )
+                    browser_context = browser.new_context(
+                        viewport={"width": 1280, "height": 800},
+                    )
 
-            try:
-                for i, (platform_name, extract_fn) in enumerate(selected):
-                    try:
-                        result = extract_fn(company_name, browser_context)
-                        if result:
-                            data_list.append(result)
-                            platforms_used.append(platform_name)
-                            source_urls.append(result.source_url)
-                        else:
+                try:
+                    for i, (platform_name, extract_fn) in enumerate(selected):
+                        try:
+                            result = extract_fn(company_name, browser_context)
+                            if result:
+                                data_list.append(result)
+                                platforms_used.append(platform_name)
+                                source_urls.append(result.source_url)
+                            else:
+                                platforms_failed.append(platform_name)
+                        except Exception as e:
+                            print(f"   [{platform_name}] 예외: {e}")
                             platforms_failed.append(platform_name)
-                    except Exception as e:
-                        print(f"   [{platform_name}] 예외: {e}")
+                        if i < len(selected) - 1:
+                            time.sleep(REQUEST_DELAY)
+                finally:
+                    if own_playwright and browser:
+                        browser.close()
+        except Exception as e:
+            logger.warning("Playwright 실행 실패 — HTTP 폴백으로 전환: %s", e)
+            playwright_available = False
+
+    if selected and not playwright_available:
+        for platform_name, _ in selected:
+            http_fn = HTTP_EXTRACTORS.get(platform_name)
+            if http_fn:
+                try:
+                    result = http_fn(company_name)
+                    if result:
+                        data_list.append(result)
+                        platforms_used.append(platform_name)
+                        source_urls.append(result.source_url)
+                    else:
                         platforms_failed.append(platform_name)
-                    if i < len(selected) - 1:
-                        time.sleep(REQUEST_DELAY)
-            finally:
-                if own_playwright and browser:
-                    browser.close()
+                except Exception as e:
+                    logger.warning("[%s-http] 예외: %s", platform_name, e)
+                    platforms_failed.append(platform_name)
+            else:
+                logger.info("[%s] HTTP 폴백 없음 — 건너뜀", platform_name)
+                platforms_failed.append(platform_name)
 
     # JD file extraction (no browser needed, always attempted)
     try:

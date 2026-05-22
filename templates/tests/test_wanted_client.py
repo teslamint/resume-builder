@@ -5,6 +5,8 @@ from wanted_client import (
     WantedAPIError,
     _request,
     search_jobs,
+    search_company,
+    fetch_company_html,
     format_experience,
     experience_values,
 )
@@ -110,6 +112,39 @@ class TestFormatExperience:
 
     def test_empty(self):
         assert format_experience({}) == ""
+
+
+class TestSearchCompany:
+    @patch("wanted_client._request")
+    def test_returns_id_and_name(self, mock_req):
+        mock_req.return_value = {
+            "data": {"companies": [{"id": 113, "name": "비바리퍼블리카(토스)"}]},
+        }
+        result = search_company("토스")
+        assert result == ("113", "비바리퍼블리카(토스)")
+
+    @patch("wanted_client._request")
+    def test_no_results(self, mock_req):
+        mock_req.return_value = {"data": {"companies": []}}
+        assert search_company("없는회사") is None
+
+    @patch("wanted_client._request")
+    def test_api_error(self, mock_req):
+        mock_req.side_effect = WantedAPIError("fail")
+        try:
+            search_company("토스")
+            assert False, "Should raise"
+        except WantedAPIError:
+            pass
+
+
+class TestFetchCompanyHtml:
+    @patch("wanted_client._fetch_html")
+    def test_returns_html(self, mock_fetch):
+        mock_fetch.return_value = "<html>__NEXT_DATA__</html>"
+        result = fetch_company_html("113")
+        assert "__NEXT_DATA__" in result
+        mock_fetch.assert_called_once_with("https://www.wanted.co.kr/company/113")
 
 
 class TestExperienceValues:

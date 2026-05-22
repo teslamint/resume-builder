@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from urllib.parse import quote
@@ -9,6 +10,8 @@ try:
     from .ce_types import PlatformData
 except ImportError:
     from ce_types import PlatformData
+
+logger = logging.getLogger(__name__)
 
 REQUEST_DELAY = 1.5
 
@@ -192,6 +195,126 @@ def extract_wanted(company_name: str, context) -> PlatformData | None:
         print(f"   [wanted] 추출 완료: {data.company_name} (id={company_id})")
     except Exception as e:
         print(f"   [wanted] 데이터 파싱 오류: {e}")
+        extract_wanted_from_text(body_text, data)
+
+    return data
+
+
+def _strip_html(html: str) -> str:
+    """Rough HTML tag removal for regex fallback."""
+    text = re.sub(r"<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", text)
+
+
+def extract_wanted_http(company_name: str) -> PlatformData | None:
+    """HTTP-only extraction — no Playwright required.
+
+    Uses Wanted search API + SSR company page (__NEXT_DATA__).
+    """
+    try:
+        from .wanted_client import search_company, fetch_company_html, WantedAPIError
+    except ImportError:
+        from wanted_client import search_company, fetch_company_html, WantedAPIError
+
+    try:
+        result = search_company(company_name)
+    except WantedAPIError as e:
+        logger.warning("[wanted-http] 회사 검색 API 실패: %s — %s", company_name, e)
+        return None
+
+    if not result:
+        logger.info("[wanted-http] 회사 검색 결과 없음: %s", company_name)
+        return None
+
+    company_id, matched_name = result
+
+    try:
+        html = fetch_company_html(company_id)
+    except WantedAPIError as e:
+        logger.warning("[wanted-http] 회사 페이지 로드 실패: %s — %s", company_id, e)
+        return None
+
+    company_url = f"https://www.wanted.co.kr/company/{company_id}"
+    data = PlatformData(platform="wanted", source_url=company_url, company_name=company_name)
+    data.raw_extra["company_id"] = company_id
+
+    next_data = parse_next_data_company(html)
+    body_text = _strip_html(html)
+
+    if not next_data:
+        logger.info("[wanted-http] __NEXT_DATA__ 파싱 실패, 텍스트 fallback: %s", company_url)
+        extract_wanted_from_text(body_text, data)
+        return data
+
+    try:
+        page_props = next_data.get("props", {}).get("pageProps", {})
+        dh_state = (
+            page_props.get("dehydrateState")
+            or page_props.get("dehydratedState")
+            or {}
+        )
+        queries = dh_state.get("queries", [])
+
+        company_info = find_query_data(queries, "companyInfo")
+        company_summary = find_query_data(queries, "companySummary")
+
+        if not company_info and not company_summary:
+            logger.info("[wanted-http] 회사 데이터 구조를 찾지 못함, 텍스트 fallback")
+            extract_wanted_from_text(body_text, data)
+            return data
+
+        if company_info:
+            data.company_name = company_info.get("name", company_name)
+            data.industry = company_info.get("industryName")
+            data.founded_year = company_info.get("foundedYear")
+            data.description = company_info.get("description")
+            data.raw_extra["location"] = company_info.get("location")
+
+            for tag_list_key in ("companyTags", "mainTags"):
+                tags_raw = company_info.get(tag_list_key, [])
+                if isinstance(tags_raw, list):
+                    for t in tags_raw:
+                        title = t.get("title", "") if isinstance(t, dict) else str(t)
+                        if title and title not in data.tags:
+                            data.tags.append(title)
+
+        if company_summary:
+            detail = company_summary.get("detail", {})
+            salary_obj = company_summary.get("salary", {})
+            emp_obj = company_summary.get("employee", {})
+            sales_obj = company_summary.get("sales", {})
+
+            nps_emp = detail.get("npsEmployeeCount")
+            ei_emp = detail.get("eiEmployeeCount")
+            emp_total = emp_obj.get("total")
+            best_emp = nps_emp or emp_total or ei_emp
+            if best_emp and isinstance(best_emp, (int, float)) and best_emp > 0:
+                data.employee_count = int(best_emp)
+
+            salary_raw = salary_obj.get("salary") or detail.get("salary")
+            if salary_raw and isinstance(salary_raw, (int, float)) and salary_raw > 0:
+                data.avg_salary = int(salary_raw / 10000)
+
+            rate = salary_obj.get("rate")
+            if rate and isinstance(rate, (int, float)) and 0 < rate < 1:
+                data.salary_percentile = str(round(rate * 100))
+
+            hired = emp_obj.get("hired") or detail.get("hiredCount")
+            left = emp_obj.get("left") or detail.get("leftCount")
+            if hired and isinstance(hired, (int, float)):
+                data.employee_joined_1y = int(hired)
+            if left and isinstance(left, (int, float)):
+                data.employee_left_1y = int(left)
+
+            total_sales = sales_obj.get("total") or detail.get("totalSales")
+            if total_sales and isinstance(total_sales, (int, float)) and total_sales > 0:
+                amount_억 = round(total_sales / 100_000_000, 1)
+                data.revenue = [{"year": "latest", "amount_억": amount_억}]
+
+        extract_wanted_from_text(body_text, data)
+        logger.info("[wanted-http] 추출 완료: %s (id=%s)", data.company_name, company_id)
+    except Exception as e:
+        logger.warning("[wanted-http] 데이터 파싱 오류: %s", e)
         extract_wanted_from_text(body_text, data)
 
     return data

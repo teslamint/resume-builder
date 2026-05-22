@@ -102,6 +102,35 @@ def search_jobs(
     return all_items[:max_items]
 
 
+def _fetch_html(url: str) -> str:
+    req = urllib.request.Request(url, headers={
+        **WANTED_HEADERS,
+        "Accept": "text/html,application/xhtml+xml",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=WANTED_REQUEST_TIMEOUT) as resp:
+            return resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        raise WantedAPIError(f"HTTP {e.code} for {url}") from e
+    except urllib.error.URLError as e:
+        raise WantedAPIError(f"URL error for {url}: {e.reason}") from e
+
+
+def search_company(name: str) -> tuple[str, str] | None:
+    """Search Wanted for a company by name. Returns (id, matched_name) or None."""
+    data = _request("/search", {"query": name, "type": "company", "country": "kr"})
+    companies = data.get("data", {}).get("companies", [])
+    if not companies:
+        return None
+    first = companies[0]
+    return str(first["id"]), first.get("name", name)
+
+
+def fetch_company_html(company_id: str) -> str:
+    """Fetch Wanted company page HTML (SSR, includes __NEXT_DATA__)."""
+    return _fetch_html(f"{WANTED_BASE_URL}/company/{company_id}")
+
+
 def format_experience(item: dict) -> str:
     """Convert Wanted API item to display-only Korean experience string."""
     annual_from = item.get("annual_from")
