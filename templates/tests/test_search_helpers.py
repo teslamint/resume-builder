@@ -1,5 +1,5 @@
 """Tests for search_helpers — RawJobResult, ScrapeOutcome, and scrape helpers."""
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 from search_helpers import (
     RawJobResult,
@@ -7,6 +7,8 @@ from search_helpers import (
     ScrapeOutcome,
     load_and_scrape_wanted,
     load_and_scrape_remember,
+    load_and_scrape_wanted_http,
+    load_and_scrape_remember_http,
 )
 
 
@@ -234,3 +236,68 @@ class TestLoadAndScrapeRemember:
         outcome = load_and_scrape_remember(page, "https://url", config)
         assert outcome.error is not None
         assert isinstance(outcome.error, RuntimeError)
+
+
+class TestLoadAndScrapeWantedHttp:
+    @patch("search_helpers._fetch_html")
+    def test_extracts_numeric_job_ids(self, mock_fetch):
+        mock_fetch.return_value = (
+            '<a href="/wd/12345?query=test">Senior Backend<br/>TestCo<br/>3년 이상</a>'
+            '<a href="/wd/67890">Junior Dev<br>AnotherCo</a>'
+        )
+        config = SearchPageConfig(base_url="https://www.wanted.co.kr")
+        outcome = load_and_scrape_wanted_http("https://url", config)
+        assert len(outcome.results) == 2
+        assert outcome.results[0].raw_id == "12345"
+        assert outcome.results[0].title == "Senior Backend"
+        assert outcome.results[0].company == "TestCo"
+        assert outcome.results[1].raw_id == "67890"
+
+    @patch("search_helpers._fetch_html")
+    def test_no_results(self, mock_fetch):
+        mock_fetch.return_value = '<div>검색 결과가 없습니다</div>'
+        config = SearchPageConfig(base_url="https://www.wanted.co.kr")
+        outcome = load_and_scrape_wanted_http("https://url", config)
+        assert outcome.no_results is True
+
+    @patch("search_helpers._fetch_html")
+    def test_dedup_in_page(self, mock_fetch):
+        mock_fetch.return_value = (
+            '<a href="/wd/12345">Title<br/>Co</a>'
+            '<a href="/wd/12345">Title<br/>Co</a>'
+        )
+        config = SearchPageConfig(base_url="https://www.wanted.co.kr")
+        outcome = load_and_scrape_wanted_http("https://url", config)
+        assert len(outcome.results) == 1
+
+
+class TestLoadAndScrapeRememberHttp:
+    @patch("search_helpers._fetch_html")
+    def test_extracts_numeric_job_ids(self, mock_fetch):
+        mock_fetch.return_value = (
+            '<a href="/job/posting/44444?jdViewSource=inweb_list">'
+            'CompanyA<br/>Title1<br/>3년 이상</a>'
+        )
+        config = SearchPageConfig(base_url="https://career.rememberapp.co.kr")
+        outcome = load_and_scrape_remember_http("https://url", config)
+        assert len(outcome.results) == 1
+        assert outcome.results[0].raw_id == "44444"
+        assert outcome.results[0].canonical_id == "remember-44444"
+        assert outcome.results[0].company == "CompanyA"
+        assert outcome.results[0].title == "Title1"
+
+    @patch("search_helpers._fetch_html")
+    def test_filters_without_jdViewSource(self, mock_fetch):
+        mock_fetch.return_value = (
+            '<a href="/job/posting/11111">CompanyB<br/>Title2</a>'
+        )
+        config = SearchPageConfig(base_url="https://career.rememberapp.co.kr")
+        outcome = load_and_scrape_remember_http("https://url", config)
+        assert len(outcome.results) == 0
+
+    @patch("search_helpers._fetch_html")
+    def test_no_results(self, mock_fetch):
+        mock_fetch.return_value = '<div>총 0개 공고</div>'
+        config = SearchPageConfig(base_url="https://career.rememberapp.co.kr")
+        outcome = load_and_scrape_remember_http("https://url", config)
+        assert outcome.no_results is True

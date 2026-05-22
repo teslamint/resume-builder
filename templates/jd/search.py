@@ -273,14 +273,18 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
         try:
             sync_playwright = _load_sync_playwright()
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(
-                    viewport={"width": 1280, "height": 800},
-                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-                )
-                page = context.new_page()
-                outcome = load_and_scrape_wanted(page, search_url, page_config)
-                browser.close()
+                browser = None
+                try:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(
+                        viewport={"width": 1280, "height": 800},
+                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                    )
+                    page = context.new_page()
+                    outcome = load_and_scrape_wanted(page, search_url, page_config)
+                finally:
+                    if browser:
+                        browser.close()
         except Exception as e:
             _mark_playwright_unavailable("wanted", e)
             print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
@@ -387,14 +391,18 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
         try:
             sync_playwright = _load_sync_playwright()
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(
-                    viewport={"width": 1280, "height": 800},
-                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                )
-                page = context.new_page()
-                outcome = load_and_scrape_remember(page, search_url, page_config)
-                browser.close()
+                browser = None
+                try:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(
+                        viewport={"width": 1280, "height": 800},
+                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                    )
+                    page = context.new_page()
+                    outcome = load_and_scrape_remember(page, search_url, page_config)
+                finally:
+                    if browser:
+                        browser.close()
         except Exception as e:
             _mark_playwright_unavailable("remember", e)
             print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")

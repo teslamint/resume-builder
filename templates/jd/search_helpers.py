@@ -269,7 +269,7 @@ def load_and_scrape_wanted_http(search_url: str, config: SearchPageConfig) -> Sc
         return outcome
 
     pattern = re.compile(
-        r'<a[^>]*href=[\"\\\']([^\"\\\']*?/wd/(\\d+)[^\"\\\']*)[\"\\\'][^>]*>(.*?)</a>',
+        r'<a[^>]*href=["\']([^"\']*?/wd/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
         re.IGNORECASE | re.DOTALL,
     )
 
@@ -322,7 +322,7 @@ def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> 
         return outcome
 
     pattern = re.compile(
-        r'<a[^>]*href=[\"\\\']([^\"\\\']*?/job/posting/(\\d+)[^\"\\\']*)[\"\\\'][^>]*>(.*?)</a>',
+        r'<a[^>]*href=["\']([^"\']*?/job/posting/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
         re.IGNORECASE | re.DOTALL,
     )
 
