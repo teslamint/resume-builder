@@ -111,7 +111,7 @@ def extract_company_info(
                     if i < len(selected) - 1:
                         time.sleep(REQUEST_DELAY)
             finally:
-                if own_playwright:
+                if own_playwright and browser:
                     browser.close()
 
     # JD file extraction (no browser needed, always attempted)
