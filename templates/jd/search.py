@@ -205,7 +205,7 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     Search Wanted for job postings.
     Uses Playwright for browser automation via search_helpers.
     """
-    from playwright.sync_api import sync_playwright
+    from browser_utils import sync_playwright
 
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()
@@ -302,7 +302,7 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     Search Remember (career.rememberapp.co.kr) for job postings.
     Uses Playwright for browser automation via search_helpers.
     """
-    from playwright.sync_api import sync_playwright
+    from browser_utils import sync_playwright
 
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()

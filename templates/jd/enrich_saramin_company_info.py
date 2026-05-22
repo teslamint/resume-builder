@@ -256,20 +256,10 @@ def main() -> None:
         print(f"리포트: {REPORT_PATH}")
         return
 
-    try:
-        from patchright.sync_api import sync_playwright as _sync_pw
-        use_patchright = True
-    except ImportError:
-        from playwright.sync_api import sync_playwright as _sync_pw
-        use_patchright = False
-
-    if use_patchright:
-        print("Patchright 사용 (CDP leak 우회)")
-    else:
-        print("Playwright fallback (patchright 미설치)")
+    from browser_utils import sync_playwright
 
     results: list[SaraminEnrichmentResult] = []
-    with _sync_pw() as pw:
+    with sync_playwright() as pw:
         browser = pw.chromium.launch(
             headless=not args.headed,
             args=["--disable-blink-features=AutomationControlled"],

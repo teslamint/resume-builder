@@ -241,7 +241,7 @@ def main() -> None:
         print(f"리포트: {REPORT_PATH}")
         return
 
-    from playwright.sync_api import sync_playwright
+    from browser_utils import sync_playwright
 
     results: list[EnrichmentResult] = []
     with sync_playwright() as pw:

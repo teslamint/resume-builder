@@ -166,7 +166,7 @@ def process_queue(
 
     Uses single browser instance for all items (performance optimization).
     """
-    from playwright.sync_api import sync_playwright
+    from browser_utils import sync_playwright
 
     items, stats = load_queue(with_stats=True)
 

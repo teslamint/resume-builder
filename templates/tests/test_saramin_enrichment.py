@@ -306,27 +306,24 @@ class TestBuildMergedDict(unittest.TestCase):
         self.assertEqual(merged["source_urls"].count("https://saramin/csn=1"), 1)
 
 
-class TestPatchrightFallback(unittest.TestCase):
+class TestBrowserUtilsFallback(unittest.TestCase):
     def test_playwright_used_when_patchright_missing(self):
-        """When patchright is not installed, Playwright is used as fallback."""
+        """browser_utils falls back to playwright when patchright is missing."""
         import importlib
         import sys
 
         patchright_backup = sys.modules.get("patchright")
         patchright_sync_backup = sys.modules.get("patchright.sync_api")
+        browser_utils_backup = sys.modules.get("browser_utils")
 
         sys.modules["patchright"] = None
         sys.modules["patchright.sync_api"] = None
+        sys.modules.pop("browser_utils", None)
 
         try:
-            from enrich_saramin_company_info import main as _main
-            use_patchright_detected = False
-            try:
-                from patchright.sync_api import sync_playwright
-                use_patchright_detected = True
-            except (ImportError, TypeError):
-                use_patchright_detected = False
-            self.assertFalse(use_patchright_detected)
+            import browser_utils
+            importlib.reload(browser_utils)
+            self.assertIn("playwright", browser_utils.sync_playwright.__module__)
         finally:
             if patchright_backup is None:
                 sys.modules.pop("patchright", None)
@@ -336,6 +333,10 @@ class TestPatchrightFallback(unittest.TestCase):
                 sys.modules.pop("patchright.sync_api", None)
             else:
                 sys.modules["patchright.sync_api"] = patchright_sync_backup
+            if browser_utils_backup is not None:
+                sys.modules["browser_utils"] = browser_utils_backup
+            else:
+                sys.modules.pop("browser_utils", None)
 
 
 if __name__ == "__main__":

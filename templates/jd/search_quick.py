@@ -127,7 +127,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
     Run fast search across all queries with single browser.
     Returns (new_items, stats).
     """
-    from playwright.sync_api import sync_playwright
+    from browser_utils import sync_playwright
 
     config = load_config()
     queries = config.get("search_queries", ["백엔드 시니어"])
