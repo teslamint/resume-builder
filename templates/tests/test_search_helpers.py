@@ -9,6 +9,10 @@ from search_helpers import (
     load_and_scrape_remember,
     load_and_scrape_wanted_http,
     load_and_scrape_remember_http,
+    search_wanted_api,
+    search_remember_api,
+    convert_wanted_to_raw_results,
+    convert_remember_to_raw_results,
 )
 
 
@@ -301,3 +305,134 @@ class TestLoadAndScrapeRememberHttp:
         config = SearchPageConfig(base_url="https://career.rememberapp.co.kr")
         outcome = load_and_scrape_remember_http("https://url", config)
         assert outcome.no_results is True
+
+
+class TestConvertWantedToRawResults:
+    def test_converts_items(self):
+        items = [
+            {
+                "id": 12345,
+                "position": "Backend Engineer",
+                "company": {"id": 99, "name": "TestCo"},
+                "annual_from": 3,
+                "annual_to": 7,
+            },
+            {
+                "id": 67890,
+                "position": "Frontend Dev",
+                "company": {"name": "OtherCo"},
+                "annual_from": 0,
+                "annual_to": 0,
+            },
+        ]
+        outcome = convert_wanted_to_raw_results(items)
+        assert len(outcome.results) == 2
+        assert outcome.candidate_count == 2
+
+        r0 = outcome.results[0]
+        assert r0.raw_id == "12345"
+        assert r0.canonical_id == "12345"
+        assert r0.title == "Backend Engineer"
+        assert r0.company == "TestCo"
+        assert r0.experience == "3~7년"
+        assert r0.platform == "wanted"
+        assert "/wd/12345" in r0.url
+
+    def test_skips_items_without_id(self):
+        items = [{"position": "No ID"}]
+        outcome = convert_wanted_to_raw_results(items)
+        assert len(outcome.results) == 0
+
+    def test_empty_list(self):
+        outcome = convert_wanted_to_raw_results([])
+        assert len(outcome.results) == 0
+
+
+class TestConvertRememberToRawResults:
+    def test_converts_items(self):
+        items = [
+            {
+                "id": 44444,
+                "title": "Server Developer",
+                "organization": {"name": "RememberCo"},
+                "min_experience": 3,
+                "max_experience": 5,
+            },
+        ]
+        outcome = convert_remember_to_raw_results(items)
+        assert len(outcome.results) == 1
+        assert outcome.candidate_count == 1
+
+        r0 = outcome.results[0]
+        assert r0.raw_id == "44444"
+        assert r0.canonical_id == "remember-44444"
+        assert r0.title == "Server Developer"
+        assert r0.company == "RememberCo"
+        assert r0.experience == "경력 3~5년"
+        assert r0.platform == "remember"
+        assert "/job/posting/44444" in r0.url
+
+    def test_dual_key_dedup(self):
+        items = [{"id": 555, "title": "T", "organization": {"name": "C"}}]
+        outcome = convert_remember_to_raw_results(items)
+        r = outcome.results[0]
+        assert r.duplicate_keys() == ["remember-555", "555"]
+
+    def test_skips_items_without_id(self):
+        items = [{"title": "No ID"}]
+        outcome = convert_remember_to_raw_results(items)
+        assert len(outcome.results) == 0
+
+
+class TestSearchWantedApi:
+    @patch("search_helpers.wanted_search_jobs")
+    def test_returns_results(self, mock_search):
+        mock_search.return_value = [
+            {"id": 1, "position": "Dev", "company": {"name": "Co"}, "annual_from": 3, "annual_to": 5},
+        ]
+        outcome = search_wanted_api("백엔드")
+        assert len(outcome.results) == 1
+        assert outcome.no_results is False
+        assert outcome.error is None
+
+    @patch("search_helpers.wanted_search_jobs")
+    def test_empty_results(self, mock_search):
+        mock_search.return_value = []
+        outcome = search_wanted_api("없는키워드")
+        assert outcome.no_results is True
+        assert len(outcome.results) == 0
+
+    @patch("search_helpers.wanted_search_jobs")
+    def test_api_error(self, mock_search):
+        from wanted_client import WantedAPIError
+        mock_search.side_effect = WantedAPIError("fail")
+        outcome = search_wanted_api("백엔드")
+        assert outcome.error is not None
+        assert len(outcome.results) == 0
+
+
+class TestSearchRememberApi:
+    @patch("search_helpers.remember_search_jobs")
+    def test_returns_results(self, mock_search):
+        mock_search.return_value = (
+            [{"id": 1, "title": "Dev", "organization": {"name": "Co"}}],
+            1,
+        )
+        outcome = search_remember_api("백엔드")
+        assert len(outcome.results) == 1
+        assert outcome.no_results is False
+        assert outcome.error is None
+
+    @patch("search_helpers.remember_search_jobs")
+    def test_empty_results(self, mock_search):
+        mock_search.return_value = ([], 0)
+        outcome = search_remember_api("없는키워드")
+        assert outcome.no_results is True
+
+    @patch("search_helpers.remember_search_jobs")
+    def test_api_error(self, mock_search):
+        from remember_client import RememberAPIError
+        mock_search.side_effect = RememberAPIError("fail")
+        outcome = search_remember_api("백엔드")
+        assert outcome.error is not None
+        assert len(outcome.results) == 0

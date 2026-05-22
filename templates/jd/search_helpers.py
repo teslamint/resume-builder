@@ -1,7 +1,7 @@
 """Shared search helpers — page load + DOM scraping for Wanted and Remember,
-and API-based listing for GroupBy.
+and API-based listing for GroupBy, Wanted, and Remember.
 
-Extracts raw job listing data from search result pages. Does NOT own:
+Extracts raw job listing data from search result pages or API responses. Does NOT own:
 - Dedup (caller checks seen_ids, is_duplicate, queued_ids)
 - Filtering (caller applies quick_filter_title, filter_experience, company rejection)
 - State management (caller updates SearchState or queue)
@@ -18,8 +18,12 @@ from urllib.parse import quote
 
 try:
     from .jd_content import parse_remember_experience
+    from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
+    from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
 except ImportError:
     from jd_content import parse_remember_experience
+    from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
+    from remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
 
 logger = logging.getLogger(__name__)
 
@@ -441,6 +445,115 @@ def convert_groupby_to_raw_results(
             ))
         except Exception:
             logger.debug("Failed to convert GroupBy item %s", item.get("id"), exc_info=True)
+            continue
+
+    return outcome
+
+
+# ---------------------------------------------------------------------------
+# Wanted API helpers
+# ---------------------------------------------------------------------------
+
+def search_wanted_api(query: str, max_items: int = 60) -> ScrapeOutcome:
+    """Search Wanted via REST API, returning ScrapeOutcome with RawJobResult list."""
+    outcome = ScrapeOutcome()
+
+    try:
+        items = wanted_search_jobs(query, max_items=max_items)
+    except WantedAPIError as e:
+        outcome.error = e
+        return outcome
+
+    if not items:
+        outcome.no_results = True
+        return outcome
+
+    return convert_wanted_to_raw_results(items)
+
+
+def convert_wanted_to_raw_results(
+    items: list[dict], base_url: str = "https://www.wanted.co.kr"
+) -> ScrapeOutcome:
+    """Convert Wanted API items to ScrapeOutcome with RawJobResult list."""
+    outcome = ScrapeOutcome()
+
+    for item in items:
+        try:
+            item_id = item.get("id")
+            if item_id is None:
+                continue
+
+            company_info = item.get("company") or {}
+            job_id = str(item_id)
+
+            outcome.candidate_count += 1
+            outcome.results.append(RawJobResult(
+                raw_id=job_id,
+                canonical_id=job_id,
+                title=(item.get("position") or "").strip(),
+                company=(company_info.get("name") or "").strip(),
+                experience=wanted_format_exp(item),
+                url=f"{base_url}/wd/{job_id}",
+                href=f"/wd/{job_id}",
+                platform="wanted",
+            ))
+        except Exception:
+            logger.debug("Failed to convert Wanted item %s", item.get("id"), exc_info=True)
+            continue
+
+    return outcome
+
+
+# ---------------------------------------------------------------------------
+# Remember API helpers
+# ---------------------------------------------------------------------------
+
+def search_remember_api(query: str, max_items: int = 60) -> ScrapeOutcome:
+    """Search Remember via REST API, returning ScrapeOutcome with RawJobResult list."""
+    outcome = ScrapeOutcome()
+
+    try:
+        items, total_count = remember_search_jobs([query], max_items=max_items)
+    except RememberAPIError as e:
+        outcome.error = e
+        return outcome
+
+    if not items:
+        outcome.no_results = True
+        return outcome
+
+    return convert_remember_to_raw_results(items)
+
+
+def convert_remember_to_raw_results(
+    items: list[dict], base_url: str = "https://career.rememberapp.co.kr"
+) -> ScrapeOutcome:
+    """Convert Remember API items to ScrapeOutcome with RawJobResult list."""
+    outcome = ScrapeOutcome()
+
+    for item in items:
+        try:
+            item_id = item.get("id")
+            if item_id is None:
+                continue
+
+            organization = item.get("organization") or {}
+            raw_id = str(item_id)
+            canonical_id = f"remember-{raw_id}"
+
+            outcome.candidate_count += 1
+            outcome.results.append(RawJobResult(
+                raw_id=raw_id,
+                canonical_id=canonical_id,
+                title=(item.get("title") or "").strip(),
+                company=(organization.get("name") or "").strip(),
+                experience=remember_format_exp(item),
+                url=f"{base_url}/job/posting/{raw_id}",
+                href=f"/job/posting/{raw_id}",
+                platform="remember",
+            ))
+        except Exception:
+            logger.debug("Failed to convert Remember item %s", item.get("id"), exc_info=True)
             continue
 
     return outcome
