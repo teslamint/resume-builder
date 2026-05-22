@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Playwright-based company info extraction from Wanted + Saramin + TheVC.
+"""Company info extraction from Wanted + Saramin + TheVC.
 
 Usage:
     python3 templates/jd/company_extractor.py --company "김캐디"
@@ -19,7 +19,7 @@ try:
     from .ce_saramin import extract_saramin
     from .ce_thevc import extract_thevc
     from .ce_types import ExtractionResult, PlatformData
-    from .ce_wanted import extract_wanted, extract_wanted_http
+    from .ce_wanted import extract_wanted_http
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from .naming import slugify_company as _slugify_company
 except ImportError:
@@ -28,7 +28,7 @@ except ImportError:
     from ce_saramin import extract_saramin
     from ce_thevc import extract_thevc
     from ce_types import ExtractionResult, PlatformData
-    from ce_wanted import extract_wanted, extract_wanted_http
+    from ce_wanted import extract_wanted_http
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
     from naming import slugify_company as _slugify_company
 
@@ -39,14 +39,13 @@ logger = logging.getLogger(__name__)
 REQUEST_DELAY = 1.5  # seconds between page navigations
 ALL_PLATFORMS = ("wanted", "saramin", "thevc")
 
-BROWSER_EXTRACTORS: dict[str, callable] = {
-    "wanted": extract_wanted,
-    "saramin": extract_saramin,
-    "thevc": extract_thevc,
-}
-
 HTTP_EXTRACTORS: dict[str, callable] = {
     "wanted": extract_wanted_http,
+}
+
+BROWSER_EXTRACTORS: dict[str, callable] = {
+    "saramin": extract_saramin,
+    "thevc": extract_thevc,
 }
 
 
@@ -64,7 +63,7 @@ def extract_company_info(
     existing_file: Path | None = None,
     dry_run: bool = False,
 ) -> ExtractionResult:
-    """Main entry point for Playwright-based company info extraction."""
+    """Main entry point for mixed HTTP/browser company info extraction."""
     platforms = tuple(platforms or ALL_PLATFORMS)
     slug = _slugify_company(company_name)
     output_path = COMPANY_INFO_DIR / f"{slug}.md"
@@ -74,10 +73,26 @@ def extract_company_info(
     source_urls: list[str] = []
     data_list: list[PlatformData] = []
 
-    selected = [(name, fn) for name, fn in BROWSER_EXTRACTORS.items() if name in platforms]
+    http_selected = [(name, fn) for name, fn in HTTP_EXTRACTORS.items() if name in platforms]
+    browser_selected = [(name, fn) for name, fn in BROWSER_EXTRACTORS.items() if name in platforms]
+
+    for i, (platform_name, extract_fn) in enumerate(http_selected):
+        try:
+            result = extract_fn(company_name)
+            if result:
+                data_list.append(result)
+                platforms_used.append(platform_name)
+                source_urls.append(result.source_url)
+            else:
+                platforms_failed.append(platform_name)
+        except Exception as e:
+            logger.warning("[%s-http] 예외: %s", platform_name, e)
+            platforms_failed.append(platform_name)
+        if i < len(http_selected) - 1:
+            time.sleep(REQUEST_DELAY)
 
     playwright_available = browser_context is not None
-    if selected and not browser_context:
+    if browser_selected and not browser_context:
         try:
             try:
                 from .browser_utils import sync_playwright
@@ -88,7 +103,7 @@ def extract_company_info(
             logger.warning("Playwright 사용 불가 — HTTP 폴백으로 전환: %s", e)
             playwright_available = False
 
-    if selected and playwright_available:
+    if browser_selected and playwright_available:
         own_playwright = browser_context is None
         browser = None
 
@@ -115,7 +130,7 @@ def extract_company_info(
                     )
 
                 try:
-                    for i, (platform_name, extract_fn) in enumerate(selected):
+                    for i, (platform_name, extract_fn) in enumerate(browser_selected):
                         try:
                             result = extract_fn(company_name, browser_context)
                             if result:
@@ -127,32 +142,18 @@ def extract_company_info(
                         except Exception as e:
                             print(f"   [{platform_name}] 예외: {e}")
                             platforms_failed.append(platform_name)
-                        if i < len(selected) - 1:
+                        if i < len(browser_selected) - 1:
                             time.sleep(REQUEST_DELAY)
                 finally:
                     if own_playwright and browser:
                         browser.close()
         except Exception as e:
-            logger.warning("Playwright 실행 실패 — HTTP 폴백으로 전환: %s", e)
+            logger.warning("Playwright 실행 실패 — browser-only 플랫폼 실패 처리: %s", e)
             playwright_available = False
 
-    if selected and not playwright_available:
-        for platform_name, _ in selected:
-            http_fn = HTTP_EXTRACTORS.get(platform_name)
-            if http_fn:
-                try:
-                    result = http_fn(company_name)
-                    if result:
-                        data_list.append(result)
-                        platforms_used.append(platform_name)
-                        source_urls.append(result.source_url)
-                    else:
-                        platforms_failed.append(platform_name)
-                except Exception as e:
-                    logger.warning("[%s-http] 예외: %s", platform_name, e)
-                    platforms_failed.append(platform_name)
-            else:
-                logger.info("[%s] HTTP 폴백 없음 — 건너뜀", platform_name)
+    if browser_selected and not playwright_available:
+        for platform_name, _ in browser_selected:
+            if platform_name not in platforms_failed:
                 platforms_failed.append(platform_name)
 
     # JD file extraction (no browser needed, always attempted)
