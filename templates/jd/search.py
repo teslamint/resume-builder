@@ -67,6 +67,16 @@ BASE_DIR = Path(__file__).parent.parent.parent
 CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
 STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
 _PLAYWRIGHT_DISABLED: Set[str] = set()
+_PLAYWRIGHT_HARD_FAILURE_MARKERS = (
+    "mach_port_rendezvous",
+    "permission denied",
+    "no module named",
+    "import of patchright.sync_api halted",
+    "import of browser_utils halted",
+    "browser executable",
+    "executable doesn't exist",
+    "playwright install",
+)
 
 
 @dataclass
@@ -143,13 +153,22 @@ def _playwright_allowed(platform: str, config: dict) -> bool:
     return platform_cfg.get("enable_playwright", platform_cfg.get("use_playwright", True))
 
 
+def _load_sync_playwright():
+    try:
+        from .browser_utils import sync_playwright
+    except Exception:
+        from browser_utils import sync_playwright
+    return sync_playwright
+
+
+def _is_hard_playwright_failure(error: Exception) -> bool:
+    error_text = str(error).lower()
+    return any(marker in error_text for marker in _PLAYWRIGHT_HARD_FAILURE_MARKERS)
+
+
 def _mark_playwright_unavailable(platform: str, error: Exception) -> None:
-    if platform in ("wanted", "remember"):
-        error_text = str(error).lower()
-        if "mach_port_rendezvous" in error_text or "permission denied" in error_text:
-            _PLAYWRIGHT_DISABLED.add(platform)
-            return
-    _PLAYWRIGHT_DISABLED.add(platform)
+    if _is_hard_playwright_failure(error):
+        _PLAYWRIGHT_DISABLED.add(platform)
 
 
 def save_state(state: SearchState) -> None:
@@ -228,11 +247,6 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     Search Wanted for job postings.
     Uses Playwright for browser automation via search_helpers.
     """
-    try:
-        from .browser_utils import sync_playwright
-    except Exception:
-        from browser_utils import sync_playwright
-
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()
     config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
@@ -257,6 +271,7 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
     outcome: ScrapeOutcome | None = None
     if _playwright_allowed("wanted", config):
         try:
+            sync_playwright = _load_sync_playwright()
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 context = browser.new_context(
@@ -338,11 +353,6 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     Search Remember (career.rememberapp.co.kr) for job postings.
     Uses Playwright for browser automation via search_helpers.
     """
-    try:
-        from .browser_utils import sync_playwright
-    except Exception:
-        from browser_utils import sync_playwright
-
     result = SearchResult(query=query, total_found=0)
     rejected_companies = get_rejected_companies()
     config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
@@ -375,6 +385,7 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     outcome: ScrapeOutcome | None = None
     if _playwright_allowed("remember", config):
         try:
+            sync_playwright = _load_sync_playwright()
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 context = browser.new_context(
