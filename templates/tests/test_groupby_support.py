@@ -127,15 +127,15 @@ def test_search_wanted_http_fallback_does_not_import_playwright_when_disabled():
 
     with patch.dict(sys.modules, {"browser_utils": None}), \
          patch("search.get_rejected_companies", return_value=set()), \
-         patch("search.load_and_scrape_wanted_http", return_value=outcome) as http_scrape:
+         patch("search.search_wanted_api", return_value=outcome) as api_fallback:
         result = search.search_wanted("backend", config, search.SearchState())
 
     assert result.total_found == 0
-    http_scrape.assert_called_once()
+    api_fallback.assert_called_once()
     assert "wanted" not in search._PLAYWRIGHT_DISABLED
 
 
-def test_search_wanted_falls_back_to_http_when_playwright_import_missing():
+def test_search_wanted_falls_back_to_api_when_playwright_import_missing():
     import search
 
     search._PLAYWRIGHT_DISABLED.clear()
@@ -149,11 +149,11 @@ def test_search_wanted_falls_back_to_http_when_playwright_import_missing():
 
     with patch.dict(sys.modules, {"browser_utils": None}), \
          patch("search.get_rejected_companies", return_value=set()), \
-         patch("search.load_and_scrape_wanted_http", return_value=outcome) as http_scrape:
+         patch("search.search_wanted_api", return_value=outcome) as api_fallback:
         result = search.search_wanted("backend", config, search.SearchState())
 
     assert result.total_found == 0
-    http_scrape.assert_called_once()
+    api_fallback.assert_called_once()
     assert "wanted" in search._PLAYWRIGHT_DISABLED
 
 

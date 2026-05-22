@@ -4,13 +4,13 @@ These tests monkeypatch platform extractors to verify the orchestrator's
 error handling, platform ordering, and JD-always-attempted behavior
 without needing a real browser.
 
-Note: BROWSER_EXTRACTORS is a dict that captures function references at
+Note: HTTP_EXTRACTORS / BROWSER_EXTRACTORS capture function references at
 module load time, so we must patch the dict itself (not module-level names).
 """
 from unittest.mock import MagicMock, patch
 
 from ce_types import PlatformData
-from company_extractor import BROWSER_EXTRACTORS, extract_company_info
+from company_extractor import BROWSER_EXTRACTORS, HTTP_EXTRACTORS, extract_company_info
 
 
 def _make_platform_data(platform: str) -> PlatformData:
@@ -31,7 +31,8 @@ class TestBrowserExtractorsOrder:
     """Verify BROWSER_EXTRACTORS dict maintains expected insertion order."""
 
     def test_platform_order(self):
-        assert list(BROWSER_EXTRACTORS.keys()) == ["wanted", "saramin", "thevc"]
+        assert list(HTTP_EXTRACTORS.keys()) == ["wanted"]
+        assert list(BROWSER_EXTRACTORS.keys()) == ["saramin", "thevc"]
 
 
 class TestExtractCompanyInfoOrchestration:
@@ -39,17 +40,15 @@ class TestExtractCompanyInfoOrchestration:
 
     def test_success_case(self):
         wanted_data = _make_platform_data("wanted")
-        mock_extractors = {
+        mock_http_extractors = {
             "wanted": _make_mock(wanted_data),
-            "saramin": _make_mock(None),
-            "thevc": _make_mock(None),
         }
 
-        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", {}, clear=True), \
              patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
-                browser_context=MagicMock(),
                 platforms=["wanted"],
                 dry_run=True,
             )
@@ -58,17 +57,15 @@ class TestExtractCompanyInfoOrchestration:
         assert "wanted" not in result.platforms_failed
 
     def test_none_result_goes_to_failed(self):
-        mock_extractors = {
+        mock_http_extractors = {
             "wanted": _make_mock(None),
-            "saramin": _make_mock(None),
-            "thevc": _make_mock(None),
         }
 
-        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", {}, clear=True), \
              patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
-                browser_context=MagicMock(),
                 platforms=["wanted"],
                 dry_run=True,
             )
@@ -77,17 +74,15 @@ class TestExtractCompanyInfoOrchestration:
         assert result.completeness == 0.0
 
     def test_exception_goes_to_failed_no_crash(self):
-        mock_extractors = {
+        mock_http_extractors = {
             "wanted": _make_mock(RuntimeError("network error")),
-            "saramin": _make_mock(None),
-            "thevc": _make_mock(None),
         }
 
-        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", {}, clear=True), \
              patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
-                browser_context=MagicMock(),
                 platforms=["wanted"],
                 dry_run=True,
             )
@@ -96,13 +91,16 @@ class TestExtractCompanyInfoOrchestration:
 
     def test_jd_always_attempted_even_when_all_browser_fail(self):
         jd_data = _make_platform_data("jd")
-        mock_extractors = {
+        mock_http_extractors = {
             "wanted": _make_mock(RuntimeError("fail")),
+        }
+        mock_browser_extractors = {
             "saramin": _make_mock(RuntimeError("fail")),
             "thevc": _make_mock(RuntimeError("fail")),
         }
 
-        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser_extractors, clear=True), \
              patch("company_extractor.extract_from_jd_files", return_value=jd_data):
             result = extract_company_info(
                 "테스트회사",
@@ -118,16 +116,18 @@ class TestExtractCompanyInfoOrchestration:
         """When platforms list contains no known browser platforms,
         none of the browser extractors should be called."""
         jd_data = _make_platform_data("jd")
-        m_wanted = _make_mock(None)
         m_saramin = _make_mock(None)
         m_thevc = _make_mock(None)
-        mock_extractors = {
-            "wanted": m_wanted,
+        mock_http_extractors = {
+            "wanted": _make_mock(None),
+        }
+        mock_browser_extractors = {
             "saramin": m_saramin,
             "thevc": m_thevc,
         }
 
-        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_extractors), \
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser_extractors, clear=True), \
              patch("company_extractor.extract_from_jd_files", return_value=jd_data):
             result = extract_company_info(
                 "테스트회사",
@@ -137,6 +137,46 @@ class TestExtractCompanyInfoOrchestration:
             )
 
         assert "jd" in result.platforms_used
-        m_wanted.assert_not_called()
         m_saramin.assert_not_called()
         m_thevc.assert_not_called()
+
+    def test_wanted_http_runs_without_browser_context(self):
+        wanted_data = _make_platform_data("wanted")
+        mock_http_extractors = {
+            "wanted": _make_mock(wanted_data),
+        }
+
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", {}, clear=True), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
+            result = extract_company_info(
+                "테스트회사",
+                platforms=["wanted"],
+                dry_run=True,
+            )
+
+        assert result.platforms_used == ["wanted"]
+
+    def test_browser_only_failures_do_not_block_wanted_http(self):
+        wanted_data = _make_platform_data("wanted")
+        mock_http_extractors = {
+            "wanted": _make_mock(wanted_data),
+        }
+        mock_browser_extractors = {
+            "saramin": _make_mock(RuntimeError("browser fail")),
+            "thevc": _make_mock(RuntimeError("browser fail")),
+        }
+
+        with patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http_extractors, clear=True), \
+             patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser_extractors, clear=True), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
+            result = extract_company_info(
+                "테스트회사",
+                browser_context=MagicMock(),
+                platforms=["wanted", "saramin", "thevc"],
+                dry_run=True,
+            )
+
+        assert "wanted" in result.platforms_used
+        assert "saramin" in result.platforms_failed
+        assert "thevc" in result.platforms_failed

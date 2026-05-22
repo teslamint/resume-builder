@@ -40,6 +40,8 @@ try:
         load_and_scrape_wanted_http,
         load_and_scrape_remember,
         load_and_scrape_remember_http,
+        search_wanted_api,
+        search_remember_api,
     )
 except ImportError:
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
@@ -58,6 +60,8 @@ except ImportError:
         load_and_scrape_wanted_http,
         load_and_scrape_remember,
         load_and_scrape_remember_http,
+        search_wanted_api,
+        search_remember_api,
     )
 
 _logger = logging.getLogger(__name__)
@@ -287,11 +291,11 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
                         browser.close()
         except Exception as e:
             _mark_playwright_unavailable("wanted", e)
-            print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
-            outcome = load_and_scrape_wanted_http(search_url, page_config)
+            print(f"   ⚠️  Playwright 실행 실패로 API 폴백 사용: {e}")
+            outcome = search_wanted_api(query)
     else:
-        print("   ℹ️  Playwright 비활성화 상태, HTTP 폴백 사용")
-        outcome = load_and_scrape_wanted_http(search_url, page_config)
+        print("   ℹ️  Playwright 비활성화 상태, API 폴백 사용")
+        outcome = search_wanted_api(query)
 
     if outcome is None:
         return result
@@ -405,11 +409,11 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
                         browser.close()
         except Exception as e:
             _mark_playwright_unavailable("remember", e)
-            print(f"   ⚠️  Playwright 실행 실패로 HTTP 폴백 사용: {e}")
-            outcome = load_and_scrape_remember_http(search_url, page_config)
+            print(f"   ⚠️  Playwright 실행 실패로 API 폴백 사용: {e}")
+            outcome = search_remember_api(query)
     else:
-        print("   ℹ️  Playwright 비활성화 상태, HTTP 폴백 사용")
-        outcome = load_and_scrape_remember_http(search_url, page_config)
+        print("   ℹ️  Playwright 비활성화 상태, API 폴백 사용")
+        outcome = search_remember_api(query)
 
     if outcome is None:
         return result
