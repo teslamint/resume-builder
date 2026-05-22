@@ -256,7 +256,10 @@ def main() -> None:
         print(f"리포트: {REPORT_PATH}")
         return
 
-    from browser_utils import sync_playwright
+    try:
+        from .browser_utils import sync_playwright
+    except ImportError:
+        from browser_utils import sync_playwright
 
     results: list[SaraminEnrichmentResult] = []
     with sync_playwright() as pw:
