@@ -2,7 +2,7 @@
 """JD Auto - end-to-end automation pipeline.
 
 Usage:
-    python3 templates/jd/auto.py
+    python3 templates/jd/auto.py  # 검색 단계와 URL 파일 기반 처리 단계를 분리 실행
     python3 templates/jd/auto.py --search-only
     python3 templates/jd/auto.py --from-urls job_postings/unprocessed/search_20260217_1000.txt
     python3 templates/jd/auto.py --screening-only
@@ -129,6 +129,29 @@ def _cleanup_state(run_id: str) -> None:
     path = _state_path(run_id)
     if path.exists():
         path.unlink()
+
+
+def _find_latest_search_urls_file(started_at: datetime) -> Optional[Path]:
+    """Return the newest non-empty search URL file created during this run."""
+    search_dir = JOB_POSTINGS_DIR / "unprocessed"
+    if not search_dir.exists():
+        return None
+
+    started_ts = started_at.timestamp() - 1.0
+    candidates = sorted(
+        search_dir.glob("search_*.txt"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        try:
+            if candidate.stat().st_mtime < started_ts:
+                continue
+            if candidate.read_text(encoding="utf-8").strip():
+                return candidate
+        except OSError:
+            continue
+    return None
 
 
 @dataclass
@@ -744,6 +767,59 @@ def main() -> None:
 
     if args.max_retries != 1:
         print("ℹ️ 현재 버전은 --max-retries를 예약 옵션으로만 수용합니다.")
+
+    split_default_run = (
+        not args.dry_run
+        and not args.search_only
+        and not args.from_urls
+        and not args.screening_only
+        and not args.company_enrichment_only
+        and not args.resume
+    )
+
+    if split_default_run:
+        base_run_id = args.run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+        started_at = datetime.now()
+
+        print("\n" + "=" * 70)
+        print("1단계: 검색만 실행")
+        print("=" * 70)
+        search_results, search_summary = run_auto(
+            dry_run=args.dry_run,
+            search_only=True,
+            max_urls=args.max_urls,
+            run_id=f"{base_run_id}_search",
+            continue_on_error=not args.stop_on_error,
+            thevc_mode=args.thevc_mode,
+            min_completeness=args.min_completeness,
+        )
+        search_result_file = save_results(search_results, search_summary, dry_run=args.dry_run)
+        print_final_summary(search_summary, search_result_file)
+
+        urls_file = _find_latest_search_urls_file(started_at)
+        if not urls_file or search_summary.new == 0:
+            print("\n✅ 2단계로 넘길 신규 URL 없음")
+            return
+
+        print("\n" + "=" * 70)
+        print(f"2단계: URL 파일 기반 추출/스크리닝/분류 실행 - {urls_file}")
+        print("=" * 70)
+        results, summary = run_auto(
+            dry_run=args.dry_run,
+            max_urls=args.max_urls,
+            run_id=f"{base_run_id}_screening",
+            from_urls=urls_file,
+            continue_on_error=not args.stop_on_error,
+            llm_timeout=args.llm_timeout,
+            no_classify=args.no_classify,
+            thevc_mode=args.thevc_mode,
+            min_completeness=args.min_completeness,
+            allow_incomplete_company_info=args.allow_incomplete_company_info,
+            no_prescreen=args.no_prescreen,
+        )
+        result_file = save_results(results, summary, dry_run=args.dry_run)
+        print_final_summary(summary, result_file)
+        return
 
     results, summary = run_auto(
         dry_run=args.dry_run,
