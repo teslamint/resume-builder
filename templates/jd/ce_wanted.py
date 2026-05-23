@@ -202,7 +202,9 @@ def extract_wanted(company_name: str, context) -> PlatformData | None:
 
 def _strip_html(html: str) -> str:
     """Rough HTML tag removal for regex fallback."""
-    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"<script[^>]*>[\s\S]*?</script>", " ", html, flags=re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>[\s\S]*?</style>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", text)
 
 

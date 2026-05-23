@@ -984,14 +984,13 @@ class TestAutoMainDefaultSplit(unittest.TestCase):
         def fake_run_auto(**kwargs):
             calls.append(kwargs)
             if kwargs.get("search_only"):
-                return [], RunSummary(run_id=kwargs["run_id"], new=1)
+                return [], RunSummary(run_id=kwargs["run_id"], new=1, search_urls_file=urls_file)
             return [], RunSummary(run_id=kwargs["run_id"], processed=1)
 
         with patch("sys.argv", ["auto.py"]), \
              patch("auto.run_auto", side_effect=fake_run_auto), \
              patch("auto.save_results", side_effect=[Path("/tmp/search.json"), Path("/tmp/screening.json")]), \
-             patch("auto.print_final_summary"), \
-             patch("auto._find_latest_search_urls_file", return_value=urls_file):
+             patch("auto.print_final_summary"):
             main()
 
         self.assertEqual(len(calls), 2)
@@ -1017,8 +1016,7 @@ class TestAutoMainDefaultSplit(unittest.TestCase):
         with patch("sys.argv", ["auto.py"]), \
              patch("auto.run_auto", side_effect=fake_run_auto), \
              patch("auto.save_results", return_value=Path("/tmp/search.json")), \
-             patch("auto.print_final_summary"), \
-             patch("auto._find_latest_search_urls_file", return_value=None):
+             patch("auto.print_final_summary"):
             main()
 
         self.assertEqual(len(calls), 1)

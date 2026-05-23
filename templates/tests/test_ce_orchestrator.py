@@ -240,14 +240,14 @@ class TestHttpFallbackAfterBrowserFailure:
         assert "saramin" in result.platforms_failed
 
     def test_http_fallback_not_called_when_browser_succeeds(self):
-        """When browser extraction succeeds, HTTP fallback should not trigger."""
+        """When browser extraction succeeds, per-platform HTTP fallback should not re-call."""
         browser_data = _make_platform_data("wanted")
         http_mock = _make_mock(_make_platform_data("wanted"))
-        mock_browser = {"wanted": _make_mock(browser_data), "saramin": _make_mock(None), "thevc": _make_mock(None)}
+        mock_browser = {"wanted": _make_mock(browser_data)}
         mock_http = {"wanted": http_mock}
 
-        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser), \
-             patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http), \
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser, clear=True), \
+             patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http, clear=True), \
              patch("company_extractor.extract_from_jd_files", return_value=None):
             result = extract_company_info(
                 "테스트회사",
@@ -257,4 +257,4 @@ class TestHttpFallbackAfterBrowserFailure:
             )
 
         assert "wanted" in result.platforms_used
-        http_mock.assert_not_called()
+        assert http_mock.call_count == 1

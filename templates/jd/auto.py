@@ -190,9 +190,13 @@ class RunSummary:
     rejected_prior: int = 0    # pre-screen 직전 6개월 지원 이력
     prescreened: int = 0       # pre-screen 컷 (closed/prior 제외, 실제 LLM 절감 건수)
     prescreen_review: int = 0  # pre-screen counter_indicator 격리 (수동 검토 대기)
+    search_urls_file: Optional[Path] = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d.get("search_urls_file") is not None:
+            d["search_urls_file"] = str(d["search_urls_file"])
+        return d
 
 
 
@@ -412,8 +416,9 @@ def run_auto(
         urls = [v["url"] for v in prev_state.values() if v.get("status") != "done"]
         postings = []
     else:
-        postings = run_search(dry_run=dry_run, max_urls=max_urls)
+        postings, search_urls_path = run_search(dry_run=dry_run, max_urls=max_urls)
         urls = [p.url for p in postings]
+        summary.search_urls_file = search_urls_path
 
     summary.new = len(urls)
     if not urls:
@@ -779,7 +784,6 @@ def main() -> None:
 
     if split_default_run:
         base_run_id = args.run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-        started_at = datetime.now()
 
         print("\n" + "=" * 70)
         print("1단계: 검색만 실행")
@@ -796,7 +800,7 @@ def main() -> None:
         search_result_file = save_results(search_results, search_summary, dry_run=args.dry_run)
         print_final_summary(search_summary, search_result_file)
 
-        urls_file = _find_latest_search_urls_file(started_at)
+        urls_file = search_summary.search_urls_file
         if not urls_file or search_summary.new == 0:
             print("\n✅ 2단계로 넘길 신규 URL 없음")
             return

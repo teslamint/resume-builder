@@ -485,25 +485,23 @@ def run_screening(
         raw_output = f"LLM 스크리닝 실패: {reason}"
         normalized_output = _build_fallback_output(jd_path, jd_content, reason)
 
-    valid, reason = _validate_screening_structure(normalized_output)
-    if not valid:
-        if used_fallback:
-            raise RuntimeError(f"fallback 구조 검증 실패: {reason}")
-
-        retry_prefix = (
-            "이전 응답이 필수 섹션을 누락했습니다. "
-            "반드시 ## 기본 정보 / ## 스크리닝 결과 / ## 이력/경험 매칭 / "
-            "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
-        )
-        try:
-            provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
-            verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
-            normalized_output = _normalize_output(raw_output, verdict)
-        except Exception:
-            raise RuntimeError(f"구조 검증 실패 + 재시도 LLM 오류: {reason}")
+    if not used_fallback:
         valid, reason = _validate_screening_structure(normalized_output)
         if not valid:
-            raise RuntimeError(f"구조 검증 실패 (재시도 후): {reason}")
+            retry_prefix = (
+                "이전 응답이 필수 섹션을 누락했습니다. "
+                "반드시 ## 기본 정보 / ## 스크리닝 결과 / ## 이력/경험 매칭 / "
+                "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
+            )
+            try:
+                provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
+                verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
+                normalized_output = _normalize_output(raw_output, verdict)
+            except Exception:
+                raise RuntimeError(f"구조 검증 실패 + 재시도 LLM 오류: {reason}")
+            valid, reason = _validate_screening_structure(normalized_output)
+            if not valid:
+                raise RuntimeError(f"구조 검증 실패 (재시도 후): {reason}")
 
     screening_path = SCREENING_DIR / _screening_filename(jd_path)
 

@@ -553,10 +553,10 @@ def run_search(
     queries: Optional[List[str]] = None,
     dry_run: bool = False,
     max_urls: Optional[int] = None,
-) -> List[JobPosting]:
+) -> tuple[List[JobPosting], Optional[Path]]:
     """
     Run job search with configured queries.
-    Returns list of new job postings found.
+    Returns (new job postings, path to saved URLs file or None).
     """
     config = load_config()
     state = load_state()
@@ -695,23 +695,24 @@ def run_search(
             print(f"   ❓ 정보 추출 권장: {', '.join(companies_missing[:5])}")
     
     # Save state
+    saved_urls_file: Optional[Path] = None
     if not dry_run:
         state.total_searches += 1
         state.total_new_found += len(all_new_postings)
         save_state(state)
-        
+
         # Output URLs for pipeline processing
         if all_new_postings:
-            urls_file = JOB_POSTINGS_DIR / "unprocessed" / f"search_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
-            urls_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(urls_file, "w", encoding="utf-8") as f:
+            saved_urls_file = JOB_POSTINGS_DIR / "unprocessed" / f"search_{datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+            saved_urls_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(saved_urls_file, "w", encoding="utf-8") as f:
                 for posting in all_new_postings:
                     f.write(f"{posting.url}\n")
-            print(f"\n📁 URL 목록 저장: {urls_file}")
+            print(f"\n📁 URL 목록 저장: {saved_urls_file}")
     else:
         print("\n🔍 Dry-run 모드 - 상태 저장 안 함")
-    
-    return all_new_postings
+
+    return all_new_postings, saved_urls_file
 
 
 def show_status() -> None:
