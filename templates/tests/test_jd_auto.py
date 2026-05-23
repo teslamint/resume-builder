@@ -922,5 +922,56 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
             self.assertEqual(summary.prescreened, 0)
 
 
+class TestAutoMainDefaultSplit(unittest.TestCase):
+    def test_main_default_runs_search_then_url_processing(self):
+        from auto import RunSummary, main
+
+        calls = []
+        urls_file = Path("/tmp/search_20990101_0000.txt")
+
+        def fake_run_auto(**kwargs):
+            calls.append(kwargs)
+            if kwargs.get("search_only"):
+                return [], RunSummary(run_id=kwargs["run_id"], new=1)
+            return [], RunSummary(run_id=kwargs["run_id"], processed=1)
+
+        with patch("sys.argv", ["auto.py"]), \
+             patch("auto.run_auto", side_effect=fake_run_auto), \
+             patch("auto.save_results", side_effect=[Path("/tmp/search.json"), Path("/tmp/screening.json")]), \
+             patch("auto.print_final_summary"), \
+             patch("auto._find_latest_search_urls_file", return_value=urls_file):
+            main()
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0]["search_only"])
+        self.assertTrue(calls[0]["run_id"].endswith("_search"))
+        self.assertEqual(calls[1]["from_urls"], urls_file)
+        self.assertFalse(calls[1].get("screening_only", False))
+        self.assertTrue(calls[1]["run_id"].endswith("_screening"))
+        self.assertEqual(
+            calls[0]["run_id"].removesuffix("_search"),
+            calls[1]["run_id"].removesuffix("_screening"),
+        )
+
+    def test_main_default_skips_processing_when_search_finds_no_urls(self):
+        from auto import RunSummary, main
+
+        calls = []
+
+        def fake_run_auto(**kwargs):
+            calls.append(kwargs)
+            return [], RunSummary(run_id=kwargs["run_id"], new=0)
+
+        with patch("sys.argv", ["auto.py"]), \
+             patch("auto.run_auto", side_effect=fake_run_auto), \
+             patch("auto.save_results", return_value=Path("/tmp/search.json")), \
+             patch("auto.print_final_summary"), \
+             patch("auto._find_latest_search_urls_file", return_value=None):
+            main()
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0]["search_only"])
+
+
 if __name__ == "__main__":
     unittest.main()
