@@ -372,6 +372,58 @@ class TestAutoScreening(unittest.TestCase):
         self.assertIn("근거 없음", prompt)
         self.assertIn("추정하지 말고", prompt)
 
+    def test_run_llm_reads_codex_output_last_message(self):
+        import auto_screening
+
+        captured = {}
+
+        def fake_run(cmd, input, text, capture_output, timeout, env):
+            captured["cmd"] = cmd
+            output_path = Path(cmd[cmd.index("--output-last-message") + 1])
+            output_path.write_text("## 기본 정보\n\ncodex final output", encoding="utf-8")
+            return CompletedProcess(cmd, 0, stdout="noisy hook output", stderr="warnings")
+
+        with patch(
+            "auto_screening._resolve_commands",
+            return_value=[("codex", ["codex", "exec"])],
+        ), patch("auto_screening.subprocess.run", side_effect=fake_run):
+            provider, output = auto_screening._run_llm("prompt", timeout=10)
+
+        self.assertEqual(provider, "codex")
+        self.assertEqual(output, "## 기본 정보\n\ncodex final output")
+        self.assertIn("--output-last-message", captured["cmd"])
+
+    def test_run_llm_reports_all_provider_failures(self):
+        import auto_screening
+
+        def fake_run(cmd, input, text, capture_output, timeout, env):
+            if Path(cmd[0]).name == "claude":
+                return CompletedProcess(cmd, 1, stdout="Not logged in · Please run /login\n", stderr="")
+            return CompletedProcess(
+                cmd,
+                1,
+                stdout="",
+                stderr=(
+                    "failed to open state db at /Users/teslamint/.codex/state_5.sqlite: "
+                    "attempt to write a readonly database\n"
+                    "Error: failed to initialize in-process app-server client: Operation not permitted"
+                ),
+            )
+
+        with patch(
+            "auto_screening._resolve_commands",
+            return_value=[
+                ("claude", ["/opt/homebrew/bin/claude", "--print"]),
+                ("codex", ["/opt/homebrew/bin/codex", "exec"]),
+            ],
+        ), patch("auto_screening.subprocess.run", side_effect=fake_run):
+            with self.assertRaises(RuntimeError) as cm:
+                auto_screening._run_llm("prompt", timeout=10)
+
+        message = str(cm.exception)
+        self.assertIn("claude: not logged in", message)
+        self.assertIn("codex: blocked by Codex App sandbox/home state", message)
+
     def test_load_candidate_context_includes_profile_and_project_sources(self):
         import auto_screening
 

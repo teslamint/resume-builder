@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -204,40 +205,124 @@ def _resolve_commands() -> list[tuple[str, list[str]]]:
     return providers
 
 
+def _is_codex_exec_command(cmd: list[str]) -> bool:
+    if not cmd:
+        return False
+    executable = Path(cmd[0]).name
+    return executable == "codex" and len(cmd) > 1 and cmd[1] == "exec"
+
+
+def _should_capture_codex_last_message(cmd: list[str]) -> bool:
+    return _is_codex_exec_command(cmd) and "--output-last-message" not in cmd and "-o" not in cmd
+
+
+def _classify_provider_error(provider: str, detail: str) -> str:
+    text = detail.replace("\r", "\n").strip()
+    lowered = text.lower()
+
+    if "not logged in" in lowered and "please run /login" in lowered:
+        return f"{provider}: not logged in"
+
+    if provider == "codex":
+        if "readonly database" in lowered or (
+            "operation not permitted" in lowered and ".codex" in lowered
+        ):
+            return f"{provider}: blocked by Codex App sandbox/home state"
+        if "operation not permitted" in lowered and "app-server" in lowered:
+            return f"{provider}: blocked by Codex App sandbox"
+
+    if (
+        "failed to lookup address information" in lowered
+        or "could not resolve host" in lowered
+        or "network is unreachable" in lowered
+    ):
+        return f"{provider}: network unavailable"
+
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if not first_line:
+        return f"{provider}: execution failed"
+    if len(first_line) > MAX_FALLBACK_REASON_CHARS:
+        first_line = first_line[:MAX_FALLBACK_REASON_CHARS].rstrip() + "..."
+    return f"{provider}: {first_line}"
+
+
+def _format_failed_process(provider: str, returncode: int, stdout: str, stderr: str) -> str:
+    detail = "\n".join(part for part in (stderr.strip(), stdout.strip()) if part)
+    classified = _classify_provider_error(provider, detail)
+    if classified.startswith(f"{provider}:"):
+        return classified
+    return f"{provider}: exit={returncode}"
+
+
+def _run_provider_command(
+    provider: str,
+    cmd: list[str],
+    prompt: str,
+    timeout: int,
+    env: dict[str, str],
+) -> tuple[int, str, str]:
+    output_path: Path | None = None
+    run_cmd = list(cmd)
+
+    if _should_capture_codex_last_message(run_cmd):
+        fd, path = tempfile.mkstemp(prefix="jd-screening-codex-", suffix=".md")
+        os.close(fd)
+        output_path = Path(path)
+        run_cmd.extend(["--output-last-message", str(output_path)])
+
+    try:
+        proc = subprocess.run(
+            run_cmd,
+            input=prompt,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            env=env,
+        )
+        stdout = proc.stdout
+        if proc.returncode == 0 and output_path and output_path.exists():
+            captured = output_path.read_text(encoding="utf-8").strip()
+            if captured:
+                stdout = captured
+        return proc.returncode, stdout, proc.stderr
+    finally:
+        if output_path:
+            try:
+                output_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def _run_llm(prompt: str, timeout: int) -> tuple[str, str]:
     env = os.environ.copy()
     env.pop("CLAUDECODE", None)
 
-    last_error = ""
+    errors: list[str] = []
     for provider, cmd in _resolve_commands():
         try:
-            proc = subprocess.run(
-                cmd,
-                input=prompt,
-                text=True,
-                capture_output=True,
-                timeout=timeout,
-                env=env,
-            )
+            returncode, stdout, stderr = _run_provider_command(provider, cmd, prompt, timeout, env)
         except FileNotFoundError:
-            last_error = f"{provider} command not found"
+            errors.append(f"{provider}: command not found")
+            continue
+        except subprocess.TimeoutExpired:
+            errors.append(f"{provider}: timed out after {timeout}s")
             continue
         except Exception as exc:
-            last_error = f"{provider} execution error: {exc}"
+            errors.append(f"{provider}: execution error: {exc}")
             continue
 
-        if proc.returncode != 0:
-            last_error = f"{provider} exit={proc.returncode}: {proc.stderr.strip()}"
+        if returncode != 0:
+            errors.append(_format_failed_process(provider, returncode, stdout, stderr))
             continue
 
-        output = proc.stdout.strip()
+        output = stdout.strip()
         if not output:
-            last_error = f"{provider} returned empty output"
+            errors.append(f"{provider}: returned empty output")
             continue
 
         return provider, output
 
-    raise RuntimeError(last_error or "No LLM provider succeeded")
+    raise RuntimeError("; ".join(errors) or "No LLM provider succeeded")
 
 
 def _screening_filename(jd_path: Path) -> str:
