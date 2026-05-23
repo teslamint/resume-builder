@@ -98,6 +98,15 @@ class TestSearchJobs:
         assert len(items) == 1
 
     @patch("remember_client._request_post")
+    def test_first_page_error_raises(self, mock_req):
+        mock_req.side_effect = RememberAPIError("HTTP 403")
+        try:
+            search_jobs(["백엔드"], max_items=10)
+            assert False, "Should raise RememberAPIError"
+        except RememberAPIError as e:
+            assert "403" in str(e)
+
+    @patch("remember_client._request_post")
     def test_empty_response(self, mock_req):
         mock_req.return_value = {
             "data": [],

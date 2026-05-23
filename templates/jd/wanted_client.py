@@ -83,7 +83,9 @@ def search_jobs(
         try:
             data = _request("/jobs", params)
         except WantedAPIError as e:
-            logger.warning("Wanted API error at offset %d: %s", offset, e)
+            if not all_items:
+                raise
+            logger.warning("Wanted API error at offset %d (returning %d partial items): %s", offset, len(all_items), e)
             break
 
         items = data.get("data", [])

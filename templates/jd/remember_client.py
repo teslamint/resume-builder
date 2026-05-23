@@ -79,7 +79,9 @@ def search_jobs(
         try:
             data = _request_post("/job_postings/search", body)
         except RememberAPIError as e:
-            logger.warning("Remember API error at page %d: %s", page, e)
+            if not all_items:
+                raise
+            logger.warning("Remember API error at page %d (returning %d partial items): %s", page, len(all_items), e)
             break
 
         items = data.get("data", [])

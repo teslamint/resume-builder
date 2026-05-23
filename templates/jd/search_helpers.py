@@ -454,7 +454,7 @@ def convert_groupby_to_raw_results(
 # Wanted API helpers
 # ---------------------------------------------------------------------------
 
-def search_wanted_api(query: str, max_items: int = 60) -> ScrapeOutcome:
+def search_wanted_api(query: str, max_items: int = 60, base_url: str = "https://www.wanted.co.kr") -> ScrapeOutcome:
     """Search Wanted via REST API, returning ScrapeOutcome with RawJobResult list."""
     outcome = ScrapeOutcome()
 
@@ -468,7 +468,7 @@ def search_wanted_api(query: str, max_items: int = 60) -> ScrapeOutcome:
         outcome.no_results = True
         return outcome
 
-    return convert_wanted_to_raw_results(items)
+    return convert_wanted_to_raw_results(items, base_url=base_url)
 
 
 def convert_wanted_to_raw_results(
@@ -508,7 +508,7 @@ def convert_wanted_to_raw_results(
 # Remember API helpers
 # ---------------------------------------------------------------------------
 
-def search_remember_api(query: str, max_items: int = 60) -> ScrapeOutcome:
+def search_remember_api(query: str, max_items: int = 60, base_url: str = "https://career.rememberapp.co.kr") -> ScrapeOutcome:
     """Search Remember via REST API, returning ScrapeOutcome with RawJobResult list."""
     outcome = ScrapeOutcome()
 
@@ -522,7 +522,7 @@ def search_remember_api(query: str, max_items: int = 60) -> ScrapeOutcome:
         outcome.no_results = True
         return outcome
 
-    return convert_remember_to_raw_results(items)
+    return convert_remember_to_raw_results(items, base_url=base_url)
 
 
 def convert_remember_to_raw_results(
