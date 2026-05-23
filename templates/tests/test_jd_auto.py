@@ -443,13 +443,21 @@ class TestAutoScreening(unittest.TestCase):
 
             screening_dir = tmp_path / "screening"
             with patch("auto_screening.SCREENING_DIR", screening_dir), patch(
-                "auto_screening._run_llm", side_effect=RuntimeError("no llm")
+                "auto_screening._run_llm",
+                side_effect=RuntimeError(
+                    "codex exit=1: Reading prompt from stdin...\n[스크리닝 규칙]\nsecret"
+                ),
             ), patch("auto_screening.update_summary"):
                 result = run_screening(jd_path=jd, company_file=None, dry_run=False)
 
             self.assertEqual(result.verdict, "지원 보류")
             self.assertTrue(result.used_fallback)
             self.assertTrue(result.screening_path.exists())
+            content = result.screening_path.read_text(encoding="utf-8")
+            self.assertIn("## 스크리닝 결과", content)
+            self.assertIn("## 이력/경험 매칭", content)
+            self.assertNotIn("[스크리닝 규칙]", content)
+            self.assertNotIn("Reading prompt from stdin", content)
 
 
 class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
