@@ -254,6 +254,23 @@ def save_results(
     return result_file
 
 
+def print_final_summary(summary: RunSummary, result_file: Path) -> None:
+    print("\n" + "=" * 70)
+    print("📊 최종 요약")
+    print("=" * 70)
+    print(f"run_id: {summary.run_id}")
+    print(
+        f"신규: {summary.new} | 처리: {summary.processed} | 중복: {summary.duplicates} | 실패: {summary.failed}"
+    )
+    print(f"추출: {summary.extracted} | 스크리닝: {summary.screened}")
+    print(
+        f"추천: {summary.recommended} | 보류: {summary.hold} | 패스: {summary.passed}"
+    )
+    print(f"Pre-screen 컷: {summary.prescreened} | Pre-screen 보류: {summary.prescreen_review}")
+    print(f"마감: {summary.closed} | 직전지원: {summary.rejected_prior}")
+    print(f"결과 파일: {result_file}")
+
+
 def _build_results_from_enrichment(
     thevc_mode: str, dry_run: bool, min_completeness: float = 0.0
 ) -> tuple[List[AutoTaskResult], RunSummary]:
@@ -747,20 +764,7 @@ def main() -> None:
     )
 
     result_file = save_results(results, summary, dry_run=args.dry_run)
-    print("\n" + "=" * 70)
-    print("📊 최종 요약")
-    print("=" * 70)
-    print(f"run_id: {summary.run_id}")
-    print(
-        f"신규: {summary.new} | 처리: {summary.processed} | 중복: {summary.duplicates} | 실패: {summary.failed}"
-    )
-    print(f"추출: {summary.extracted} | 스크리닝: {summary.screened}")
-    print(
-        f"추천: {summary.recommended} | 보류: {summary.hold} | 패스: {summary.passed}"
-    )
-    print(f"Pre-screen 컷: {summary.prescreened} | Pre-screen 보류: {summary.prescreen_review}")
-    print(f"마감: {summary.closed} | 직전지원: {summary.rejected_prior}")
-    print(f"결과 파일: {result_file}")
+    print_final_summary(summary, result_file)
 
 
 if __name__ == "__main__":
