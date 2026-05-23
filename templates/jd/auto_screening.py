@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -35,6 +36,7 @@ PROFILE_CONTEXT_FILES = (
     "skills-job.md",
     "core-competencies.md",
 )
+MAX_FALLBACK_REASON_CHARS = 240
 
 
 @dataclass
@@ -310,6 +312,65 @@ def _normalize_output(markdown: str, verdict: str) -> str:
     return markdown.rstrip() + f"\n\n## 최종 판정\n\n### 최종 판정: {verdict}\n"
 
 
+def _table_cell(value: Optional[str], default: str = "확인 필요") -> str:
+    text = (value or default).strip() or default
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def _summarize_llm_error(exc: Exception) -> str:
+    message = str(exc).replace("\r", "\n").strip()
+    if not message:
+        return "LLM 실행 오류"
+
+    exit_match = re.search(r"\b([A-Za-z_-]+ exit=\d+)\b", message)
+    if exit_match:
+        return exit_match.group(1)
+
+    first_line = next((line.strip() for line in message.splitlines() if line.strip()), "")
+    if len(first_line) > MAX_FALLBACK_REASON_CHARS:
+        return first_line[:MAX_FALLBACK_REASON_CHARS].rstrip() + "..."
+    return first_line or "LLM 실행 오류"
+
+
+def _build_fallback_output(jd_path: Path, jd_content: str, reason: str) -> str:
+    metadata = extract_metadata_from_jd(jd_content)
+    company = metadata.get("company")
+    position = metadata.get("position") or jd_path.stem
+    source_url = metadata.get("url")
+
+    return f"""## 기본 정보
+
+| 항목 | 내용 |
+|------|------|
+| 파일 | {_table_cell(jd_path.name)} |
+| 회사명 | {_table_cell(company)} |
+| 포지션 | {_table_cell(position)} |
+| 출처 | {_table_cell(source_url)} |
+| 생성 방식 | 자동 fallback |
+
+## 스크리닝 결과
+
+LLM 스크리닝 실행이 완료되지 않아 자동 판정은 보류로 기록한다. 채용 적합성은 수동 재스크리닝 전까지 확정하지 않는다.
+
+## 이력/경험 매칭
+
+| 항목 | 판단 |
+|------|------|
+| 후보자 이력 대조 | LLM 분석 실패로 이력 근거 대조가 수행되지 않았다. |
+| JD 필수요건 대조 | 수동 재스크리닝 필요. |
+
+## 최종 판정
+
+### 최종 판정: 지원 보류
+
+## 핵심 근거
+
+- 자동 분석 경로에서 LLM 응답을 얻지 못했다.
+- 실패 사유: {reason}
+- 이 문서는 원시 실행 로그를 저장하지 않고 수동 재스크리닝을 위한 보류 상태만 기록한다.
+"""
+
+
 def run_screening(
     jd_path: Path,
     company_file: Optional[Path],
@@ -335,40 +396,29 @@ def run_screening(
     except Exception as exc:
         used_fallback = True
         verdict = "지원 보류"
-        raw_output = f"LLM 스크리닝 실패: {exc}"
-        normalized_output = f"""# JD 스크리닝 (자동 fallback)
+        reason = _summarize_llm_error(exc)
+        raw_output = f"LLM 스크리닝 실패: {reason}"
+        normalized_output = _build_fallback_output(jd_path, jd_content, reason)
 
-## 기본 정보
+    valid, reason = _validate_screening_structure(normalized_output)
+    if not valid:
+        if used_fallback:
+            raise RuntimeError(f"fallback 구조 검증 실패: {reason}")
 
-- 파일: {jd_path.name}
-
-## 최종 판정
-
-### 최종 판정: 지원 보류
-
-## 핵심 근거
-
-- LLM 스크리닝 실행 실패로 자동 보류 처리
-- 사유: {exc}
-"""
-
-    if not used_fallback:
+        retry_prefix = (
+            "이전 응답이 필수 섹션을 누락했습니다. "
+            "반드시 ## 기본 정보 / ## 스크리닝 결과 / ## 이력/경험 매칭 / "
+            "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
+        )
+        try:
+            provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
+            verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
+            normalized_output = _normalize_output(raw_output, verdict)
+        except Exception:
+            raise RuntimeError(f"구조 검증 실패 + 재시도 LLM 오류: {reason}")
         valid, reason = _validate_screening_structure(normalized_output)
         if not valid:
-            retry_prefix = (
-                "이전 응답이 필수 섹션을 누락했습니다. "
-                "반드시 ## 기본 정보 / ## 스크리닝 결과 / ## 이력/경험 매칭 / "
-                "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
-            )
-            try:
-                provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
-                verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
-                normalized_output = _normalize_output(raw_output, verdict)
-            except Exception:
-                raise RuntimeError(f"구조 검증 실패 + 재시도 LLM 오류: {reason}")
-            valid, reason = _validate_screening_structure(normalized_output)
-            if not valid:
-                raise RuntimeError(f"구조 검증 실패 (재시도 후): {reason}")
+            raise RuntimeError(f"구조 검증 실패 (재시도 후): {reason}")
 
     screening_path = SCREENING_DIR / _screening_filename(jd_path)
 
