@@ -156,6 +156,20 @@ def extract_company_info(
             if platform_name not in platforms_failed:
                 platforms_failed.append(platform_name)
 
+    if platforms_failed and playwright_available:
+        for platform_name in list(platforms_failed):
+            http_fn = HTTP_EXTRACTORS.get(platform_name)
+            if http_fn:
+                try:
+                    result = http_fn(company_name)
+                    if result:
+                        data_list.append(result)
+                        platforms_failed.remove(platform_name)
+                        platforms_used.append(platform_name)
+                        source_urls.append(result.source_url)
+                except Exception as e:
+                    logger.warning("[%s-http] fallback 예외: %s", platform_name, e)
+
     # JD file extraction (no browser needed, always attempted)
     try:
         jd_result = extract_from_jd_files(company_name)
