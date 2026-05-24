@@ -372,6 +372,58 @@ class TestAutoScreening(unittest.TestCase):
         self.assertIn("근거 없음", prompt)
         self.assertIn("추정하지 말고", prompt)
 
+    def test_run_llm_reads_codex_output_last_message(self):
+        import auto_screening
+
+        captured = {}
+
+        def fake_run(cmd, input, text, capture_output, timeout, env):
+            captured["cmd"] = cmd
+            output_path = Path(cmd[cmd.index("--output-last-message") + 1])
+            output_path.write_text("## 기본 정보\n\ncodex final output", encoding="utf-8")
+            return CompletedProcess(cmd, 0, stdout="noisy hook output", stderr="warnings")
+
+        with patch(
+            "auto_screening._resolve_commands",
+            return_value=[("codex", ["codex", "exec"])],
+        ), patch("auto_screening.subprocess.run", side_effect=fake_run):
+            provider, output = auto_screening._run_llm("prompt", timeout=10)
+
+        self.assertEqual(provider, "codex")
+        self.assertEqual(output, "## 기본 정보\n\ncodex final output")
+        self.assertIn("--output-last-message", captured["cmd"])
+
+    def test_run_llm_reports_all_provider_failures(self):
+        import auto_screening
+
+        def fake_run(cmd, input, text, capture_output, timeout, env):
+            if Path(cmd[0]).name == "claude":
+                return CompletedProcess(cmd, 1, stdout="Not logged in · Please run /login\n", stderr="")
+            return CompletedProcess(
+                cmd,
+                1,
+                stdout="",
+                stderr=(
+                    "failed to open state db at /Users/teslamint/.codex/state_5.sqlite: "
+                    "attempt to write a readonly database\n"
+                    "Error: failed to initialize in-process app-server client: Operation not permitted"
+                ),
+            )
+
+        with patch(
+            "auto_screening._resolve_commands",
+            return_value=[
+                ("claude", ["/opt/homebrew/bin/claude", "--print"]),
+                ("codex", ["/opt/homebrew/bin/codex", "exec"]),
+            ],
+        ), patch("auto_screening.subprocess.run", side_effect=fake_run):
+            with self.assertRaises(RuntimeError) as cm:
+                auto_screening._run_llm("prompt", timeout=10)
+
+        message = str(cm.exception)
+        self.assertIn("claude: not logged in", message)
+        self.assertIn("codex: blocked by Codex App sandbox/home state", message)
+
     def test_load_candidate_context_includes_profile_and_project_sources(self):
         import auto_screening
 
@@ -443,13 +495,21 @@ class TestAutoScreening(unittest.TestCase):
 
             screening_dir = tmp_path / "screening"
             with patch("auto_screening.SCREENING_DIR", screening_dir), patch(
-                "auto_screening._run_llm", side_effect=RuntimeError("no llm")
+                "auto_screening._run_llm",
+                side_effect=RuntimeError(
+                    "codex exit=1: Reading prompt from stdin...\n[스크리닝 규칙]\nsecret"
+                ),
             ), patch("auto_screening.update_summary"):
                 result = run_screening(jd_path=jd, company_file=None, dry_run=False)
 
             self.assertEqual(result.verdict, "지원 보류")
             self.assertTrue(result.used_fallback)
             self.assertTrue(result.screening_path.exists())
+            content = result.screening_path.read_text(encoding="utf-8")
+            self.assertIn("## 스크리닝 결과", content)
+            self.assertIn("## 이력/경험 매칭", content)
+            self.assertNotIn("[스크리닝 규칙]", content)
+            self.assertNotIn("Reading prompt from stdin", content)
 
 
 class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
@@ -912,6 +972,55 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
             mock_pre.assert_not_called()
             mock_ci.assert_called_once()
             self.assertEqual(summary.prescreened, 0)
+
+
+class TestAutoMainDefaultSplit(unittest.TestCase):
+    def test_main_default_runs_search_then_url_processing(self):
+        from auto import RunSummary, main
+
+        calls = []
+        urls_file = Path("/tmp/search_20990101_0000.txt")
+
+        def fake_run_auto(**kwargs):
+            calls.append(kwargs)
+            if kwargs.get("search_only"):
+                return [], RunSummary(run_id=kwargs["run_id"], new=1, search_urls_file=urls_file)
+            return [], RunSummary(run_id=kwargs["run_id"], processed=1)
+
+        with patch("sys.argv", ["auto.py"]), \
+             patch("auto.run_auto", side_effect=fake_run_auto), \
+             patch("auto.save_results", side_effect=[Path("/tmp/search.json"), Path("/tmp/screening.json")]), \
+             patch("auto.print_final_summary"):
+            main()
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0]["search_only"])
+        self.assertTrue(calls[0]["run_id"].endswith("_search"))
+        self.assertEqual(calls[1]["from_urls"], urls_file)
+        self.assertFalse(calls[1].get("screening_only", False))
+        self.assertTrue(calls[1]["run_id"].endswith("_screening"))
+        self.assertEqual(
+            calls[0]["run_id"].removesuffix("_search"),
+            calls[1]["run_id"].removesuffix("_screening"),
+        )
+
+    def test_main_default_skips_processing_when_search_finds_no_urls(self):
+        from auto import RunSummary, main
+
+        calls = []
+
+        def fake_run_auto(**kwargs):
+            calls.append(kwargs)
+            return [], RunSummary(run_id=kwargs["run_id"], new=0)
+
+        with patch("sys.argv", ["auto.py"]), \
+             patch("auto.run_auto", side_effect=fake_run_auto), \
+             patch("auto.save_results", return_value=Path("/tmp/search.json")), \
+             patch("auto.print_final_summary"):
+            main()
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0]["search_only"])
 
 
 if __name__ == "__main__":

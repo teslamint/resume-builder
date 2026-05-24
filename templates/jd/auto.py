@@ -2,7 +2,7 @@
 """JD Auto - end-to-end automation pipeline.
 
 Usage:
-    python3 templates/jd/auto.py
+    python3 templates/jd/auto.py  # 검색 단계와 URL 파일 기반 처리 단계를 분리 실행
     python3 templates/jd/auto.py --search-only
     python3 templates/jd/auto.py --from-urls job_postings/unprocessed/search_20260217_1000.txt
     python3 templates/jd/auto.py --screening-only
@@ -167,9 +167,13 @@ class RunSummary:
     rejected_prior: int = 0    # pre-screen 직전 6개월 지원 이력
     prescreened: int = 0       # pre-screen 컷 (closed/prior 제외, 실제 LLM 절감 건수)
     prescreen_review: int = 0  # pre-screen counter_indicator 격리 (수동 검토 대기)
+    search_urls_file: Optional[Path] = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if d.get("search_urls_file") is not None:
+            d["search_urls_file"] = str(d["search_urls_file"])
+        return d
 
 
 
@@ -252,6 +256,23 @@ def save_results(
         json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     return result_file
+
+
+def print_final_summary(summary: RunSummary, result_file: Path) -> None:
+    print("\n" + "=" * 70)
+    print("📊 최종 요약")
+    print("=" * 70)
+    print(f"run_id: {summary.run_id}")
+    print(
+        f"신규: {summary.new} | 처리: {summary.processed} | 중복: {summary.duplicates} | 실패: {summary.failed}"
+    )
+    print(f"추출: {summary.extracted} | 스크리닝: {summary.screened}")
+    print(
+        f"추천: {summary.recommended} | 보류: {summary.hold} | 패스: {summary.passed}"
+    )
+    print(f"Pre-screen 컷: {summary.prescreened} | Pre-screen 보류: {summary.prescreen_review}")
+    print(f"마감: {summary.closed} | 직전지원: {summary.rejected_prior}")
+    print(f"결과 파일: {result_file}")
 
 
 def _build_results_from_enrichment(
@@ -372,8 +393,9 @@ def run_auto(
         urls = [v["url"] for v in prev_state.values() if v.get("status") != "done"]
         postings = []
     else:
-        postings = run_search(dry_run=dry_run, max_urls=max_urls)
+        postings, search_urls_path = run_search(dry_run=dry_run, max_urls=max_urls)
         urls = [p.url for p in postings]
+        summary.search_urls_file = search_urls_path
 
     summary.new = len(urls)
     if not urls:
@@ -728,6 +750,58 @@ def main() -> None:
     if args.max_retries != 1:
         print("ℹ️ 현재 버전은 --max-retries를 예약 옵션으로만 수용합니다.")
 
+    split_default_run = (
+        not args.dry_run
+        and not args.search_only
+        and not args.from_urls
+        and not args.screening_only
+        and not args.company_enrichment_only
+        and not args.resume
+    )
+
+    if split_default_run:
+        base_run_id = args.run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        print("\n" + "=" * 70)
+        print("1단계: 검색만 실행")
+        print("=" * 70)
+        search_results, search_summary = run_auto(
+            dry_run=args.dry_run,
+            search_only=True,
+            max_urls=args.max_urls,
+            run_id=f"{base_run_id}_search",
+            continue_on_error=not args.stop_on_error,
+            thevc_mode=args.thevc_mode,
+            min_completeness=args.min_completeness,
+        )
+        search_result_file = save_results(search_results, search_summary, dry_run=args.dry_run)
+        print_final_summary(search_summary, search_result_file)
+
+        urls_file = search_summary.search_urls_file
+        if not urls_file or search_summary.new == 0:
+            print("\n✅ 2단계로 넘길 신규 URL 없음")
+            return
+
+        print("\n" + "=" * 70)
+        print(f"2단계: URL 파일 기반 추출/스크리닝/분류 실행 - {urls_file}")
+        print("=" * 70)
+        results, summary = run_auto(
+            dry_run=args.dry_run,
+            max_urls=args.max_urls,
+            run_id=f"{base_run_id}_screening",
+            from_urls=urls_file,
+            continue_on_error=not args.stop_on_error,
+            llm_timeout=args.llm_timeout,
+            no_classify=args.no_classify,
+            thevc_mode=args.thevc_mode,
+            min_completeness=args.min_completeness,
+            allow_incomplete_company_info=args.allow_incomplete_company_info,
+            no_prescreen=args.no_prescreen,
+        )
+        result_file = save_results(results, summary, dry_run=args.dry_run)
+        print_final_summary(summary, result_file)
+        return
+
     results, summary = run_auto(
         dry_run=args.dry_run,
         search_only=args.search_only,
@@ -747,20 +821,7 @@ def main() -> None:
     )
 
     result_file = save_results(results, summary, dry_run=args.dry_run)
-    print("\n" + "=" * 70)
-    print("📊 최종 요약")
-    print("=" * 70)
-    print(f"run_id: {summary.run_id}")
-    print(
-        f"신규: {summary.new} | 처리: {summary.processed} | 중복: {summary.duplicates} | 실패: {summary.failed}"
-    )
-    print(f"추출: {summary.extracted} | 스크리닝: {summary.screened}")
-    print(
-        f"추천: {summary.recommended} | 보류: {summary.hold} | 패스: {summary.passed}"
-    )
-    print(f"Pre-screen 컷: {summary.prescreened} | Pre-screen 보류: {summary.prescreen_review}")
-    print(f"마감: {summary.closed} | 직전지원: {summary.rejected_prior}")
-    print(f"결과 파일: {result_file}")
+    print_final_summary(summary, result_file)
 
 
 if __name__ == "__main__":

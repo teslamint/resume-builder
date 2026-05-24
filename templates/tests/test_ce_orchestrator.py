@@ -180,3 +180,81 @@ class TestExtractCompanyInfoOrchestration:
         assert "wanted" in result.platforms_used
         assert "saramin" in result.platforms_failed
         assert "thevc" in result.platforms_failed
+
+
+class TestHttpFallbackAfterBrowserFailure:
+    """Test per-platform HTTP fallback when browser extraction fails."""
+
+    def test_http_fallback_on_browser_none(self):
+        """When browser extractor returns None, HTTP fallback should recover."""
+        http_data = _make_platform_data("wanted")
+        mock_browser = {"wanted": _make_mock(None), "saramin": _make_mock(None), "thevc": _make_mock(None)}
+        mock_http = {"wanted": _make_mock(http_data)}
+
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser), \
+             patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
+            result = extract_company_info(
+                "테스트회사",
+                browser_context=MagicMock(),
+                platforms=["wanted"],
+                dry_run=True,
+            )
+
+        assert "wanted" in result.platforms_used
+        assert "wanted" not in result.platforms_failed
+
+    def test_http_fallback_on_browser_exception(self):
+        """When browser extractor raises, HTTP fallback should recover."""
+        http_data = _make_platform_data("wanted")
+        mock_browser = {"wanted": _make_mock(RuntimeError("timeout")), "saramin": _make_mock(None), "thevc": _make_mock(None)}
+        mock_http = {"wanted": _make_mock(http_data)}
+
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser), \
+             patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
+            result = extract_company_info(
+                "테스트회사",
+                browser_context=MagicMock(),
+                platforms=["wanted"],
+                dry_run=True,
+            )
+
+        assert "wanted" in result.platforms_used
+        assert "wanted" not in result.platforms_failed
+
+    def test_no_http_fallback_for_saramin(self):
+        """Saramin has no HTTP fallback, should stay in platforms_failed."""
+        mock_browser = {"wanted": _make_mock(None), "saramin": _make_mock(None), "thevc": _make_mock(None)}
+
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser), \
+             patch.dict("company_extractor.HTTP_EXTRACTORS", {}), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
+            result = extract_company_info(
+                "테스트회사",
+                browser_context=MagicMock(),
+                platforms=["saramin"],
+                dry_run=True,
+            )
+
+        assert "saramin" in result.platforms_failed
+
+    def test_http_fallback_not_called_when_browser_succeeds(self):
+        """When browser extraction succeeds, per-platform HTTP fallback should not re-call."""
+        browser_data = _make_platform_data("wanted")
+        http_mock = _make_mock(_make_platform_data("wanted"))
+        mock_browser = {"wanted": _make_mock(browser_data)}
+        mock_http = {"wanted": http_mock}
+
+        with patch.dict("company_extractor.BROWSER_EXTRACTORS", mock_browser, clear=True), \
+             patch.dict("company_extractor.HTTP_EXTRACTORS", mock_http, clear=True), \
+             patch("company_extractor.extract_from_jd_files", return_value=None):
+            result = extract_company_info(
+                "테스트회사",
+                browser_context=MagicMock(),
+                platforms=["wanted"],
+                dry_run=True,
+            )
+
+        assert "wanted" in result.platforms_used
+        assert http_mock.call_count == 1

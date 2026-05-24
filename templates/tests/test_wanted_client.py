@@ -91,6 +91,15 @@ class TestSearchJobs:
         assert len(items) == 1
 
     @patch("wanted_client._request")
+    def test_first_page_error_raises(self, mock_req):
+        mock_req.side_effect = WantedAPIError("HTTP 403")
+        try:
+            search_jobs("백엔드", max_items=10)
+            assert False, "Should raise WantedAPIError"
+        except WantedAPIError as e:
+            assert "403" in str(e)
+
+    @patch("wanted_client._request")
     def test_empty_response(self, mock_req):
         mock_req.return_value = {"data": [], "links": {}}
         items = search_jobs("없는키워드", max_items=10)

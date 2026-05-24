@@ -411,6 +411,15 @@ class TestSearchWantedApi:
         assert len(outcome.results) == 0
 
 
+    @patch("search_helpers.wanted_search_jobs")
+    def test_base_url_forwarded(self, mock_search):
+        mock_search.return_value = [
+            {"id": 99, "position": "Dev", "company": {"name": "Co"}, "annual_from": 0, "annual_to": 0},
+        ]
+        outcome = search_wanted_api("test", base_url="https://custom.proxy.io")
+        assert outcome.results[0].url == "https://custom.proxy.io/wd/99"
+
+
 class TestSearchRememberApi:
     @patch("search_helpers.remember_search_jobs")
     def test_returns_results(self, mock_search):
@@ -436,3 +445,12 @@ class TestSearchRememberApi:
         outcome = search_remember_api("백엔드")
         assert outcome.error is not None
         assert len(outcome.results) == 0
+
+    @patch("search_helpers.remember_search_jobs")
+    def test_base_url_forwarded(self, mock_search):
+        mock_search.return_value = (
+            [{"id": 42, "title": "Dev", "organization": {"name": "Co"}}],
+            1,
+        )
+        outcome = search_remember_api("test", base_url="https://custom.proxy.io")
+        assert outcome.results[0].url == "https://custom.proxy.io/job/posting/42"
