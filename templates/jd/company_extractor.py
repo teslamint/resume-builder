@@ -165,7 +165,8 @@ def extract_company_info(
                     if result:
                         data_list.append(result)
                         platforms_failed.remove(platform_name)
-                        platforms_used.append(platform_name)
+                        if platform_name not in platforms_used:
+                            platforms_used.append(platform_name)
                         source_urls.append(result.source_url)
                 except Exception as e:
                     logger.warning("[%s-http] fallback 예외: %s", platform_name, e)

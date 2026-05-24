@@ -131,29 +131,6 @@ def _cleanup_state(run_id: str) -> None:
         path.unlink()
 
 
-def _find_latest_search_urls_file(started_at: datetime) -> Optional[Path]:
-    """Return the newest non-empty search URL file created during this run."""
-    search_dir = JOB_POSTINGS_DIR / "unprocessed"
-    if not search_dir.exists():
-        return None
-
-    started_ts = started_at.timestamp() - 1.0
-    candidates = sorted(
-        search_dir.glob("search_*.txt"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for candidate in candidates:
-        try:
-            if candidate.stat().st_mtime < started_ts:
-                continue
-            if candidate.read_text(encoding="utf-8").strip():
-                return candidate
-        except OSError:
-            continue
-    return None
-
-
 @dataclass
 class AutoTaskResult:
     url: str
