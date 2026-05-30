@@ -13,6 +13,19 @@ except ImportError:
     import constants
     from naming import normalize_company_name
 
+_HEADING_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+_PAREN_RE = re.compile(r"\([^)]*\)")
+
+
+def extract_heading_company(content: str) -> str:
+    """Extract company name from the first ``# `` heading. Lowercase, paren-stripped."""
+    m = _HEADING_RE.search(content)
+    if not m:
+        return ""
+    raw = m.group(1).strip()
+    raw = _PAREN_RE.sub("", raw).strip()
+    return raw.lower()
+
 
 def load_screening_rules() -> str:
     """Load screening rules from file."""

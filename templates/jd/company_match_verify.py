@@ -17,7 +17,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-_HEADING_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+try:
+    from .jd_content import extract_heading_company as _extract_heading_company
+except ImportError:
+    from jd_content import extract_heading_company as _extract_heading_company
+
 _SECTION_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9]+|[가-힣]{2,}")
 
@@ -69,15 +73,6 @@ def _extract_section(content: str, names: list[str]) -> str:
         if any(n in title for n in names):
             parts.append(content[start:end])
     return "\n".join(parts)
-
-
-def _extract_heading_company(content: str) -> str:
-    m = _HEADING_RE.search(content)
-    if not m:
-        return ""
-    raw = m.group(1).strip()
-    raw = re.sub(r"\([^)]*\)", "", raw).strip()
-    return raw.lower()
 
 
 def _extract_jd_company(content: str) -> str:
