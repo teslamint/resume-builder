@@ -13,6 +13,11 @@ import urllib.request
 from typing import Optional
 from urllib.parse import urlencode
 
+try:
+    from .http_client_base import http_json_request
+except ImportError:
+    from http_client_base import http_json_request
+
 logger = logging.getLogger(__name__)
 
 WANTED_API_BASE = "https://www.wanted.co.kr/api/v4"
@@ -37,21 +42,10 @@ def _request(path: str, params: Optional[dict] = None) -> dict:
     url = f"{WANTED_API_BASE}{path}"
     if params:
         url = f"{url}?{urlencode(params, doseq=True)}"
-
-    req = urllib.request.Request(url, headers=WANTED_HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=WANTED_REQUEST_TIMEOUT) as resp:
-            body = resp.read().decode("utf-8")
-            try:
-                data = json.loads(body)
-            except json.JSONDecodeError as e:
-                raise WantedAPIError(f"Invalid JSON response for {url}") from e
-    except urllib.error.HTTPError as e:
-        raise WantedAPIError(f"HTTP {e.code} for {url}") from e
-    except urllib.error.URLError as e:
-        raise WantedAPIError(f"URL error for {url}: {e.reason}") from e
-
-    return data
+    return http_json_request(
+        url, headers=WANTED_HEADERS, timeout=WANTED_REQUEST_TIMEOUT,
+        error_cls=WantedAPIError,
+    )
 
 
 def search_jobs(
