@@ -33,9 +33,11 @@ try:
     from .models import DiscoveredJob
     from .path_utils import extract_job_id, is_duplicate
     from .search_helpers import (
+        FilterResult,
         SearchPageConfig,
         _read_search_config,
         convert_groupby_to_raw_results,
+        filter_and_dedup,
         groupby_experience_values,
         quick_filter_title,
         ScrapeOutcome,
@@ -55,9 +57,11 @@ except ImportError:
     from models import DiscoveredJob
     from path_utils import extract_job_id, is_duplicate
     from search_helpers import (
+        FilterResult,
         SearchPageConfig,
         _read_search_config,
         convert_groupby_to_raw_results,
+        filter_and_dedup,
         groupby_experience_values,
         quick_filter_title,
         ScrapeOutcome,
@@ -223,34 +227,67 @@ def check_company_risks(company_name: str) -> Optional[dict]:
     return None
 
 
-def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
-    """
-    Search Wanted for job postings.
-    Uses Playwright for browser automation via search_helpers.
-    """
+def _outcome_to_search_result(
+    outcome: ScrapeOutcome | None,
+    query: str,
+    config: dict,
+    state: SearchState,
+) -> SearchResult:
+    """Apply filter_and_dedup to a ScrapeOutcome and return a SearchResult."""
     result = SearchResult(query=query, total_found=0)
+
+    if outcome is None:
+        return result
+    if outcome.timed_out:
+        print(f"   📊 결과: 0개 (타임아웃)")
+        return result
+    if outcome.no_results:
+        print(f"   📊 결과: 0개 (검색 결과 없음)")
+        return result
+    if outcome.error:
+        print(f"   ⚠️  Partial error: {outcome.error}")
+
     rejected_companies = get_rejected_companies()
     config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
-    base_url = config.get("platforms", {}).get("wanted", {}).get("base_url", "https://www.wanted.co.kr")
-    search_url = f"{base_url}/search?query={quote(query)}&tab=position"
 
-    execution = config.get("execution", {})
-    scroll_count = execution.get("scroll_count", 3)
-    request_delay = execution.get("request_delay", 2)
+    try:
+        fr = filter_and_dedup(
+            outcome.results,
+            config=config,
+            seen_ids=state.seen_job_ids,
+            rejected_companies=rejected_companies,
+            config_excludes=config_excludes,
+        )
+        result.total_found = fr.total_found
+        result.filtered_out = fr.filtered_out
+        result.duplicates = fr.duplicates
+        for raw in fr.accepted:
+            posting = JobPosting(
+                job_id=raw.canonical_id,
+                url=raw.url,
+                title=raw.title,
+                company=raw.company,
+                experience=raw.experience,
+                is_new=True,
+                quick_filter_result=quick_filter_title(raw.title, config),
+            )
+            result.new_postings.append(posting)
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
 
-    print(f"\n🔍 검색 중: {query}")
-    print(f"   URL: {search_url}")
+    return result
 
-    page_config = SearchPageConfig(
-        base_url=base_url,
-        timeout_ms=15000,
-        post_load_delay=request_delay + 2,
-        scroll_count=scroll_count,
-        scroll_sleep=1.0,
-    )
 
-    outcome: ScrapeOutcome | None = None
-    if _playwright_allowed("wanted", config):
+def _scrape_with_playwright_or_fallback(
+    platform: str,
+    config: dict,
+    page_config: SearchPageConfig,
+    search_url: str,
+    scrape_fn,
+    api_fallback_fn,
+) -> ScrapeOutcome | None:
+    """Run Playwright scrape with API fallback for a single platform+query."""
+    if _playwright_allowed(platform, config):
         try:
             sync_playwright = _load_sync_playwright()
             with sync_playwright() as p:
@@ -259,93 +296,51 @@ def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
                     browser = p.chromium.launch(headless=True)
                     context = browser.new_context(
                         viewport={"width": 1280, "height": 800},
-                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
                     )
                     page = context.new_page()
-                    outcome = load_and_scrape_wanted(page, search_url, page_config)
+                    return scrape_fn(page, search_url, page_config)
                 finally:
                     if browser:
                         browser.close()
         except Exception as e:
-            _mark_playwright_unavailable("wanted", e)
+            _mark_playwright_unavailable(platform, e)
             print(f"   ⚠️  Playwright 실행 실패로 API 폴백 사용: {e}")
-            outcome = search_wanted_api(query, base_url=base_url)
+            return api_fallback_fn()
     else:
         print("   ℹ️  Playwright 비활성화 상태, API 폴백 사용")
-        outcome = search_wanted_api(query, base_url=base_url)
+        return api_fallback_fn()
 
-    if outcome is None:
-        return result
 
-    if outcome.timed_out:
-        print(f"   📊 결과: 0개 (타임아웃)")
-        return result
+def search_wanted(query: str, config: dict, state: SearchState) -> SearchResult:
+    """Search Wanted for job postings."""
+    base_url = config.get("platforms", {}).get("wanted", {}).get("base_url", "https://www.wanted.co.kr")
+    search_url = f"{base_url}/search?query={quote(query)}&tab=position"
+    execution = config.get("execution", {})
 
-    if outcome.no_results:
-        print(f"   📊 결과: 0개 (검색 결과 없음)")
-        return result
+    print(f"\n🔍 검색 중: {query}")
+    print(f"   URL: {search_url}")
 
-    if outcome.error:
-        print(f"   ⚠️  Partial error: {outcome.error}")
+    page_config = SearchPageConfig(
+        base_url=base_url,
+        timeout_ms=15000,
+        post_load_delay=execution.get("request_delay", 2) + 2,
+        scroll_count=execution.get("scroll_count", 3),
+        scroll_sleep=1.0,
+    )
 
-    try:
-        for raw in outcome.results:
-            result.total_found += 1
-
-            filter_result = quick_filter_title(raw.title, config)
-            if filter_result == "pass":
-                result.filtered_out += 1
-                continue
-
-            if is_rejected_company(raw.company, rejected_companies, config_excludes):
-                result.filtered_out += 1
-                continue
-
-            if filter_experience(raw.experience, config):
-                result.filtered_out += 1
-                continue
-
-            if raw.canonical_id in state.seen_job_ids:
-                result.duplicates += 1
-                continue
-
-            is_dup, _ = is_duplicate(raw.canonical_id)
-            if is_dup:
-                result.duplicates += 1
-                state.seen_job_ids.add(raw.canonical_id)
-                continue
-
-            posting = JobPosting(
-                job_id=raw.canonical_id,
-                url=raw.url,
-                title=raw.title,
-                company=raw.company,
-                experience=raw.experience,
-                is_new=True,
-                quick_filter_result=filter_result,
-            )
-            result.new_postings.append(posting)
-            state.seen_job_ids.add(raw.canonical_id)
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
-
-    return result
-
+    outcome = _scrape_with_playwright_or_fallback(
+        "wanted", config, page_config, search_url,
+        load_and_scrape_wanted,
+        lambda: search_wanted_api(query, base_url=base_url),
+    )
+    return _outcome_to_search_result(outcome, query, config, state)
 
 
 def search_remember(query: str, config: dict, state: SearchState) -> SearchResult:
-    """
-    Search Remember (career.rememberapp.co.kr) for job postings.
-    Uses Playwright for browser automation via search_helpers.
-    """
-    result = SearchResult(query=query, total_found=0)
-    rejected_companies = get_rejected_companies()
-    config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
+    """Search Remember for job postings."""
     base_url = config.get("platforms", {}).get("remember", {}).get("base_url", "https://career.rememberapp.co.kr")
-
     execution = config.get("execution", {})
-    scroll_count = execution.get("scroll_count", 3)
-    request_delay = execution.get("request_delay", 2)
 
     search_params = json.dumps({
         "includeAppliedJobPosting": False,
@@ -362,105 +357,21 @@ def search_remember(query: str, config: dict, state: SearchState) -> SearchResul
     page_config = SearchPageConfig(
         base_url=base_url,
         timeout_ms=15000,
-        post_load_delay=request_delay + 2,
-        scroll_count=scroll_count,
+        post_load_delay=execution.get("request_delay", 2) + 2,
+        scroll_count=execution.get("scroll_count", 3),
         scroll_sleep=1.0,
     )
 
-    outcome: ScrapeOutcome | None = None
-    if _playwright_allowed("remember", config):
-        try:
-            sync_playwright = _load_sync_playwright()
-            with sync_playwright() as p:
-                browser = None
-                try:
-                    browser = p.chromium.launch(headless=True)
-                    context = browser.new_context(
-                        viewport={"width": 1280, "height": 800},
-                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                    )
-                    page = context.new_page()
-                    outcome = load_and_scrape_remember(page, search_url, page_config)
-                finally:
-                    if browser:
-                        browser.close()
-        except Exception as e:
-            _mark_playwright_unavailable("remember", e)
-            print(f"   ⚠️  Playwright 실행 실패로 API 폴백 사용: {e}")
-            outcome = search_remember_api(query, base_url=base_url)
-    else:
-        print("   ℹ️  Playwright 비활성화 상태, API 폴백 사용")
-        outcome = search_remember_api(query, base_url=base_url)
-
-    if outcome is None:
-        return result
-
-    if outcome.timed_out:
-        print(f"   📊 결과: 0개 (타임아웃)")
-        return result
-
-    if outcome.no_results:
-        print(f"   📊 결과: 0개 (검색 결과 없음)")
-        return result
-
-    if outcome.error:
-        print(f"   ⚠️  Partial error: {outcome.error}")
-
-    try:
-        for raw in outcome.results:
-            result.total_found += 1
-
-            filter_result = quick_filter_title(raw.title, config)
-            if filter_result == "pass":
-                result.filtered_out += 1
-                continue
-
-            if is_rejected_company(raw.company, rejected_companies, config_excludes):
-                result.filtered_out += 1
-                continue
-
-            if filter_experience(raw.experience, config):
-                result.filtered_out += 1
-                continue
-
-            # Remember dual-key dedup
-            if raw.canonical_id in state.seen_job_ids or raw.raw_id in state.seen_job_ids:
-                result.duplicates += 1
-                continue
-
-            is_dup, _ = is_duplicate(raw.canonical_id)
-            if is_dup:
-                result.duplicates += 1
-                state.seen_job_ids.add(raw.canonical_id)
-                continue
-            is_dup, _ = is_duplicate(raw.raw_id)
-            if is_dup:
-                result.duplicates += 1
-                state.seen_job_ids.add(raw.canonical_id)
-                continue
-
-            posting = JobPosting(
-                job_id=raw.canonical_id,
-                url=raw.url,
-                title=raw.title,
-                company=raw.company,
-                experience=raw.experience,
-                is_new=True,
-                quick_filter_result=filter_result,
-            )
-            result.new_postings.append(posting)
-            state.seen_job_ids.add(raw.canonical_id)
-    except Exception as e:
-        print(f"   ❌ Error: {e}")
-
-    return result
+    outcome = _scrape_with_playwright_or_fallback(
+        "remember", config, page_config, search_url,
+        load_and_scrape_remember,
+        lambda: search_remember_api(query, base_url=base_url),
+    )
+    return _outcome_to_search_result(outcome, query, config, state)
 
 
 def _prefetch_groupby(config: dict, state: "SearchState") -> "SearchResult":
     """Fetch GroupBy positions (queryless platform, called once per run)."""
-    result = SearchResult(query="(groupby)", total_found=0)
-    rejected_companies = get_rejected_companies()
-    config_excludes = config.get("quick_filters", {}).get("company_exclude", [])
     groupby_cfg = config.get("platforms", {}).get("groupby", {})
     position_types = groupby_cfg.get("position_types", [2])
     base_url = groupby_cfg.get("base_url", "https://groupby.kr")
@@ -471,58 +382,31 @@ def _prefetch_groupby(config: dict, state: "SearchState") -> "SearchResult":
         items = groupby_fetch_positions(position_types)
     except GroupByAPIError as e:
         print(f"   ⚠️  GroupBy API 오류: {e}")
-        return result
+        return SearchResult(query="(groupby)", total_found=0)
 
     outcome = convert_groupby_to_raw_results(items, base_url)
     if not outcome.results:
         print("   📊 결과: 0개")
-        return result
+        return SearchResult(query="(groupby)", total_found=0)
 
+    # Pre-filter GroupBy experience using structured API data before common filter
+    exp_filtered: list = []
     for raw in outcome.results:
-        result.total_found += 1
-
-        filter_result = quick_filter_title(raw.title, config)
-        if filter_result == "pass":
-            result.filtered_out += 1
-            continue
-
-        if is_rejected_company(raw.company, rejected_companies, config_excludes):
-            result.filtered_out += 1
-            continue
-
-        # Find the original API item for structured experience data
         orig_item = next((it for it in items if f"groupby-{it['id']}" == raw.canonical_id), None)
         if orig_item:
             exp_min, exp_max = groupby_experience_values(orig_item)
             if filter_experience(raw.experience, config, min_years=exp_min, max_years=exp_max):
-                result.filtered_out += 1
                 continue
         elif filter_experience(raw.experience, config):
-            result.filtered_out += 1
             continue
+        exp_filtered.append(raw)
 
-        if raw.canonical_id in state.seen_job_ids:
-            result.duplicates += 1
-            continue
+    exp_dropped = len(outcome.results) - len(exp_filtered)
+    outcome.results = exp_filtered
 
-        is_dup, _ = is_duplicate(raw.canonical_id)
-        if is_dup:
-            result.duplicates += 1
-            state.seen_job_ids.add(raw.canonical_id)
-            continue
-
-        posting = JobPosting(
-            job_id=raw.canonical_id,
-            url=raw.url,
-            title=raw.title,
-            company=raw.company,
-            experience=raw.experience,
-            is_new=True,
-            quick_filter_result=filter_result,
-        )
-        result.new_postings.append(posting)
-        state.seen_job_ids.add(raw.canonical_id)
-
+    result = _outcome_to_search_result(outcome, "(groupby)", config, state)
+    result.filtered_out += exp_dropped
+    result.total_found += exp_dropped
     return result
 
 

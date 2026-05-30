@@ -18,11 +18,15 @@ from typing import Optional
 from urllib.parse import quote
 
 try:
-    from .jd_content import parse_remember_experience
+    from .experience_filter import filter_experience
+    from .jd_content import is_rejected_company, parse_remember_experience
+    from .path_utils import is_duplicate
     from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
 except ImportError:
-    from jd_content import parse_remember_experience
+    from experience_filter import filter_experience
+    from jd_content import is_rejected_company, parse_remember_experience
+    from path_utils import is_duplicate
     from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
 
@@ -601,3 +605,68 @@ def quick_filter_title(title: str, config: dict) -> Optional[str]:
             return "prefer"
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Unified filter + dedup
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FilterResult:
+    """Result of filter_and_dedup: accepted items + aggregate counters."""
+    accepted: list[RawJobResult] = field(default_factory=list)
+    total_found: int = 0
+    filtered_out: int = 0
+    duplicates: int = 0
+
+
+def filter_and_dedup(
+    results: list[RawJobResult],
+    *,
+    config: dict,
+    seen_ids: set[str],
+    rejected_companies: set,
+    config_excludes: list,
+) -> FilterResult:
+    """Apply title/company/experience filters and dedup against *seen_ids* + filesystem.
+
+    Mutates *seen_ids* in-place (adds accepted and fs-dup canonical IDs).
+    Uses ``RawJobResult.duplicate_keys()`` for platform-aware dedup (Remember dual-key).
+    """
+    out = FilterResult()
+
+    for raw in results:
+        out.total_found += 1
+
+        if quick_filter_title(raw.title, config) == "pass":
+            out.filtered_out += 1
+            continue
+
+        if is_rejected_company(raw.company, rejected_companies, config_excludes):
+            out.filtered_out += 1
+            continue
+
+        if filter_experience(raw.experience, config):
+            out.filtered_out += 1
+            continue
+
+        dup_keys = raw.duplicate_keys()
+        if any(k in seen_ids for k in dup_keys):
+            out.duplicates += 1
+            continue
+
+        fs_dup = False
+        for k in dup_keys:
+            found, _ = is_duplicate(k)
+            if found:
+                fs_dup = True
+                break
+        if fs_dup:
+            out.duplicates += 1
+            seen_ids.add(raw.canonical_id)
+            continue
+
+        out.accepted.append(raw)
+        seen_ids.add(raw.canonical_id)
+
+    return out

@@ -99,7 +99,8 @@ def test_run_quick_search_groupby_populates_queue_item_fields():
          patch("search_quick.groupby_fetch_positions", return_value=[{"id": 8807}]), \
          patch("search_quick.convert_groupby_to_raw_results", return_value=outcome), \
          patch("search_quick.groupby_experience_values", return_value=(3, None)), \
-         patch("search_quick.is_duplicate", return_value=(False, None)):
+         patch("search_helpers.is_duplicate", return_value=(False, None)), \
+         patch("search_helpers.is_rejected_company", return_value=False):
         items, stats = run_quick_search(dry_run=True)
 
     assert len(items) == 1
