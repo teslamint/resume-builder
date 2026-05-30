@@ -19,12 +19,12 @@ try:
     from .pre_screen_helpers import _CLOSED_MARKERS, _check_prior_application
     from .domain_filter import classify_domain
     from .jd_content import extract_metadata_from_jd
-    from .search import quick_filter_title
+    from .search_helpers import quick_filter_title
 except ImportError:
     from pre_screen_helpers import _CLOSED_MARKERS, _check_prior_application
     from domain_filter import classify_domain
     from jd_content import extract_metadata_from_jd
-    from search import quick_filter_title
+    from search_helpers import quick_filter_title
 
 
 @dataclass

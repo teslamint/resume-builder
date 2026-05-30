@@ -1,9 +1,9 @@
 """Shared search helpers — page load + DOM scraping for Wanted and Remember,
-and API-based listing for GroupBy, Wanted, and Remember.
+API-based listing for GroupBy/Wanted/Remember, and title filtering.
 
 Extracts raw job listing data from search result pages or API responses. Does NOT own:
 - Dedup (caller checks seen_ids, is_duplicate, queued_ids)
-- Filtering (caller applies quick_filter_title, filter_experience, company rejection)
+- Experience filtering (caller applies filter_experience, company rejection)
 - State management (caller updates SearchState or queue)
 - Stats counting (caller decides when to increment total_found)
 """
@@ -14,6 +14,7 @@ import html
 import re
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Optional
 from urllib.parse import quote
 
 try:
@@ -557,3 +558,31 @@ def convert_remember_to_raw_results(
             continue
 
     return outcome
+
+
+# ---------------------------------------------------------------------------
+# Title filtering
+# ---------------------------------------------------------------------------
+
+def quick_filter_title(title: str, config: dict) -> Optional[str]:
+    """Quick filter based on title keywords.
+
+    Returns: ``'pass'`` (skip), ``'prefer'`` (prioritize), or ``None`` (neutral).
+    """
+    filters = config.get("quick_filters", {})
+    title_lower = title.lower()
+
+    for keyword in filters.get("title_exclude", []):
+        if keyword.lower() in title_lower:
+            return "pass"
+
+    include_keywords = filters.get("title_include", [])
+    if include_keywords:
+        if not any(kw.lower() in title_lower for kw in include_keywords):
+            return "pass"
+
+    for keyword in filters.get("title_prefer", []):
+        if keyword.lower() in title_lower:
+            return "prefer"
+
+    return None

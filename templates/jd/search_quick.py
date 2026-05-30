@@ -42,6 +42,7 @@ try:
         SearchPageConfig,
         convert_groupby_to_raw_results,
         groupby_experience_values,
+        quick_filter_title as _filter_title_full,
         load_and_scrape_wanted,
         load_and_scrape_remember,
     )
@@ -55,6 +56,7 @@ except ImportError:
         SearchPageConfig,
         convert_groupby_to_raw_results,
         groupby_experience_values,
+        quick_filter_title as _filter_title_full,
         load_and_scrape_wanted,
         load_and_scrape_remember,
     )
@@ -104,22 +106,8 @@ def save_seen_ids(seen_ids: Set[str]) -> None:
 
 
 def quick_filter_title(title: str, config: dict) -> bool:
-    """
-    Quick filter - returns True if should be skipped.
-    """
-    filters = config.get("quick_filters", {})
-    title_lower = title.lower()
-
-    for keyword in filters.get("title_exclude", []):
-        if keyword.lower() in title_lower:
-            return True
-
-    include_keywords = filters.get("title_include", [])
-    if include_keywords:
-        if not any(kw.lower() in title_lower for kw in include_keywords):
-            return True
-
-    return False
+    """Quick filter — returns True if should be skipped."""
+    return _filter_title_full(title, config) == "pass"
 
 
 def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
