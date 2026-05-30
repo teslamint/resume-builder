@@ -561,6 +561,21 @@ def convert_remember_to_raw_results(
 
 
 # ---------------------------------------------------------------------------
+# Config reader
+# ---------------------------------------------------------------------------
+
+def _read_search_config(path) -> Optional[dict]:
+    """Read and parse a YAML search config file. Returns None if missing."""
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return None
+    import yaml
+    with p.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+# ---------------------------------------------------------------------------
 # Title filtering
 # ---------------------------------------------------------------------------
 

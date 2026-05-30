@@ -40,6 +40,7 @@ try:
     from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
     from .search_helpers import (
         SearchPageConfig,
+        _read_search_config,
         convert_groupby_to_raw_results,
         groupby_experience_values,
         quick_filter_title as _filter_title_full,
@@ -54,6 +55,7 @@ except ImportError:
     from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
     from search_helpers import (
         SearchPageConfig,
+        _read_search_config,
         convert_groupby_to_raw_results,
         groupby_experience_values,
         quick_filter_title as _filter_title_full,
@@ -66,10 +68,10 @@ logger = logging.getLogger(__name__)
 
 def load_config() -> dict:
     """Load search configuration."""
-    if not CONFIG_PATH.exists():
+    result = _read_search_config(CONFIG_PATH)
+    if result is None:
         return {"search_queries": ["백엔드 시니어"]}
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return result
 
 
 def load_seen_ids() -> Set[str]:

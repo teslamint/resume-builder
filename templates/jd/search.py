@@ -34,6 +34,7 @@ try:
     from .path_utils import extract_job_id, is_duplicate
     from .search_helpers import (
         SearchPageConfig,
+        _read_search_config,
         convert_groupby_to_raw_results,
         groupby_experience_values,
         quick_filter_title,
@@ -55,6 +56,7 @@ except ImportError:
     from path_utils import extract_job_id, is_duplicate
     from search_helpers import (
         SearchPageConfig,
+        _read_search_config,
         convert_groupby_to_raw_results,
         groupby_experience_values,
         quick_filter_title,
@@ -131,12 +133,11 @@ class SearchState:
 
 def load_config() -> dict:
     """Load search configuration."""
-    if not CONFIG_PATH.exists():
+    result = _read_search_config(CONFIG_PATH)
+    if result is None:
         print(f"⚠️  Config not found: {CONFIG_PATH}")
         return {}
-    
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return result
 
 
 def load_state() -> SearchState:
