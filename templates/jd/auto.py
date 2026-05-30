@@ -56,7 +56,7 @@ except ImportError:
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
 STATE_DIR = RESULTS_DIR
-DEFAULT_MIN_COMPLETENESS = 70.0
+DEFAULT_MIN_COMPLETENESS = 0.0
 
 
 def _state_path(run_id: str) -> Path:
@@ -342,6 +342,93 @@ def _build_results_from_enrichment(
     return results, summary
 
 
+def _build_url_list(
+    *,
+    from_urls: Optional[Path],
+    max_urls: Optional[int],
+    resume: bool,
+    prev_state: dict,
+    dry_run: bool,
+    summary: RunSummary,
+) -> tuple[List[str], List[JobPosting]]:
+    """Determine the URL list to process and return (urls, postings)."""
+    if from_urls:
+        return _load_urls_from_file(from_urls, max_urls=max_urls), []
+    if resume and prev_state:
+        urls = [v["url"] for v in prev_state.values() if v.get("status") != "done"]
+        return urls, []
+    postings, search_urls_path = run_search(dry_run=dry_run, max_urls=max_urls)
+    summary.search_urls_file = search_urls_path
+    return [p.url for p in postings], postings
+
+
+def _handle_prescreen_hit(
+    pre,
+    row: AutoTaskResult,
+    jd_path: Path,
+    no_classify: bool,
+    summary: RunSummary,
+) -> None:
+    """Apply pre-screen hit to *row* and update *summary* counters."""
+    target = pre.target_folder
+    if not no_classify:
+        moved = move_to_folder(jd_path, target)
+        row.jd_path = str(moved)
+        row.classified_folder = target
+    else:
+        row.classified_folder = ""
+    row.error_stage = "prescreening"
+    row.error_reason = pre.reason_detail
+
+    if pre.reason_code == "closed":
+        row.status = "prescreen_filtered"
+        row.verdict = "지원 비추천"
+        summary.closed += 1
+    elif pre.reason_code == "prior_application":
+        row.status = "prescreen_filtered"
+        row.verdict = "지원 비추천"
+        summary.rejected_prior += 1
+    elif pre.is_review:
+        row.status = "prescreen_review"
+        row.verdict = "지원 보류"
+        summary.prescreen_review += 1
+    else:
+        row.status = "prescreen_filtered"
+        row.verdict = "지원 비추천"
+        summary.prescreened += 1
+        summary.passed += 1
+
+    summary.processed += 1
+
+
+_NON_REPROCESSABLE_FOLDERS = {"pass", "applied", "rejected", "on_going", "high_priority", "closed"}
+
+
+def _resolve_jd_and_check_dup(
+    job_id: str,
+    saved: dict,
+    *,
+    resume: bool,
+    screening_only: bool,
+) -> tuple[Optional[Path], bool]:
+    """Return (resolved_jd_path, is_dup) for loop pre-checks."""
+    saved_jd_path = saved.get("jd_path", "")
+    if saved_jd_path and Path(saved_jd_path).exists():
+        resolved = Path(saved_jd_path)
+    else:
+        resolved = find_existing_jd(job_id)
+
+    saved_stage = saved.get("stage", "pending")
+    is_resume_item = resume and saved_stage != "pending" and saved.get("status") != "done"
+
+    if is_resume_item and resolved:
+        if any(part in _NON_REPROCESSABLE_FOLDERS for part in resolved.parts):
+            is_resume_item = False
+
+    is_dup = bool(resolved and not screening_only and not is_resume_item)
+    return resolved, is_dup
+
+
 def run_auto(
     *,
     dry_run: bool = False,
@@ -386,16 +473,10 @@ def run_auto(
     results: List[AutoTaskResult] = []
     state_items: dict = dict(prev_state)
 
-    if from_urls:
-        urls = _load_urls_from_file(from_urls, max_urls=max_urls)
-        postings: List[JobPosting] = []
-    elif resume and prev_state:
-        urls = [v["url"] for v in prev_state.values() if v.get("status") != "done"]
-        postings = []
-    else:
-        postings, search_urls_path = run_search(dry_run=dry_run, max_urls=max_urls)
-        urls = [p.url for p in postings]
-        summary.search_urls_file = search_urls_path
+    urls, postings = _build_url_list(
+        from_urls=from_urls, max_urls=max_urls, resume=resume,
+        prev_state=prev_state, dry_run=dry_run, summary=summary,
+    )
 
     summary.new = len(urls)
     if not urls:
@@ -422,7 +503,6 @@ def run_auto(
         job_id = extract_job_id(url) or f"unknown-{idx}"
         row = AutoTaskResult(url=url, job_id=job_id, status="pending")
 
-        # Preserve existing state on resume (don't overwrite saved jd_path/screening_path)
         if job_id not in state_items or state_items[job_id].get("status") == "done":
             state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
 
@@ -433,28 +513,11 @@ def run_auto(
         if resume and saved_stage != "pending":
             print(f"   ♻️  Resume: stage={saved_stage}")
 
-        # Resolve jd_path from state or filesystem
-        saved_jd_path = saved.get("jd_path", "")
-        if saved_jd_path and Path(saved_jd_path).exists():
-            resolved_jd_path = Path(saved_jd_path)
-        else:
-            resolved_jd_path = find_existing_jd(job_id)
+        resolved_jd_path, is_dup = _resolve_jd_and_check_dup(
+            job_id, saved, resume=resume, screening_only=screening_only,
+        )
 
-        # Duplicate/protection skip logic:
-        # - New items (not in state): skip if JD already exists anywhere
-        # - Resume items (in state with incomplete status): continue processing,
-        #   UNLESS file has been moved to a non-reprocessable folder
-        # - Done items: should not appear (filtered out when building URL list)
-        is_resume_item = resume and saved_stage not in ("pending",) and saved.get("status") != "done"
-
-        # Even resume items should not be reprocessed if they've been moved
-        # to a non-conditional folder (pass, applied, rejected, on_going, high_priority)
-        if is_resume_item and resolved_jd_path:
-            non_reprocessable = {"pass", "applied", "rejected", "on_going", "high_priority", "closed"}
-            if any(part in non_reprocessable for part in resolved_jd_path.parts):
-                is_resume_item = False
-
-        if resolved_jd_path and not screening_only and not is_resume_item:
+        if is_dup:
             summary.duplicates += 1
             row.status = "duplicate"
             row.jd_path = str(resolved_jd_path)
@@ -467,7 +530,7 @@ def run_auto(
         try:
             jd_path: Optional[Path] = None
 
-            # 1) JD extraction — skip if already done (resume or screening_only)
+            # 1) JD extraction
             if saved_stage in ("prescreening", "company_info", "screening", "classifying") and resolved_jd_path:
                 jd_path = resolved_jd_path
                 row.jd_path = str(jd_path)
@@ -477,9 +540,7 @@ def run_auto(
                 _save_state(run_id, state_items)
                 jd_path = _resolve_jd_path_for_screening(url)
                 if not jd_path:
-                    raise RuntimeError(
-                        "screening-only 모드에서 기존 JD를 찾지 못했습니다"
-                    )
+                    raise RuntimeError("screening-only 모드에서 기존 JD를 찾지 못했습니다")
                 row.jd_path = str(jd_path)
                 row.status = "existing_jd"
             else:
@@ -500,15 +561,9 @@ def run_auto(
             if not jd_path:
                 raise RuntimeError("JD 파일 경로를 확보하지 못했습니다")
 
-            # Persist jd_path in state
             state_items[job_id]["jd_path"] = str(jd_path)
 
-            # 1.5) Pre-screening hook — short-circuit before company_info + LLM
-            # Skip when:
-            #  - --no-prescreen flag (CLI override)
-            #  - --screening-only mode (사용자가 LLM 재실행을 명시적 요청)
-            #  - --dry-run
-            #  - resume: saved_stage가 이미 pre-screen 이후 단계로 진입한 경우
+            # 1.5) Pre-screening hook
             if (
                 not no_prescreen
                 and not screening_only
@@ -519,35 +574,7 @@ def run_auto(
                 _save_state(run_id, state_items)
                 pre = pre_screen_jd(jd_path, config)
                 if pre.hit:
-                    target = pre.target_folder
-                    if not no_classify:
-                        moved = move_to_folder(jd_path, target)
-                        row.jd_path = str(moved)
-                        row.classified_folder = target
-                    else:
-                        row.classified_folder = ""
-                    row.error_stage = "prescreening"
-                    row.error_reason = pre.reason_detail
-
-                    if pre.reason_code == "closed":
-                        row.status = "prescreen_filtered"
-                        row.verdict = "지원 비추천"
-                        summary.closed += 1
-                    elif pre.reason_code == "prior_application":
-                        row.status = "prescreen_filtered"
-                        row.verdict = "지원 비추천"
-                        summary.rejected_prior += 1
-                    elif pre.is_review:
-                        row.status = "prescreen_review"
-                        row.verdict = "지원 보류"
-                        summary.prescreen_review += 1
-                    else:
-                        row.status = "prescreen_filtered"
-                        row.verdict = "지원 비추천"
-                        summary.prescreened += 1
-                        summary.passed += 1
-
-                    summary.processed += 1
+                    _handle_prescreen_hit(pre, row, jd_path, no_classify, summary)
                     state_items[job_id].update(
                         stage="done", status="done",
                         jd_path=row.jd_path,
@@ -555,10 +582,10 @@ def run_auto(
                     )
                     _save_state(run_id, state_items)
                     results.append(row)
-                    print(f"   ⚡ Pre-screen 컷: {pre.reason_code} → {target}")
+                    print(f"   ⚡ Pre-screen 컷: {pre.reason_code} → {pre.target_folder}")
                     continue
 
-            # 2) company info (idempotent — reuses existing file)
+            # 2) company info
             state_items[job_id].update(stage="company_info", status="in_progress")
             _save_state(run_id, state_items)
 
@@ -590,17 +617,15 @@ def run_auto(
                 )
                 summary.failed += 1
                 state_items[job_id].update(
-                    stage="company_info",
-                    status="blocked",
-                    error=row.error_reason,
-                    company_file=row.company_file,
+                    stage="company_info", status="blocked",
+                    error=row.error_reason, company_file=row.company_file,
                 )
                 _save_state(run_id, state_items)
                 results.append(row)
                 print(f"   ⛔ 회사정보 보완 필요: {row.error_reason}")
                 continue
 
-            # 3) screening — skip if already done and saved in state
+            # 3) screening
             saved_screening_path = saved.get("screening_path", "")
             saved_verdict = saved.get("verdict", "")
             if (
@@ -616,7 +641,6 @@ def run_auto(
             else:
                 state_items[job_id].update(stage="screening", status="in_progress")
                 _save_state(run_id, state_items)
-
                 screening = run_screening(
                     jd_path=jd_path,
                     company_file=Path(company_info.file_path) if row.company_file else None,
@@ -627,8 +651,6 @@ def run_auto(
                 row.verdict = screening.verdict
                 row.used_fallback = screening.used_fallback
                 summary.screened += 1
-
-                # Persist screening results in state
                 state_items[job_id]["screening_path"] = row.screening_path
                 state_items[job_id]["verdict"] = row.verdict
 
