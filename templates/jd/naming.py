@@ -43,6 +43,8 @@ def normalize_company_name(name: str) -> str:
     (주), 주식회사, (유), 유한회사, ㈜, Inc., Corp., Co. Ltd.
 
     NOT a replacement for:
+      - ce_jd_files.normalize_company_name (narrower regex, strips spaces —
+        used only in JD-file extraction context)
       - company_extractor._normalize_company_name (narrower regex, strips spaces)
       - recollect_company_info.normalize_name_key (strips all non-alnum)
     Those have intentionally different semantics.

@@ -12,7 +12,11 @@ except ImportError:
 
 
 def normalize_company_name(name: str) -> str:
-    """Normalize company name for fuzzy matching."""
+    """Normalize company name for fuzzy matching.
+
+    Intentionally narrower than naming.normalize_company_name — strips only
+    (주)/(유)/(사) and collapses whitespace for JD-file extraction context.
+    """
     name = re.sub(r"\(주\)|\(유\)|\(사\)", "", name)
     name = re.sub(r"\s+", "", name).lower()
     return name
