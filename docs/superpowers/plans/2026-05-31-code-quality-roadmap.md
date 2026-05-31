@@ -41,25 +41,24 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 - [x] `search_helpers._read_search_config` callers already pass CONFIG_PATH — verified
 - [ ] Document config/state file contract: which files are inputs (search_config.yaml, screening rules), which are derived state (run state JSON, SUMMARY.md), and who owns writes
 
-### 3B: headhunter_filler.py decomposition (separate work unit from JD refactoring)
+### 3B: headhunter_filler.py decomposition ✅
 
 > This is a `templates/build/` concern — do NOT mix with JD pipeline changes in the same commits/PRs.
 
-- [ ] Extract DOCX helpers → `templates/build/docx_helpers.py` (~120 LOC: clear_runs, add_run, insert_paragraph_after, set_plain, delete_paragraph, fill_table_cell, etc.)
-- [ ] Reconcile `_calc_tenure_str` with `resume_builder.calculate_tenure` into a single implementation
-  - They differ in: period separator handling (`~` vs `-`), "재직중" support, return format on error
-  - Must verify both caller sites (headhunter fill + resume build) still produce correct output after unification
-- [ ] Extract remaining data loading (`_parse_contact`, `_parse_education`, `_load_company`) → reuse from or merge into `resume_builder.py`
-- [ ] Remaining headhunter_filler.py: template analysis + fill logic only
+- [x] Extract DOCX helpers → `templates/build/docx_helpers.py` (122 LOC)
+- [x] Reconcile `_calc_tenure_str` with `resume_builder.calculate_tenure` → unified with separator/include_period/error_value params
+  - Both caller sites verified: resume (separator="-", include_period=True), headhunter (separator="~", include_period=False)
+- [x] Extract data loading (`_parse_contact`, `_parse_education`, `_load_company`) → moved into `resume_builder.py`
+- [x] Remaining headhunter_filler.py: 1204 LOC, template analysis + fill logic only
 
-### 3C: run_auto further decomposition
+### 3C: run_auto further decomposition ✅
 
 > **Precondition:** ✅ `DEFAULT_MIN_COMPLETENESS=70.0` regression fixed (was accidentally set to 0.0 in a4ed43d). Characterization test added.
 
 - [x] Verify characterization tests cover current default behavior (added test_run_auto_blocks_incomplete_company_info_by_default)
-- [ ] Extract each `--*-only` mode into dedicated function
-- [ ] `run_auto` becomes a thin dispatcher: parse mode → call handler
-- [ ] Target: run_auto < 80 lines
+- [x] Extract each `--*-only` mode into dedicated function (_handle_company_enrichment_only, _handle_search_only, _handle_screening_only, _handle_full_pipeline)
+- [x] `run_auto` becomes a thin dispatcher: parse mode → call handler
+- [x] Target: run_auto = 73 lines (< 80 ✅)
 
 ### 3D: Prompt externalization ✅
 
