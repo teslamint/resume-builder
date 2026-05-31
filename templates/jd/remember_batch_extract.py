@@ -15,9 +15,6 @@ try:
 except ImportError:
     from naming import slugify_company as _slugify
 
-def slugify(text):
-    return _slugify(text, max_len=50, fallback="")
-
 def _fetch_with_urllib(url):
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req, timeout=15) as resp:
@@ -187,8 +184,8 @@ def main():
             company_raw = org.get('name', '')
             company_name = company_raw.replace('(주)', '').replace('(주 )', '').strip()
             title = d.get('title', '')
-            company_slug = slugify(company_name)
-            title_slug = slugify(title)[:30]
+            company_slug = _slugify(company_name, max_len=50, fallback="")
+            title_slug = _slugify(title, max_len=50, fallback="")[:30]
 
             filename = f"{posting_id}-{company_slug}-{title_slug}.md"
             filepath = unprocessed_dir / filename

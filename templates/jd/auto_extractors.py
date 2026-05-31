@@ -16,9 +16,9 @@ try:
     from .remember_batch_extract import format_address as format_remember_address
     from .remember_batch_extract import format_experience as format_remember_experience
     from .remember_batch_extract import format_salary as format_remember_salary
-    from .remember_batch_extract import slugify as remember_slugify
+    from .naming import slugify_company as _slugify
     from .search_helpers import format_groupby_experience
-    from .wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
+    from .wanted_extract import fetch_wanted_posting, format_experience_wanted
 except ImportError:
     from constants import JOB_POSTINGS_DIR
     from groupby_client import GroupByAPIError, fetch_position_detail, html_to_text
@@ -27,9 +27,9 @@ except ImportError:
     from remember_batch_extract import format_address as format_remember_address
     from remember_batch_extract import format_experience as format_remember_experience
     from remember_batch_extract import format_salary as format_remember_salary
-    from remember_batch_extract import slugify as remember_slugify
+    from naming import slugify_company as _slugify
     from search_helpers import format_groupby_experience
-    from wanted_extract import fetch_wanted_posting, format_experience_wanted, slugify as wanted_slugify
+    from wanted_extract import fetch_wanted_posting, format_experience_wanted
 
 
 @dataclass
@@ -119,8 +119,8 @@ def extract_wanted(url: str, output_dir: Optional[Path] = None) -> ExtractedJD:
     benefits = job.get("benefits", "")
     description = "\n\n".join([p for p in [intro, tasks] if p])
 
-    company_slug = wanted_slugify(company)
-    title_slug = wanted_slugify(title)
+    company_slug = _slugify(company, max_len=50, fallback="")
+    title_slug = _slugify(title, max_len=50, fallback="")
 
     output_root = output_dir or (JOB_POSTINGS_DIR / "unprocessed")
     output_path = output_root / f"{job_id}-{company_slug}-{title_slug}.md"
@@ -178,8 +178,8 @@ def extract_remember(url: str, output_dir: Optional[Path] = None) -> ExtractedJD
     elif salary:
         benefits = f"연봉: {salary}"
 
-    company_slug = remember_slugify(company)
-    title_slug = remember_slugify(title)[:30]
+    company_slug = _slugify(company, max_len=50, fallback="")
+    title_slug = _slugify(title, max_len=50, fallback="")[:30]
 
     output_root = output_dir or (JOB_POSTINGS_DIR / "unprocessed")
     output_path = output_root / f"{job_id}-{company_slug}-{title_slug}.md"
@@ -272,8 +272,8 @@ def extract_groupby(url: str, output_dir: Optional[Path] = None) -> ExtractedJD:
     if company_meta_parts:
         description = f"**회사 소개:** {' | '.join(company_meta_parts)}\n\n{description}"
 
-    company_slug = wanted_slugify(company)
-    title_slug = wanted_slugify(title)[:30]
+    company_slug = _slugify(company, max_len=50, fallback="")
+    title_slug = _slugify(title, max_len=50, fallback="")[:30]
 
     output_root = output_dir or (JOB_POSTINGS_DIR / "unprocessed")
     output_path = output_root / f"{job_id}-{company_slug}-{title_slug}.md"
