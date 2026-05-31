@@ -7,6 +7,7 @@ Run:
 
 import tempfile
 import unittest
+import inspect
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import MagicMock, patch
@@ -562,6 +563,13 @@ class TestAutoScreening(unittest.TestCase):
 
 
 class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
+    def test_run_auto_remains_thin_dispatcher(self):
+        from auto import run_auto
+
+        source_lines = inspect.getsourcelines(run_auto)[0]
+
+        self.assertLessEqual(len(source_lines), 80)
+
     def test_run_auto_blocks_incomplete_company_info_by_default(self):
         from auto import run_auto
 

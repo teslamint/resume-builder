@@ -343,6 +343,17 @@ def _build_results_from_enrichment(
     return results, summary
 
 
+def _handle_company_enrichment_only(
+    *,
+    thevc_mode: str,
+    dry_run: bool,
+    min_completeness: float,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    return _build_results_from_enrichment(
+        thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
+    )
+
+
 def _build_url_list(
     *,
     from_urls: Optional[Path],
@@ -430,74 +441,114 @@ def _resolve_jd_and_check_dup(
     return resolved, is_dup
 
 
-def run_auto(
-    *,
-    dry_run: bool = False,
-    search_only: bool = False,
-    max_urls: Optional[int] = None,
-    run_id: Optional[str] = None,
-    from_urls: Optional[Path] = None,
-    screening_only: bool = False,
-    continue_on_error: bool = True,
-    llm_timeout: int = 120,
-    no_classify: bool = False,
-    thevc_mode: str = "auto",
-    company_enrichment_only: bool = False,
-    min_completeness: float = DEFAULT_MIN_COMPLETENESS,
-    allow_incomplete_company_info: bool = False,
-    resume: bool = False,
-    no_prescreen: bool = False,
+def _handle_search_only(
+    postings: List[JobPosting], summary: RunSummary
 ) -> tuple[List[AutoTaskResult], RunSummary]:
-    config = load_config()
-
-    if company_enrichment_only:
-        return _build_results_from_enrichment(
-            thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
+    print("\n🔍 검색만 모드 - 추출/스크리닝/분류 생략")
+    results = [
+        AutoTaskResult(
+            url=posting.url,
+            job_id=posting.job_id,
+            status="searched",
+            company=posting.company,
+            title=posting.title,
         )
+        for posting in postings
+    ]
+    return results, summary
 
-    prev_state: dict = {}
-    if resume:
-        prev_run_id = _find_latest_state()
-        if prev_run_id:
-            prev_state = _load_state(prev_run_id)
-            run_id = prev_run_id
-            print(f"🔄 이전 실행 재개: run_id={prev_run_id}, 미완료 {sum(1 for v in prev_state.values() if v.get('status') != 'done')}건")
 
-    run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-    summary = RunSummary(run_id=run_id)
-
-    print("=" * 70)
-    print(f"🤖 JD Auto Pipeline - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"   run_id={run_id}")
-    print("=" * 70)
-
-    results: List[AutoTaskResult] = []
-    state_items: dict = dict(prev_state)
-
-    urls, postings = _build_url_list(
-        from_urls=from_urls, max_urls=max_urls, resume=resume,
-        prev_state=prev_state, dry_run=dry_run, summary=summary,
+def _handle_screening_only(
+    *,
+    urls: List[str],
+    run_id: str,
+    config: dict,
+    summary: RunSummary,
+    state_items: dict,
+    dry_run: bool,
+    continue_on_error: bool,
+    llm_timeout: int,
+    no_classify: bool,
+    thevc_mode: str,
+    min_completeness: float,
+    allow_incomplete_company_info: bool,
+    resume: bool,
+    no_prescreen: bool,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    return _process_urls(
+        urls=urls,
+        run_id=run_id,
+        config=config,
+        summary=summary,
+        state_items=state_items,
+        dry_run=dry_run,
+        screening_only=True,
+        continue_on_error=continue_on_error,
+        llm_timeout=llm_timeout,
+        no_classify=no_classify,
+        thevc_mode=thevc_mode,
+        min_completeness=min_completeness,
+        allow_incomplete_company_info=allow_incomplete_company_info,
+        resume=resume,
+        no_prescreen=no_prescreen,
     )
 
-    summary.new = len(urls)
-    if not urls:
-        print("\n✅ 처리할 URL 없음")
-        return results, summary
 
-    if search_only:
-        print("\n🔍 검색만 모드 - 추출/스크리닝/분류 생략")
-        for posting in postings:
-            results.append(
-                AutoTaskResult(
-                    url=posting.url,
-                    job_id=posting.job_id,
-                    status="searched",
-                    company=posting.company,
-                    title=posting.title,
-                )
-            )
-        return results, summary
+def _handle_full_pipeline(
+    *,
+    urls: List[str],
+    run_id: str,
+    config: dict,
+    summary: RunSummary,
+    state_items: dict,
+    dry_run: bool,
+    continue_on_error: bool,
+    llm_timeout: int,
+    no_classify: bool,
+    thevc_mode: str,
+    min_completeness: float,
+    allow_incomplete_company_info: bool,
+    resume: bool,
+    no_prescreen: bool,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    return _process_urls(
+        urls=urls,
+        run_id=run_id,
+        config=config,
+        summary=summary,
+        state_items=state_items,
+        dry_run=dry_run,
+        screening_only=False,
+        continue_on_error=continue_on_error,
+        llm_timeout=llm_timeout,
+        no_classify=no_classify,
+        thevc_mode=thevc_mode,
+        min_completeness=min_completeness,
+        allow_incomplete_company_info=allow_incomplete_company_info,
+        resume=resume,
+        no_prescreen=no_prescreen,
+    )
 
+
+def _process_urls(
+    *,
+    urls: List[str],
+    run_id: str,
+    config: dict,
+    summary: RunSummary,
+    state_items: dict,
+    dry_run: bool,
+    screening_only: bool,
+    continue_on_error: bool,
+    llm_timeout: int,
+    no_classify: bool,
+    thevc_mode: str,
+    min_completeness: float,
+    allow_incomplete_company_info: bool,
+    resume: bool,
+    no_prescreen: bool,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    results: List[AutoTaskResult] = []
     print(f"\n📍 URL 처리 시작: {len(urls)}건")
 
     for idx, url in enumerate(urls, 1):
@@ -705,6 +756,81 @@ def run_auto(
         send_notification(format_notification(results, summary), config)
 
     return results, summary
+
+
+def run_auto(
+    *,
+    dry_run: bool = False,
+    search_only: bool = False,
+    max_urls: Optional[int] = None,
+    run_id: Optional[str] = None,
+    from_urls: Optional[Path] = None,
+    screening_only: bool = False,
+    continue_on_error: bool = True,
+    llm_timeout: int = 120,
+    no_classify: bool = False,
+    thevc_mode: str = "auto",
+    company_enrichment_only: bool = False,
+    min_completeness: float = DEFAULT_MIN_COMPLETENESS,
+    allow_incomplete_company_info: bool = False,
+    resume: bool = False,
+    no_prescreen: bool = False,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    config = load_config()
+
+    if company_enrichment_only:
+        return _handle_company_enrichment_only(
+            thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
+        )
+
+    prev_state: dict = {}
+    if resume:
+        prev_run_id = _find_latest_state()
+        if prev_run_id:
+            prev_state = _load_state(prev_run_id)
+            run_id = prev_run_id
+            print(f"🔄 이전 실행 재개: run_id={prev_run_id}, 미완료 {sum(1 for v in prev_state.values() if v.get('status') != 'done')}건")
+
+    run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+    summary = RunSummary(run_id=run_id)
+
+    print("=" * 70)
+    print(f"🤖 JD Auto Pipeline - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   run_id={run_id}")
+    print("=" * 70)
+
+    state_items: dict = dict(prev_state)
+
+    urls, postings = _build_url_list(
+        from_urls=from_urls, max_urls=max_urls, resume=resume,
+        prev_state=prev_state, dry_run=dry_run, summary=summary,
+    )
+
+    summary.new = len(urls)
+    if not urls:
+        print("\n✅ 처리할 URL 없음")
+        return [], summary
+
+    if search_only:
+        return _handle_search_only(postings, summary)
+
+    handler = _handle_screening_only if screening_only else _handle_full_pipeline
+    return handler(
+        urls=urls,
+        run_id=run_id,
+        config=config,
+        summary=summary,
+        state_items=state_items,
+        dry_run=dry_run,
+        continue_on_error=continue_on_error,
+        llm_timeout=llm_timeout,
+        no_classify=no_classify,
+        thevc_mode=thevc_mode,
+        min_completeness=min_completeness,
+        allow_incomplete_company_info=allow_incomplete_company_info,
+        resume=resume,
+        no_prescreen=no_prescreen,
+    )
 
 
 def main() -> None:
