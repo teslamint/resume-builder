@@ -26,9 +26,7 @@ def slugify_company(
 
     Parameterized to cover all existing variants:
       - utils.slugify_company:           max_len=60, fallback="unknown-company"
-      - wanted_extract.slugify:          max_len=50, fallback=""
-      - remember_batch_extract.slugify:  max_len=50, fallback=""
-      - check_companies.slugify:         max_len=50, fallback=""
+      - (consolidated) all extract/check scripts: max_len=50, fallback=""
     """
     text = _JU_PREFIX_RE.sub("", name or "").strip()
     text = _NON_ALNUM_HANGUL_RE.sub(" ", text).strip()
@@ -43,6 +41,8 @@ def normalize_company_name(name: str) -> str:
     (주), 주식회사, (유), 유한회사, ㈜, Inc., Corp., Co. Ltd.
 
     NOT a replacement for:
+      - ce_jd_files.normalize_company_name_narrow (narrower regex, strips spaces —
+        used only in JD-file extraction context)
       - company_extractor._normalize_company_name (narrower regex, strips spaces)
       - recollect_company_info.normalize_name_key (strips all non-alnum)
     Those have intentionally different semantics.

@@ -11,9 +11,6 @@ try:
 except ImportError:
     from naming import slugify_company as _slugify
 
-def slugify(text):
-    return _slugify(text, max_len=50, fallback="")
-
 def fetch_wanted_posting(job_id):
     """Wanted 채용공고 API 호출"""
     url = f'https://www.wanted.co.kr/wd/{job_id}'
@@ -79,8 +76,8 @@ def extract_wanted(job_id):
         benefits = job.get('benefits', '')
 
         # 파일명 생성
-        company_slug = slugify(company_name)
-        title_slug = slugify(job_title)
+        company_slug = _slugify(company_name, max_len=50, fallback="")
+        title_slug = _slugify(job_title, max_len=50, fallback="")
         filename = f"{job_id}-{company_slug}-{title_slug}.md"
 
         # Markdown 생성

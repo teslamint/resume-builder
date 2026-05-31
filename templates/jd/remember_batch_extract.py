@@ -2,6 +2,7 @@
 """Remember 채용공고 일괄 추출 스크립트"""
 import json
 import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -14,14 +15,28 @@ try:
 except ImportError:
     from naming import slugify_company as _slugify
 
-def slugify(text):
-    return _slugify(text, max_len=50, fallback="")
+def _fetch_with_urllib(url):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return resp.read().decode('utf-8')
+
+
+def _fetch_with_curl(url):
+    result = subprocess.run(
+        ['curl', '-sS', '-m', '15', '-H', 'User-Agent: Mozilla/5.0', url],
+        capture_output=True, text=True, timeout=20,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f'curl failed: {result.stderr.strip()}')
+    return result.stdout
+
 
 def fetch_posting(posting_id):
     url = f'https://career.rememberapp.co.kr/job/posting/{posting_id}'
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        html = resp.read().decode('utf-8')
+    try:
+        html = _fetch_with_urllib(url)
+    except OSError:
+        html = _fetch_with_curl(url)
     m = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
     if not m:
         return None
@@ -169,8 +184,8 @@ def main():
             company_raw = org.get('name', '')
             company_name = company_raw.replace('(주)', '').replace('(주 )', '').strip()
             title = d.get('title', '')
-            company_slug = slugify(company_name)
-            title_slug = slugify(title)[:30]
+            company_slug = _slugify(company_name, max_len=50, fallback="")
+            title_slug = _slugify(title, max_len=50, fallback="")[:30]
 
             filename = f"{posting_id}-{company_slug}-{title_slug}.md"
             filepath = unprocessed_dir / filename

@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """Tests for quick_filter yaml externalization."""
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
-ROOT = Path(__file__).parent.parent / "jd"
-sys.path.insert(0, str(ROOT))
 
 
 class TestQuickFilterConfigLoad(unittest.TestCase):

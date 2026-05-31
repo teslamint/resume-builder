@@ -99,7 +99,8 @@ def test_run_quick_search_groupby_populates_queue_item_fields():
          patch("search_quick.groupby_fetch_positions", return_value=[{"id": 8807}]), \
          patch("search_quick.convert_groupby_to_raw_results", return_value=outcome), \
          patch("search_quick.groupby_experience_values", return_value=(3, None)), \
-         patch("search_quick.is_duplicate", return_value=(False, None)):
+         patch("search_helpers.is_duplicate", return_value=(False, None)), \
+         patch("search_helpers.is_rejected_company", return_value=False):
         items, stats = run_quick_search(dry_run=True)
 
     assert len(items) == 1
@@ -131,6 +132,36 @@ def test_search_wanted_http_fallback_does_not_import_playwright_when_disabled():
         result = search.search_wanted("backend", config, search.SearchState())
 
     assert result.total_found == 0
+    api_fallback.assert_called_once()
+    assert "wanted" not in search._PLAYWRIGHT_DISABLED
+
+
+def test_codex_seatbelt_sandbox_uses_http_fallback_without_playwright():
+    import search
+
+    search._PLAYWRIGHT_DISABLED.clear()
+    config = {
+        "platforms": {
+            "wanted": {"base_url": "https://www.wanted.co.kr"},
+        },
+        "execution": {},
+    }
+    outcome = ScrapeOutcome(results=[])
+
+    with patch.dict(
+        "os.environ",
+        {
+            "CODEX_SANDBOX": "seatbelt",
+            "CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop",
+        },
+    ), \
+         patch("search._load_sync_playwright") as load_playwright, \
+         patch("search.get_rejected_companies", return_value=set()), \
+         patch("search.search_wanted_api", return_value=outcome) as api_fallback:
+        result = search.search_wanted("backend", config, search.SearchState())
+
+    assert result.total_found == 0
+    load_playwright.assert_not_called()
     api_fallback.assert_called_once()
     assert "wanted" not in search._PLAYWRIGHT_DISABLED
 

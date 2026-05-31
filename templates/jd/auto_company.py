@@ -15,13 +15,13 @@ try:
     from .company_extractor import extract_company_info
     from .company_match_verify import verify_company_match
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from .jd_content import extract_metadata_from_jd
+    from .jd_content import _PAREN_RE as _HEADING_PAREN_RE, extract_heading_company, extract_metadata_from_jd
     from .naming import slugify_company
 except ImportError:
     from company_extractor import extract_company_info
     from company_match_verify import verify_company_match
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from jd_content import extract_metadata_from_jd
+    from jd_content import _PAREN_RE as _HEADING_PAREN_RE, extract_heading_company, extract_metadata_from_jd
     from naming import slugify_company
 
 _log = logging.getLogger(__name__)
@@ -89,21 +89,13 @@ def _extract_company_name_from_jd(jd_path: Path) -> Optional[str]:
     return None
 
 
-_HEADING_LINE_RE = re.compile(r"^#\s+(.+)$")
-_HEADING_PAREN_RE = re.compile(r"\([^)]*\)")
-
-
 def _read_first_heading(path: Path) -> str:
     """Read first '# ' heading from a markdown file. Lowercase, paren-stripped."""
     try:
-        with path.open(encoding="utf-8") as f:
-            for line in f:
-                m = _HEADING_LINE_RE.match(line.rstrip("\n"))
-                if m:
-                    return _HEADING_PAREN_RE.sub("", m.group(1)).strip().lower()
+        content = path.read_text(encoding="utf-8")
     except OSError:
         return ""
-    return ""
+    return extract_heading_company(content)
 
 
 def _completeness_score(path: Path) -> float:
@@ -662,6 +654,12 @@ def ensure_company_info(
                     f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
                     file=sys.stderr,
                 )
+                if conf < 0.3:
+                    completeness = 0.0
+                    _log.warning(
+                        "동음이의 차단: %s (confidence=%.2f < 0.3) — 회사정보 무효화",
+                        output_path.name, conf,
+                    )
         except Exception as exc:
             _log.warning("company_match_verify 실패 (%s): %s", output_path.name, exc)
 

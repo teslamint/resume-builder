@@ -94,22 +94,32 @@ def get_platform_from_url(url: str) -> Optional[str]:
     return None
 
 
-def find_existing_jd(job_id: str) -> Optional[Path]:
-    """Find existing JD file by job_id in any folder."""
-    search_dirs = [
-        JOB_POSTINGS_DIR,
-        JOB_POSTINGS_DIR / "pass",
-        JOB_POSTINGS_DIR / "conditional",
-        JOB_POSTINGS_DIR / "conditional" / "high",
-        JOB_POSTINGS_DIR / "conditional" / "hold",
-        JOB_POSTINGS_DIR / "conditional" / "middle",
-        JOB_POSTINGS_DIR / "conditional" / "low",
-        JOB_POSTINGS_DIR / "applied",
-        JOB_POSTINGS_DIR / "rejected",
-        JOB_POSTINGS_DIR / "high_priority",
-        JOB_POSTINGS_DIR / "on_going",
-        JOB_POSTINGS_DIR / "closed",
-    ]
+_BASE_SEARCH_DIRS = [
+    JOB_POSTINGS_DIR,
+    JOB_POSTINGS_DIR / "pass",
+    JOB_POSTINGS_DIR / "conditional",
+    JOB_POSTINGS_DIR / "conditional" / "high",
+    JOB_POSTINGS_DIR / "conditional" / "hold",
+    JOB_POSTINGS_DIR / "conditional" / "middle",
+    JOB_POSTINGS_DIR / "conditional" / "low",
+    JOB_POSTINGS_DIR / "applied",
+    JOB_POSTINGS_DIR / "rejected",
+    JOB_POSTINGS_DIR / "high_priority",
+    JOB_POSTINGS_DIR / "on_going",
+    JOB_POSTINGS_DIR / "closed",
+]
+
+
+def find_existing_jd(job_id: str, *, include_unprocessed: bool = False) -> Optional[Path]:
+    """Find existing JD file by job_id in any folder.
+
+    When *include_unprocessed* is True, also searches ``unprocessed/``.
+    """
+    search_dirs = (
+        _BASE_SEARCH_DIRS + [JOB_POSTINGS_DIR / "unprocessed"]
+        if include_unprocessed
+        else _BASE_SEARCH_DIRS
+    )
 
     for search_dir in search_dirs:
         if not search_dir.exists():
@@ -128,31 +138,7 @@ def find_jd_anywhere(job_id: str) -> Optional[Path]:
     RESOLUTION PATHS ONLY — do not use for dedup checks (unprocessed JDs are
     not yet classified and should not be treated as "already processed").
     """
-    search_dirs = [
-        JOB_POSTINGS_DIR,
-        JOB_POSTINGS_DIR / "pass",
-        JOB_POSTINGS_DIR / "conditional",
-        JOB_POSTINGS_DIR / "conditional" / "high",
-        JOB_POSTINGS_DIR / "conditional" / "hold",
-        JOB_POSTINGS_DIR / "conditional" / "middle",
-        JOB_POSTINGS_DIR / "conditional" / "low",
-        JOB_POSTINGS_DIR / "applied",
-        JOB_POSTINGS_DIR / "rejected",
-        JOB_POSTINGS_DIR / "high_priority",
-        JOB_POSTINGS_DIR / "on_going",
-        JOB_POSTINGS_DIR / "closed",
-        JOB_POSTINGS_DIR / "unprocessed",
-    ]
-
-    for search_dir in search_dirs:
-        if not search_dir.exists():
-            continue
-        for file in search_dir.glob(f"{job_id}-*.md"):
-            return file
-        for file in search_dir.glob(f"*-{job_id}-*.md"):
-            return file
-
-    return None
+    return find_existing_jd(job_id, include_unprocessed=True)
 
 
 def is_duplicate(job_id: str) -> Tuple[bool, Optional[Path]]:

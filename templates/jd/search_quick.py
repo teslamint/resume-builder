@@ -21,18 +21,11 @@ import sys
 import time
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from typing import List, Set
 from urllib.parse import quote, urljoin
 
-import yaml
-
-# Paths
-BASE_DIR = Path(__file__).parent.parent.parent
-CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
-STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
-
 try:
+    from .constants import CONFIG_PATH, JOB_POSTINGS_DIR
     from .experience_filter import filter_experience
     from .groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
@@ -40,12 +33,16 @@ try:
     from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
     from .search_helpers import (
         SearchPageConfig,
+        _read_search_config,
         convert_groupby_to_raw_results,
+        filter_and_dedup,
         groupby_experience_values,
+        quick_filter_title as _filter_title_full,
         load_and_scrape_wanted,
         load_and_scrape_remember,
     )
 except ImportError:
+    from constants import CONFIG_PATH, JOB_POSTINGS_DIR
     from experience_filter import filter_experience
     from groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
@@ -53,21 +50,27 @@ except ImportError:
     from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
     from search_helpers import (
         SearchPageConfig,
+        _read_search_config,
         convert_groupby_to_raw_results,
+        filter_and_dedup,
         groupby_experience_values,
+        quick_filter_title as _filter_title_full,
         load_and_scrape_wanted,
         load_and_scrape_remember,
     )
 
 logger = logging.getLogger(__name__)
 
+# Paths
+STATE_PATH = JOB_POSTINGS_DIR / ".search_state.json"
+
 
 def load_config() -> dict:
     """Load search configuration."""
-    if not CONFIG_PATH.exists():
+    result = _read_search_config(CONFIG_PATH)
+    if result is None:
         return {"search_queries": ["백엔드 시니어"]}
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return result
 
 
 def load_seen_ids() -> Set[str]:
@@ -104,22 +107,8 @@ def save_seen_ids(seen_ids: Set[str]) -> None:
 
 
 def quick_filter_title(title: str, config: dict) -> bool:
-    """
-    Quick filter - returns True if should be skipped.
-    """
-    filters = config.get("quick_filters", {})
-    title_lower = title.lower()
-
-    for keyword in filters.get("title_exclude", []):
-        if keyword.lower() in title_lower:
-            return True
-
-    include_keywords = filters.get("title_include", [])
-    if include_keywords:
-        if not any(kw.lower() in title_lower for kw in include_keywords):
-            return True
-
-    return False
+    """Quick filter — returns True if should be skipped."""
+    return _filter_title_full(title, config) == "pass"
 
 
 def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
@@ -181,72 +170,70 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
 
     start_time = time.time()
 
+    # Merge seen_ids + queued_ids for unified dedup
+    combined_seen = seen_ids | queued_ids
+
+    def _collect_accepted(fr, query: str, platform: str = "wanted") -> int:
+        """Convert FilterResult accepted items to QueueItems, return count."""
+        count = 0
+        for raw in fr.accepted:
+            new_items.append(QueueItem(
+                job_id=raw.canonical_id,
+                url=raw.url,
+                title=raw.title,
+                company=raw.company,
+                experience=raw.experience,
+                query=query,
+                platform=platform,
+                discovered_at=datetime.now().isoformat(),
+            ))
+            queued_ids.add(raw.canonical_id)
+            count += 1
+        return count
+
     # --- GroupBy prefetch (API-based, no browser needed) ---
     if groupby_enabled:
         groupby_cfg = platforms_config.get("groupby", {})
         position_types = groupby_cfg.get("position_types", [2])
         base_url = groupby_cfg.get("base_url", "https://groupby.kr")
-        groupby_query = "(groupby)"
         print(f"\n🔍 검색 (GroupBy): positionTypes={position_types}")
 
         try:
             gb_items = groupby_fetch_positions(position_types)
             gb_outcome = convert_groupby_to_raw_results(gb_items, base_url)
-            gb_found = 0
-            gb_new = 0
-            gb_dup = 0
-            gb_filtered = 0
 
+            # Pre-filter GroupBy experience using structured API data
+            exp_filtered = []
+            gb_exp_dropped = 0
             for raw in gb_outcome.results:
-                gb_found += 1
-                if quick_filter_title(raw.title, config):
-                    gb_filtered += 1
-                    continue
-                if is_rejected_company(raw.company, rejected_companies, config_excludes):
-                    gb_filtered += 1
-                    continue
                 orig_item = next((it for it in gb_items if f"groupby-{it['id']}" == raw.canonical_id), None)
                 if orig_item:
                     exp_min, exp_max = groupby_experience_values(orig_item)
                     if filter_experience(raw.experience, config, min_years=exp_min, max_years=exp_max):
-                        gb_filtered += 1
+                        gb_exp_dropped += 1
                         continue
                 elif filter_experience(raw.experience, config):
-                    gb_filtered += 1
+                    gb_exp_dropped += 1
                     continue
-                if raw.canonical_id in seen_ids or raw.canonical_id in queued_ids:
-                    gb_dup += 1
-                    continue
-                is_dup, _ = is_duplicate(raw.canonical_id)
-                if is_dup:
-                    gb_dup += 1
-                    seen_ids.add(raw.canonical_id)
-                    continue
-                gb_new += 1
-                new_items.append(QueueItem(
-                    job_id=raw.canonical_id,
-                    url=raw.url,
-                    title=raw.title,
-                    company=raw.company,
-                    experience=raw.experience,
-                    query=groupby_query,
-                    platform="groupby",
-                    discovered_at=datetime.now().isoformat(),
-                ))
-                seen_ids.add(raw.canonical_id)
+                exp_filtered.append(raw)
 
-            stats["total_found"] += gb_found
+            fr = filter_and_dedup(
+                exp_filtered, config=config, seen_ids=combined_seen,
+                rejected_companies=rejected_companies, config_excludes=config_excludes,
+            )
+            gb_new = _collect_accepted(fr, "(groupby)", "groupby")
+
+            stats["total_found"] += fr.total_found + gb_exp_dropped
             stats["new"] += gb_new
-            stats["duplicates"] += gb_dup
-            stats["filtered"] += gb_filtered
-            print(f"   📊 결과: 발견 {gb_found}개, 신규 {gb_new}개, 중복 {gb_dup}개, 필터 {gb_filtered}개")
+            stats["duplicates"] += fr.duplicates
+            stats["filtered"] += fr.filtered_out + gb_exp_dropped
+            print(f"   📊 결과: 발견 {fr.total_found + gb_exp_dropped}개, 신규 {gb_new}개, 중복 {fr.duplicates}개, 필터 {fr.filtered_out + gb_exp_dropped}개")
         except GroupByAPIError as e:
             logger.warning("GroupBy API error: %s", e)
             print(f"   ⚠️  GroupBy API 오류: {e}")
             stats["errors"] += 1
 
     with sync_playwright() as p:
-        # Single browser instance for all queries
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             viewport={"width": 1280, "height": 800},
@@ -261,20 +248,13 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                     print(f"\n🔍 검색 (Wanted): {query}")
 
                     page = context.new_page()
-                    query_found = 0
-                    query_new = 0
-                    query_dup = 0
-                    query_filtered = 0
-
                     try:
-                        wanted_config = SearchPageConfig(
-                            base_url=wanted_base_url,
-                            timeout_ms=8000,
-                            post_load_delay=request_delay,
-                            scroll_count=scroll_count,
+                        wanted_cfg = SearchPageConfig(
+                            base_url=wanted_base_url, timeout_ms=8000,
+                            post_load_delay=request_delay, scroll_count=scroll_count,
                             scroll_sleep=0.5,
                         )
-                        outcome = load_and_scrape_wanted(page, search_url, wanted_config)
+                        outcome = load_and_scrape_wanted(page, search_url, wanted_cfg)
 
                         if outcome.timed_out:
                             print(f"   📊 결과: 0개 (타임아웃)")
@@ -285,57 +265,21 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             if outcome.error:
                                 print(f"   ⚠️  Partial error: {outcome.error}")
                                 stats["errors"] += 1
-                            for raw in outcome.results:
-                                query_found += 1
-
-                                if quick_filter_title(raw.title, config):
-                                    query_filtered += 1
-                                    continue
-
-                                if is_rejected_company(raw.company, rejected_companies, config_excludes):
-                                    query_filtered += 1
-                                    continue
-
-                                if filter_experience(raw.experience, config):
-                                    query_filtered += 1
-                                    continue
-
-                                if raw.canonical_id in seen_ids or raw.canonical_id in queued_ids:
-                                    query_dup += 1
-                                    continue
-
-                                is_dup, _ = is_duplicate(raw.canonical_id)
-                                if is_dup:
-                                    query_dup += 1
-                                    seen_ids.add(raw.canonical_id)
-                                    continue
-
-                                item = QueueItem(
-                                    job_id=raw.canonical_id,
-                                    url=raw.url,
-                                    title=raw.title,
-                                    company=raw.company,
-                                    experience=raw.experience,
-                                    query=query,
-                                    discovered_at=datetime.now().isoformat(),
-                                )
-                                new_items.append(item)
-                                seen_ids.add(raw.canonical_id)
-                                queued_ids.add(raw.canonical_id)
-                                query_new += 1
-
-                            print(f"   📊 결과: {query_found}개 (새: {query_new}, 중복: {query_dup}, 필터: {query_filtered})")
-
+                            fr = filter_and_dedup(
+                                outcome.results, config=config, seen_ids=combined_seen,
+                                rejected_companies=rejected_companies, config_excludes=config_excludes,
+                            )
+                            q_new = _collect_accepted(fr, query)
+                            stats["total_found"] += fr.total_found
+                            stats["new"] += q_new
+                            stats["duplicates"] += fr.duplicates
+                            stats["filtered"] += fr.filtered_out
+                            print(f"   📊 결과: {fr.total_found}개 (새: {q_new}, 중복: {fr.duplicates}, 필터: {fr.filtered_out})")
                     except Exception as e:
                         print(f"   ❌ Error: {e}")
                         stats["errors"] += 1
                     finally:
                         page.close()
-
-                    stats["total_found"] += query_found
-                    stats["new"] += query_new
-                    stats["duplicates"] += query_dup
-                    stats["filtered"] += query_filtered
 
                 # --- Remember search ---
                 if remember_enabled:
@@ -350,20 +294,13 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                     print(f"\n🔍 검색 (Remember): {query}")
 
                     page = context.new_page()
-                    query_found = 0
-                    query_new = 0
-                    query_dup = 0
-                    query_filtered = 0
-
                     try:
-                        remember_config = SearchPageConfig(
-                            base_url=remember_base_url,
-                            timeout_ms=8000,
-                            post_load_delay=request_delay,
-                            scroll_count=scroll_count,
+                        remember_cfg = SearchPageConfig(
+                            base_url=remember_base_url, timeout_ms=8000,
+                            post_load_delay=request_delay, scroll_count=scroll_count,
                             scroll_sleep=0.5,
                         )
-                        outcome = load_and_scrape_remember(page, search_url, remember_config)
+                        outcome = load_and_scrape_remember(page, search_url, remember_cfg)
 
                         if outcome.timed_out:
                             print(f"   📊 결과: 0개 (타임아웃)")
@@ -374,67 +311,27 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             if outcome.error:
                                 print(f"   ⚠️  Partial error: {outcome.error}")
                                 stats["errors"] += 1
-                            for raw in outcome.results:
-                                query_found += 1
-
-                                if quick_filter_title(raw.title, config):
-                                    query_filtered += 1
-                                    continue
-
-                                if is_rejected_company(raw.company, rejected_companies, config_excludes):
-                                    query_filtered += 1
-                                    continue
-
-                                if filter_experience(raw.experience, config):
-                                    query_filtered += 1
-                                    continue
-
-                                dup_keys = raw.duplicate_keys()
-                                if any(k in seen_ids or k in queued_ids for k in dup_keys):
-                                    query_dup += 1
-                                    continue
-
-                                is_dup, _ = is_duplicate(raw.canonical_id)
-                                if is_dup:
-                                    query_dup += 1
-                                    seen_ids.add(raw.canonical_id)
-                                    continue
-                                is_dup, _ = is_duplicate(raw.raw_id)
-                                if is_dup:
-                                    query_dup += 1
-                                    seen_ids.add(raw.canonical_id)
-                                    continue
-
-                                item = QueueItem(
-                                    job_id=raw.canonical_id,
-                                    url=raw.url,
-                                    title=raw.title,
-                                    company=raw.company,
-                                    experience=raw.experience,
-                                    query=query,
-                                    discovered_at=datetime.now().isoformat(),
-                                    platform="remember",
-                                )
-                                new_items.append(item)
-                                seen_ids.add(raw.canonical_id)
-                                queued_ids.add(raw.canonical_id)
-                                query_new += 1
-
-                            print(f"   📊 결과: {query_found}개 (새: {query_new}, 중복: {query_dup}, 필터: {query_filtered})")
-
+                            fr = filter_and_dedup(
+                                outcome.results, config=config, seen_ids=combined_seen,
+                                rejected_companies=rejected_companies, config_excludes=config_excludes,
+                            )
+                            q_new = _collect_accepted(fr, query, "remember")
+                            stats["total_found"] += fr.total_found
+                            stats["new"] += q_new
+                            stats["duplicates"] += fr.duplicates
+                            stats["filtered"] += fr.filtered_out
+                            print(f"   📊 결과: {fr.total_found}개 (새: {q_new}, 중복: {fr.duplicates}, 필터: {fr.filtered_out})")
                     except Exception as e:
                         print(f"   ❌ Error: {e}")
                         stats["errors"] += 1
                     finally:
                         page.close()
 
-                    stats["total_found"] += query_found
-                    stats["new"] += query_new
-                    stats["duplicates"] += query_dup
-                    stats["filtered"] += query_filtered
-
         finally:
             browser.close()
+
+    # Sync combined_seen back to seen_ids (filter_and_dedup mutated combined_seen)
+    seen_ids.update(combined_seen)
     
     elapsed = time.time() - start_time
     stats["elapsed_seconds"] = round(elapsed, 1)

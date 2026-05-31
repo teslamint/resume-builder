@@ -12,6 +12,11 @@ import urllib.error
 import urllib.request
 from typing import Optional
 
+try:
+    from .http_client_base import http_json_request
+except ImportError:
+    from http_client_base import http_json_request
+
 logger = logging.getLogger(__name__)
 
 REMEMBER_API_BASE = "https://career-api.rememberapp.co.kr"
@@ -37,21 +42,10 @@ class RememberAPIError(Exception):
 def _request_post(path: str, body: dict) -> dict:
     url = f"{REMEMBER_API_BASE}{path}"
     data_bytes = json.dumps(body).encode("utf-8")
-
-    req = urllib.request.Request(url, data=data_bytes, headers=REMEMBER_HEADERS, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=REMEMBER_REQUEST_TIMEOUT) as resp:
-            resp_body = resp.read().decode("utf-8")
-            try:
-                data = json.loads(resp_body)
-            except json.JSONDecodeError as e:
-                raise RememberAPIError(f"Invalid JSON response for {url}") from e
-    except urllib.error.HTTPError as e:
-        raise RememberAPIError(f"HTTP {e.code} for {url}") from e
-    except urllib.error.URLError as e:
-        raise RememberAPIError(f"URL error for {url}: {e.reason}") from e
-
-    return data
+    return http_json_request(
+        url, headers=REMEMBER_HEADERS, timeout=REMEMBER_REQUEST_TIMEOUT,
+        method="POST", body=data_bytes, error_cls=RememberAPIError,
+    )
 
 
 def search_jobs(

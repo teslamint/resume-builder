@@ -14,6 +14,11 @@ import urllib.error
 from typing import Optional
 from urllib.parse import urlencode
 
+try:
+    from .http_client_base import http_json_request
+except ImportError:
+    from http_client_base import http_json_request
+
 logger = logging.getLogger(__name__)
 
 GROUPBY_API_BASE = "https://api.groupby.kr"
@@ -37,25 +42,17 @@ class GroupByAPIError(Exception):
 def _request(path: str, params: Optional[dict] = None) -> dict:
     """Make a GET request to the GroupBy API.
 
-    Returns the parsed JSON response dict.
+    Returns the parsed JSON ``data`` value.
     Raises GroupByAPIError on non-200 status or missing data key.
     """
     url = f"{GROUPBY_API_BASE}{path}"
     if params:
         url = f"{url}?{urlencode(params, doseq=True)}"
 
-    req = urllib.request.Request(url, headers=GROUPBY_HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=GROUPBY_REQUEST_TIMEOUT) as resp:
-            body = resp.read().decode("utf-8")
-            try:
-                data = json.loads(body)
-            except json.JSONDecodeError as e:
-                raise GroupByAPIError(f"Invalid JSON response for {url}") from e
-    except urllib.error.HTTPError as e:
-        raise GroupByAPIError(f"HTTP {e.code} for {url}") from e
-    except urllib.error.URLError as e:
-        raise GroupByAPIError(f"URL error for {url}: {e.reason}") from e
+    data = http_json_request(
+        url, headers=GROUPBY_HEADERS, timeout=GROUPBY_REQUEST_TIMEOUT,
+        error_cls=GroupByAPIError,
+    )
 
     if data.get("status") != 200:
         raise GroupByAPIError(

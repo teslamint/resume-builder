@@ -1,9 +1,9 @@
 """Shared search helpers — page load + DOM scraping for Wanted and Remember,
-and API-based listing for GroupBy, Wanted, and Remember.
+API-based listing for GroupBy/Wanted/Remember, and title filtering.
 
 Extracts raw job listing data from search result pages or API responses. Does NOT own:
 - Dedup (caller checks seen_ids, is_duplicate, queued_ids)
-- Filtering (caller applies quick_filter_title, filter_experience, company rejection)
+- Experience filtering (caller applies filter_experience, company rejection)
 - State management (caller updates SearchState or queue)
 - Stats counting (caller decides when to increment total_found)
 """
@@ -14,14 +14,19 @@ import html
 import re
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Optional
 from urllib.parse import quote
 
 try:
-    from .jd_content import parse_remember_experience
+    from .experience_filter import filter_experience
+    from .jd_content import is_rejected_company, parse_remember_experience
+    from .path_utils import is_duplicate
     from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
 except ImportError:
-    from jd_content import parse_remember_experience
+    from experience_filter import filter_experience
+    from jd_content import is_rejected_company, parse_remember_experience
+    from path_utils import is_duplicate
     from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
 
@@ -557,3 +562,111 @@ def convert_remember_to_raw_results(
             continue
 
     return outcome
+
+
+# ---------------------------------------------------------------------------
+# Config reader
+# ---------------------------------------------------------------------------
+
+def _read_search_config(path) -> Optional[dict]:
+    """Read and parse a YAML search config file. Returns None if missing."""
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return None
+    import yaml
+    with p.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+# ---------------------------------------------------------------------------
+# Title filtering
+# ---------------------------------------------------------------------------
+
+def quick_filter_title(title: str, config: dict) -> Optional[str]:
+    """Quick filter based on title keywords.
+
+    Returns: ``'pass'`` (skip), ``'prefer'`` (prioritize), or ``None`` (neutral).
+    """
+    filters = config.get("quick_filters", {})
+    title_lower = title.lower()
+
+    for keyword in filters.get("title_exclude", []):
+        if keyword.lower() in title_lower:
+            return "pass"
+
+    include_keywords = filters.get("title_include", [])
+    if include_keywords:
+        if not any(kw.lower() in title_lower for kw in include_keywords):
+            return "pass"
+
+    for keyword in filters.get("title_prefer", []):
+        if keyword.lower() in title_lower:
+            return "prefer"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Unified filter + dedup
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FilterResult:
+    """Result of filter_and_dedup: accepted items + aggregate counters."""
+    accepted: list[RawJobResult] = field(default_factory=list)
+    total_found: int = 0
+    filtered_out: int = 0
+    duplicates: int = 0
+
+
+def filter_and_dedup(
+    results: list[RawJobResult],
+    *,
+    config: dict,
+    seen_ids: set[str],
+    rejected_companies: set,
+    config_excludes: list,
+) -> FilterResult:
+    """Apply title/company/experience filters and dedup against *seen_ids* + filesystem.
+
+    Mutates *seen_ids* in-place (adds accepted and fs-dup canonical IDs).
+    Uses ``RawJobResult.duplicate_keys()`` for platform-aware dedup (Remember dual-key).
+    """
+    out = FilterResult()
+
+    for raw in results:
+        out.total_found += 1
+
+        if quick_filter_title(raw.title, config) == "pass":
+            out.filtered_out += 1
+            continue
+
+        if is_rejected_company(raw.company, rejected_companies, config_excludes):
+            out.filtered_out += 1
+            continue
+
+        if filter_experience(raw.experience, config):
+            out.filtered_out += 1
+            continue
+
+        dup_keys = raw.duplicate_keys()
+        if any(k in seen_ids for k in dup_keys):
+            out.duplicates += 1
+            continue
+
+        fs_dup = False
+        for k in dup_keys:
+            found, _ = is_duplicate(k)
+            if found:
+                fs_dup = True
+                break
+        if fs_dup:
+            out.duplicates += 1
+            seen_ids.add(raw.canonical_id)
+            continue
+
+        out.accepted.append(raw)
+        seen_ids.add(raw.canonical_id)
+
+    return out

@@ -177,6 +177,7 @@ class RunSummary:
 
 
 
+
 def _load_urls_from_file(path: Path, max_urls: Optional[int] = None) -> List[str]:
     if not path.exists():
         raise FileNotFoundError(f"URL 파일을 찾을 수 없습니다: {path}")
@@ -342,87 +343,218 @@ def _build_results_from_enrichment(
     return results, summary
 
 
-def run_auto(
+def _handle_company_enrichment_only(
     *,
-    dry_run: bool = False,
-    search_only: bool = False,
-    max_urls: Optional[int] = None,
-    run_id: Optional[str] = None,
-    from_urls: Optional[Path] = None,
-    screening_only: bool = False,
-    continue_on_error: bool = True,
-    llm_timeout: int = 120,
-    no_classify: bool = False,
-    thevc_mode: str = "auto",
-    company_enrichment_only: bool = False,
-    min_completeness: float = DEFAULT_MIN_COMPLETENESS,
-    allow_incomplete_company_info: bool = False,
-    resume: bool = False,
-    no_prescreen: bool = False,
+    thevc_mode: str,
+    dry_run: bool,
+    min_completeness: float,
 ) -> tuple[List[AutoTaskResult], RunSummary]:
-    config = load_config()
+    return _build_results_from_enrichment(
+        thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
+    )
 
-    if company_enrichment_only:
-        return _build_results_from_enrichment(
-            thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
-        )
 
-    prev_state: dict = {}
-    if resume:
-        prev_run_id = _find_latest_state()
-        if prev_run_id:
-            prev_state = _load_state(prev_run_id)
-            run_id = prev_run_id
-            print(f"🔄 이전 실행 재개: run_id={prev_run_id}, 미완료 {sum(1 for v in prev_state.values() if v.get('status') != 'done')}건")
-
-    run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-    summary = RunSummary(run_id=run_id)
-
-    print("=" * 70)
-    print(f"🤖 JD Auto Pipeline - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"   run_id={run_id}")
-    print("=" * 70)
-
-    results: List[AutoTaskResult] = []
-    state_items: dict = dict(prev_state)
-
+def _build_url_list(
+    *,
+    from_urls: Optional[Path],
+    max_urls: Optional[int],
+    resume: bool,
+    prev_state: dict,
+    dry_run: bool,
+    summary: RunSummary,
+) -> tuple[List[str], List[JobPosting]]:
+    """Determine the URL list to process and return (urls, postings)."""
     if from_urls:
-        urls = _load_urls_from_file(from_urls, max_urls=max_urls)
-        postings: List[JobPosting] = []
-    elif resume and prev_state:
+        return _load_urls_from_file(from_urls, max_urls=max_urls), []
+    if resume and prev_state:
         urls = [v["url"] for v in prev_state.values() if v.get("status") != "done"]
-        postings = []
+        return urls, []
+    postings, search_urls_path = run_search(dry_run=dry_run, max_urls=max_urls)
+    summary.search_urls_file = search_urls_path
+    return [p.url for p in postings], postings
+
+
+def _handle_prescreen_hit(
+    pre,
+    row: AutoTaskResult,
+    jd_path: Path,
+    no_classify: bool,
+    summary: RunSummary,
+) -> None:
+    """Apply pre-screen hit to *row* and update *summary* counters."""
+    target = pre.target_folder
+    if not no_classify:
+        moved = move_to_folder(jd_path, target)
+        row.jd_path = str(moved)
+        row.classified_folder = target
     else:
-        postings, search_urls_path = run_search(dry_run=dry_run, max_urls=max_urls)
-        urls = [p.url for p in postings]
-        summary.search_urls_file = search_urls_path
+        row.classified_folder = ""
+    row.error_stage = "prescreening"
+    row.error_reason = pre.reason_detail
 
-    summary.new = len(urls)
-    if not urls:
-        print("\n✅ 처리할 URL 없음")
-        return results, summary
+    if pre.reason_code == "closed":
+        row.status = "prescreen_filtered"
+        row.verdict = "지원 비추천"
+        summary.closed += 1
+    elif pre.reason_code == "prior_application":
+        row.status = "prescreen_filtered"
+        row.verdict = "지원 비추천"
+        summary.rejected_prior += 1
+    elif pre.is_review:
+        row.status = "prescreen_review"
+        row.verdict = "지원 보류"
+        summary.prescreen_review += 1
+    else:
+        row.status = "prescreen_filtered"
+        row.verdict = "지원 비추천"
+        summary.prescreened += 1
+        summary.passed += 1
 
-    if search_only:
-        print("\n🔍 검색만 모드 - 추출/스크리닝/분류 생략")
-        for posting in postings:
-            results.append(
-                AutoTaskResult(
-                    url=posting.url,
-                    job_id=posting.job_id,
-                    status="searched",
-                    company=posting.company,
-                    title=posting.title,
-                )
-            )
-        return results, summary
+    summary.processed += 1
 
+
+_NON_REPROCESSABLE_FOLDERS = {"pass", "applied", "rejected", "on_going", "high_priority", "closed"}
+
+
+def _resolve_jd_and_check_dup(
+    job_id: str,
+    saved: dict,
+    *,
+    resume: bool,
+    screening_only: bool,
+) -> tuple[Optional[Path], bool]:
+    """Return (resolved_jd_path, is_dup) for loop pre-checks."""
+    saved_jd_path = saved.get("jd_path", "")
+    if saved_jd_path and Path(saved_jd_path).exists():
+        resolved = Path(saved_jd_path)
+    else:
+        resolved = find_existing_jd(job_id)
+
+    saved_stage = saved.get("stage", "pending")
+    is_resume_item = resume and saved_stage != "pending" and saved.get("status") != "done"
+
+    if is_resume_item and resolved:
+        if any(part in _NON_REPROCESSABLE_FOLDERS for part in resolved.parts):
+            is_resume_item = False
+
+    is_dup = bool(resolved and not screening_only and not is_resume_item)
+    return resolved, is_dup
+
+
+def _handle_search_only(
+    postings: List[JobPosting], summary: RunSummary
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    print("\n🔍 검색만 모드 - 추출/스크리닝/분류 생략")
+    results = [
+        AutoTaskResult(
+            url=posting.url,
+            job_id=posting.job_id,
+            status="searched",
+            company=posting.company,
+            title=posting.title,
+        )
+        for posting in postings
+    ]
+    return results, summary
+
+
+def _handle_screening_only(
+    *,
+    urls: List[str],
+    run_id: str,
+    config: dict,
+    summary: RunSummary,
+    state_items: dict,
+    dry_run: bool,
+    continue_on_error: bool,
+    llm_timeout: int,
+    no_classify: bool,
+    thevc_mode: str,
+    min_completeness: float,
+    allow_incomplete_company_info: bool,
+    resume: bool,
+    no_prescreen: bool,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    return _process_urls(
+        urls=urls,
+        run_id=run_id,
+        config=config,
+        summary=summary,
+        state_items=state_items,
+        dry_run=dry_run,
+        screening_only=True,
+        continue_on_error=continue_on_error,
+        llm_timeout=llm_timeout,
+        no_classify=no_classify,
+        thevc_mode=thevc_mode,
+        min_completeness=min_completeness,
+        allow_incomplete_company_info=allow_incomplete_company_info,
+        resume=resume,
+        no_prescreen=no_prescreen,
+    )
+
+
+def _handle_full_pipeline(
+    *,
+    urls: List[str],
+    run_id: str,
+    config: dict,
+    summary: RunSummary,
+    state_items: dict,
+    dry_run: bool,
+    continue_on_error: bool,
+    llm_timeout: int,
+    no_classify: bool,
+    thevc_mode: str,
+    min_completeness: float,
+    allow_incomplete_company_info: bool,
+    resume: bool,
+    no_prescreen: bool,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    return _process_urls(
+        urls=urls,
+        run_id=run_id,
+        config=config,
+        summary=summary,
+        state_items=state_items,
+        dry_run=dry_run,
+        screening_only=False,
+        continue_on_error=continue_on_error,
+        llm_timeout=llm_timeout,
+        no_classify=no_classify,
+        thevc_mode=thevc_mode,
+        min_completeness=min_completeness,
+        allow_incomplete_company_info=allow_incomplete_company_info,
+        resume=resume,
+        no_prescreen=no_prescreen,
+    )
+
+
+def _process_urls(
+    *,
+    urls: List[str],
+    run_id: str,
+    config: dict,
+    summary: RunSummary,
+    state_items: dict,
+    dry_run: bool,
+    screening_only: bool,
+    continue_on_error: bool,
+    llm_timeout: int,
+    no_classify: bool,
+    thevc_mode: str,
+    min_completeness: float,
+    allow_incomplete_company_info: bool,
+    resume: bool,
+    no_prescreen: bool,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    results: List[AutoTaskResult] = []
     print(f"\n📍 URL 처리 시작: {len(urls)}건")
 
     for idx, url in enumerate(urls, 1):
         job_id = extract_job_id(url) or f"unknown-{idx}"
         row = AutoTaskResult(url=url, job_id=job_id, status="pending")
 
-        # Preserve existing state on resume (don't overwrite saved jd_path/screening_path)
         if job_id not in state_items or state_items[job_id].get("status") == "done":
             state_items[job_id] = {"url": url, "stage": "pending", "status": "pending", "error": ""}
 
@@ -433,28 +565,11 @@ def run_auto(
         if resume and saved_stage != "pending":
             print(f"   ♻️  Resume: stage={saved_stage}")
 
-        # Resolve jd_path from state or filesystem
-        saved_jd_path = saved.get("jd_path", "")
-        if saved_jd_path and Path(saved_jd_path).exists():
-            resolved_jd_path = Path(saved_jd_path)
-        else:
-            resolved_jd_path = find_existing_jd(job_id)
+        resolved_jd_path, is_dup = _resolve_jd_and_check_dup(
+            job_id, saved, resume=resume, screening_only=screening_only,
+        )
 
-        # Duplicate/protection skip logic:
-        # - New items (not in state): skip if JD already exists anywhere
-        # - Resume items (in state with incomplete status): continue processing,
-        #   UNLESS file has been moved to a non-reprocessable folder
-        # - Done items: should not appear (filtered out when building URL list)
-        is_resume_item = resume and saved_stage not in ("pending",) and saved.get("status") != "done"
-
-        # Even resume items should not be reprocessed if they've been moved
-        # to a non-conditional folder (pass, applied, rejected, on_going, high_priority)
-        if is_resume_item and resolved_jd_path:
-            non_reprocessable = {"pass", "applied", "rejected", "on_going", "high_priority", "closed"}
-            if any(part in non_reprocessable for part in resolved_jd_path.parts):
-                is_resume_item = False
-
-        if resolved_jd_path and not screening_only and not is_resume_item:
+        if is_dup:
             summary.duplicates += 1
             row.status = "duplicate"
             row.jd_path = str(resolved_jd_path)
@@ -467,7 +582,7 @@ def run_auto(
         try:
             jd_path: Optional[Path] = None
 
-            # 1) JD extraction — skip if already done (resume or screening_only)
+            # 1) JD extraction
             if saved_stage in ("prescreening", "company_info", "screening", "classifying") and resolved_jd_path:
                 jd_path = resolved_jd_path
                 row.jd_path = str(jd_path)
@@ -477,9 +592,7 @@ def run_auto(
                 _save_state(run_id, state_items)
                 jd_path = _resolve_jd_path_for_screening(url)
                 if not jd_path:
-                    raise RuntimeError(
-                        "screening-only 모드에서 기존 JD를 찾지 못했습니다"
-                    )
+                    raise RuntimeError("screening-only 모드에서 기존 JD를 찾지 못했습니다")
                 row.jd_path = str(jd_path)
                 row.status = "existing_jd"
             else:
@@ -500,15 +613,9 @@ def run_auto(
             if not jd_path:
                 raise RuntimeError("JD 파일 경로를 확보하지 못했습니다")
 
-            # Persist jd_path in state
             state_items[job_id]["jd_path"] = str(jd_path)
 
-            # 1.5) Pre-screening hook — short-circuit before company_info + LLM
-            # Skip when:
-            #  - --no-prescreen flag (CLI override)
-            #  - --screening-only mode (사용자가 LLM 재실행을 명시적 요청)
-            #  - --dry-run
-            #  - resume: saved_stage가 이미 pre-screen 이후 단계로 진입한 경우
+            # 1.5) Pre-screening hook
             if (
                 not no_prescreen
                 and not screening_only
@@ -519,35 +626,7 @@ def run_auto(
                 _save_state(run_id, state_items)
                 pre = pre_screen_jd(jd_path, config)
                 if pre.hit:
-                    target = pre.target_folder
-                    if not no_classify:
-                        moved = move_to_folder(jd_path, target)
-                        row.jd_path = str(moved)
-                        row.classified_folder = target
-                    else:
-                        row.classified_folder = ""
-                    row.error_stage = "prescreening"
-                    row.error_reason = pre.reason_detail
-
-                    if pre.reason_code == "closed":
-                        row.status = "prescreen_filtered"
-                        row.verdict = "지원 비추천"
-                        summary.closed += 1
-                    elif pre.reason_code == "prior_application":
-                        row.status = "prescreen_filtered"
-                        row.verdict = "지원 비추천"
-                        summary.rejected_prior += 1
-                    elif pre.is_review:
-                        row.status = "prescreen_review"
-                        row.verdict = "지원 보류"
-                        summary.prescreen_review += 1
-                    else:
-                        row.status = "prescreen_filtered"
-                        row.verdict = "지원 비추천"
-                        summary.prescreened += 1
-                        summary.passed += 1
-
-                    summary.processed += 1
+                    _handle_prescreen_hit(pre, row, jd_path, no_classify, summary)
                     state_items[job_id].update(
                         stage="done", status="done",
                         jd_path=row.jd_path,
@@ -555,10 +634,10 @@ def run_auto(
                     )
                     _save_state(run_id, state_items)
                     results.append(row)
-                    print(f"   ⚡ Pre-screen 컷: {pre.reason_code} → {target}")
+                    print(f"   ⚡ Pre-screen 컷: {pre.reason_code} → {pre.target_folder}")
                     continue
 
-            # 2) company info (idempotent — reuses existing file)
+            # 2) company info
             state_items[job_id].update(stage="company_info", status="in_progress")
             _save_state(run_id, state_items)
 
@@ -590,17 +669,15 @@ def run_auto(
                 )
                 summary.failed += 1
                 state_items[job_id].update(
-                    stage="company_info",
-                    status="blocked",
-                    error=row.error_reason,
-                    company_file=row.company_file,
+                    stage="company_info", status="blocked",
+                    error=row.error_reason, company_file=row.company_file,
                 )
                 _save_state(run_id, state_items)
                 results.append(row)
                 print(f"   ⛔ 회사정보 보완 필요: {row.error_reason}")
                 continue
 
-            # 3) screening — skip if already done and saved in state
+            # 3) screening
             saved_screening_path = saved.get("screening_path", "")
             saved_verdict = saved.get("verdict", "")
             if (
@@ -616,7 +693,6 @@ def run_auto(
             else:
                 state_items[job_id].update(stage="screening", status="in_progress")
                 _save_state(run_id, state_items)
-
                 screening = run_screening(
                     jd_path=jd_path,
                     company_file=Path(company_info.file_path) if row.company_file else None,
@@ -627,8 +703,6 @@ def run_auto(
                 row.verdict = screening.verdict
                 row.used_fallback = screening.used_fallback
                 summary.screened += 1
-
-                # Persist screening results in state
                 state_items[job_id]["screening_path"] = row.screening_path
                 state_items[job_id]["verdict"] = row.verdict
 
@@ -682,6 +756,81 @@ def run_auto(
         send_notification(format_notification(results, summary), config)
 
     return results, summary
+
+
+def run_auto(
+    *,
+    dry_run: bool = False,
+    search_only: bool = False,
+    max_urls: Optional[int] = None,
+    run_id: Optional[str] = None,
+    from_urls: Optional[Path] = None,
+    screening_only: bool = False,
+    continue_on_error: bool = True,
+    llm_timeout: int = 120,
+    no_classify: bool = False,
+    thevc_mode: str = "auto",
+    company_enrichment_only: bool = False,
+    min_completeness: float = DEFAULT_MIN_COMPLETENESS,
+    allow_incomplete_company_info: bool = False,
+    resume: bool = False,
+    no_prescreen: bool = False,
+) -> tuple[List[AutoTaskResult], RunSummary]:
+    config = load_config()
+
+    if company_enrichment_only:
+        return _handle_company_enrichment_only(
+            thevc_mode=thevc_mode, dry_run=dry_run, min_completeness=min_completeness
+        )
+
+    prev_state: dict = {}
+    if resume:
+        prev_run_id = _find_latest_state()
+        if prev_run_id:
+            prev_state = _load_state(prev_run_id)
+            run_id = prev_run_id
+            print(f"🔄 이전 실행 재개: run_id={prev_run_id}, 미완료 {sum(1 for v in prev_state.values() if v.get('status') != 'done')}건")
+
+    run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+    summary = RunSummary(run_id=run_id)
+
+    print("=" * 70)
+    print(f"🤖 JD Auto Pipeline - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"   run_id={run_id}")
+    print("=" * 70)
+
+    state_items: dict = dict(prev_state)
+
+    urls, postings = _build_url_list(
+        from_urls=from_urls, max_urls=max_urls, resume=resume,
+        prev_state=prev_state, dry_run=dry_run, summary=summary,
+    )
+
+    summary.new = len(urls)
+    if not urls:
+        print("\n✅ 처리할 URL 없음")
+        return [], summary
+
+    if search_only:
+        return _handle_search_only(postings, summary)
+
+    handler = _handle_screening_only if screening_only else _handle_full_pipeline
+    return handler(
+        urls=urls,
+        run_id=run_id,
+        config=config,
+        summary=summary,
+        state_items=state_items,
+        dry_run=dry_run,
+        continue_on_error=continue_on_error,
+        llm_timeout=llm_timeout,
+        no_classify=no_classify,
+        thevc_mode=thevc_mode,
+        min_completeness=min_completeness,
+        allow_incomplete_company_info=allow_incomplete_company_info,
+        resume=resume,
+        no_prescreen=no_prescreen,
+    )
 
 
 def main() -> None:

@@ -7,14 +7,12 @@ After consolidation, these same inputs must produce the same outputs
 
 Functions under test:
   Slugify (filesystem-safe):
-    1. utils.slugify_company()             — truncate 60, fallback "unknown-company"
-    2. wanted_extract.slugify()            — truncate 50, no fallback
-    3. remember_batch_extract.slugify()    — truncate 50, no fallback
-    4. check_companies.slugify()           — truncate 50, no fallback
+    1. naming.slugify_company()            — truncate 60, fallback "unknown-company" (default)
+    2. naming.slugify_company(max_len=50, fallback="") — used by extract/check scripts
 
   Normalize (fuzzy matching):
     5. utils._normalize_company_name()     — _LEGAL_ENTITY_RE (broad: Inc, Corp, Co.Ltd, 주식회사, ㈜)
-    6. company_extractor._normalize_company_name()  — narrow: (주)/(유)/(사) only, strips spaces
+    6. ce_jd_files.normalize_company_name_narrow() — narrow: (주)/(유)/(사) only, strips spaces
     7. recollect_company_info.normalize_name_key()  — strips all non-alnum, removes parenthetical
 """
 
@@ -24,10 +22,7 @@ from naming import normalize_company_name as naming_normalize
 from naming import normalize_company_name as utils_normalize
 from naming import slugify_company
 from naming import slugify_company as naming_slugify
-from wanted_extract import slugify as wanted_slugify
-from remember_batch_extract import slugify as remember_slugify
-from check_companies import slugify as check_slugify
-from ce_jd_files import normalize_company_name as ce_normalize
+from ce_jd_files import normalize_company_name_narrow as ce_normalize
 from recollect_company_info import normalize_name_key
 
 
@@ -68,46 +63,22 @@ class TestSlugifyCompany:
         assert len(result) <= 60
 
 
-class TestWantedSlugify:
-    """wanted_extract.slugify() — truncate 50, no fallback."""
+class TestSlugifyCompany50:
+    """slugify_company(max_len=50, fallback='') — used by extract/check scripts."""
+
+    def _slug50(self, name):
+        return naming_slugify(name, max_len=50, fallback="")
 
     @pytest.mark.parametrize("inp,_,expected", SLUGIFY_INPUTS_AND_EXPECTED)
     def test_known_outputs(self, inp, _, expected):
-        assert wanted_slugify(inp) == expected
+        assert self._slug50(inp) == expected
 
     def test_empty_returns_empty(self):
-        assert wanted_slugify("") == ""
+        assert self._slug50("") == ""
 
     def test_truncation_at_50(self):
         long_name = "가" * 100
-        result = wanted_slugify(long_name)
-        assert len(result) <= 50
-
-
-class TestRememberSlugify:
-    """remember_batch_extract.slugify() — identical to wanted_extract."""
-
-    @pytest.mark.parametrize("inp,_,expected", SLUGIFY_INPUTS_AND_EXPECTED)
-    def test_matches_wanted(self, inp, _, expected):
-        assert remember_slugify(inp) == expected
-
-    def test_identical_to_wanted(self):
-        cases = ["(주)카카오", "LINE Corp.", "", "가" * 100, "SK C&C"]
-        for case in cases:
-            assert remember_slugify(case) == wanted_slugify(case), f"Divergence on: {case!r}"
-
-
-class TestCheckCompaniesSlugify:
-    """check_companies.slugify() — identical to wanted_extract."""
-
-    @pytest.mark.parametrize("inp,_,expected", SLUGIFY_INPUTS_AND_EXPECTED)
-    def test_matches_wanted(self, inp, _, expected):
-        assert check_slugify(inp) == expected
-
-    def test_identical_to_wanted(self):
-        cases = ["(주)카카오", "LINE Corp.", "", "가" * 100, "SK C&C"]
-        for case in cases:
-            assert check_slugify(case) == wanted_slugify(case), f"Divergence on: {case!r}"
+        assert len(self._slug50(long_name)) <= 50
 
 
 # ---------------------------------------------------------------------------
@@ -149,8 +120,8 @@ class TestUtilsNormalize:
         assert "카카오" in result and "뱅크" in result
 
 
-class TestCompanyExtractorNormalize:
-    """company_extractor._normalize_company_name() — narrow regex, strips ALL spaces."""
+class TestCeJdFilesNormalizeNarrow:
+    """ce_jd_files.normalize_company_name_narrow() — narrow regex, strips ALL spaces."""
 
     def test_removes_ju(self):
         assert ce_normalize("(주)카카오") == "카카오"
@@ -294,16 +265,12 @@ class TestNormalizeDivergence:
         """slugify_company truncates at 60, wanted/remember/check at 50."""
         long_name = "가나다라마바사아자차" * 10  # 100 chars
         assert len(slugify_company(long_name)) <= 60
-        assert len(wanted_slugify(long_name)) <= 50
-        assert len(remember_slugify(long_name)) <= 50
-        assert len(check_slugify(long_name)) <= 50
+        assert len(naming_slugify(long_name, max_len=50, fallback="")) <= 50
 
     def test_slugify_empty_divergence(self):
-        """Empty input: slugify_company returns fallback, others return empty."""
+        """Empty input: slugify_company returns fallback, max_len=50 returns empty."""
         assert slugify_company("") == "unknown-company"
-        assert wanted_slugify("") == ""
-        assert remember_slugify("") == ""
-        assert check_slugify("") == ""
+        assert naming_slugify("", max_len=50, fallback="") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +296,6 @@ class TestNamingModule:
 
     def test_naming_slugify_custom_params(self):
         """Parameterized slugify covers all existing variants."""
-        assert naming_slugify("(주)카카오", max_len=50, fallback="") == wanted_slugify("(주)카카오")
+        assert naming_slugify("(주)카카오", max_len=50, fallback="") == "카카오"
         assert naming_slugify("", max_len=50, fallback="") == ""
         assert naming_slugify("", max_len=60, fallback="unknown-company") == "unknown-company"

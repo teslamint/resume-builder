@@ -98,7 +98,7 @@ python3 templates/build/verify_content.py private/jd_analysis/interview/<file>.m
 ./build.sh job full --target <target>   # targeted
 ./build.sh job full                     # base
 ./build.sh public all                   # public variant
-python3 templates/tests/test_jd_status.py -v  # unit tests
+uv run python -m pytest templates/tests/ -v  # unit tests
 ```
 
 ## JD Screening

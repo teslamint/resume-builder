@@ -8,9 +8,6 @@ try:
 except ImportError:
     from naming import slugify_company as _slugify
 
-def slugify(company_name):
-    return _slugify(company_name, max_len=50, fallback="")
-
 def main():
     # Remember 통과 목록
     with open("private/job_postings/unprocessed/passed.json") as f:
@@ -36,7 +33,7 @@ def main():
     # 누락된 회사 확인
     missing_companies = []
     for company in sorted(companies):
-        slug = slugify(company)
+        slug = _slugify(company, max_len=50, fallback="")
         if slug not in existing_companies:
             missing_companies.append(company)
 

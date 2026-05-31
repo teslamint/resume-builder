@@ -17,9 +17,13 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+try:
+    from .constants import SCREENING_DIR, JOB_POSTINGS_DIR
+except ImportError:
+    from constants import SCREENING_DIR, JOB_POSTINGS_DIR
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
-PASS_DIR = REPO_ROOT / "private" / "job_postings" / "pass"
+PASS_DIR = JOB_POSTINGS_DIR / "pass"
 
 
 def main() -> int:

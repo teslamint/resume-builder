@@ -7,8 +7,12 @@ from pathlib import Path
 
 import yaml
 
-# search.py와 동일 경로
-_CONFIG_PATH = Path(__file__).parent.parent.parent / "private" / "job_postings" / "search_config.yaml"
+try:
+    from .constants import CONFIG_PATH
+except ImportError:
+    from constants import CONFIG_PATH
+
+_CONFIG_PATH = CONFIG_PATH
 
 _FALLBACK_CONFIG = {
     "quick_filters": {

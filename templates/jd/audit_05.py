@@ -53,15 +53,12 @@ if str(_JD_DIR) not in sys.path:
 
 from path_utils import extract_job_id_from_filename, find_existing_jd  # noqa: E402
 from verdict import normalize_verdict  # noqa: E402
-from constants import PROTECTED_STATUSES  # noqa: E402
+from constants import PROTECTED_STATUSES, SCREENING_DIR, COMPANY_INFO_DIR  # noqa: E402
 from audit_hypotheses import (  # noqa: E402
     extract_last_verdict,
     parse_summary_verdicts,
     load_file_locations,
 )
-
-SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
-COMPANY_INFO_DIR = REPO_ROOT / "private" / "company_info"
 
 
 # ----------------------------------------------------------------------

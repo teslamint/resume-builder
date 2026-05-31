@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """Regression tests for pre_screen_helpers — extracted from auto.py."""
-import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-
-ROOT = Path(__file__).parent.parent / "jd"
-sys.path.insert(0, str(ROOT))
 
 
 class TestPreScreenHelpers(unittest.TestCase):

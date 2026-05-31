@@ -22,14 +22,17 @@ from datetime import date
 from pathlib import Path
 from typing import Sequence
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 _JD_DIR = Path(__file__).resolve().parent
 if str(_JD_DIR) not in sys.path:
     sys.path.insert(0, str(_JD_DIR))
-from path_utils import extract_job_id_from_filename  # noqa: E402
+try:
+    from .constants import JD_ANALYSIS_DIR, JOB_POSTINGS_DIR, SCREENING_DIR  # noqa: E402
+    from .path_utils import extract_job_id_from_filename  # noqa: E402
+except ImportError:
+    from constants import JD_ANALYSIS_DIR, JOB_POSTINGS_DIR, SCREENING_DIR  # noqa: E402
+    from path_utils import extract_job_id_from_filename  # noqa: E402
 
-SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
-PASS_DIR = REPO_ROOT / "private" / "job_postings" / "pass"
+PASS_DIR = JOB_POSTINGS_DIR / "pass"
 
 M1_PATTERNS = [
     re.compile(r"AI/ML Engineer.*❌"),
@@ -105,7 +108,7 @@ def main() -> int:
     output_path = (
         Path(args.output)
         if args.output
-        else REPO_ROOT / "private" / "jd_analysis" / f"overlap_map_{date_tag}.csv"
+        else JD_ANALYSIS_DIR / f"overlap_map_{date_tag}.csv"
     )
 
     if not SCREENING_DIR.exists():

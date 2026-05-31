@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from pathlib import Path
 
+try:
+    from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
+except ImportError:
+    from constants import JOB_POSTINGS_DIR, SCREENING_DIR
 
-HOLD_DIR = Path("private/job_postings/conditional/hold")
-SCREENING_DIR = Path("private/jd_analysis/screening")
+HOLD_DIR = JOB_POSTINGS_DIR / "conditional" / "hold"
 
 FALLBACK_MARKERS = (
     "자동 fallback",
