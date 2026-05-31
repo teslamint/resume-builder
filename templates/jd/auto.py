@@ -56,7 +56,7 @@ except ImportError:
 BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
 STATE_DIR = RESULTS_DIR
-DEFAULT_MIN_COMPLETENESS = 0.0
+DEFAULT_MIN_COMPLETENESS = 70.0
 
 
 def _state_path(run_id: str) -> Path:
@@ -174,6 +174,7 @@ class RunSummary:
         if d.get("search_urls_file") is not None:
             d["search_urls_file"] = str(d["search_urls_file"])
         return d
+
 
 
 

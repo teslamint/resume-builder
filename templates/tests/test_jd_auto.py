@@ -372,6 +372,55 @@ class TestAutoScreening(unittest.TestCase):
         self.assertIn("근거 없음", prompt)
         self.assertIn("추정하지 말고", prompt)
 
+    def test_build_prompt_loads_external_template(self):
+        import auto_screening
+
+        with tempfile.TemporaryDirectory() as tmp:
+            template_path = Path(tmp) / "screening_system.txt"
+            template_path.write_text(
+                "rules={rules}\n"
+                "candidate={candidate_context}\n"
+                "risk={company_risk_summary}\n"
+                "company={company_content}\n"
+                "jd={jd_content}\n",
+                encoding="utf-8",
+            )
+
+            with patch("auto_screening.SCREENING_PROMPT_TEMPLATE_PATH", template_path):
+                prompt = auto_screening._build_prompt(
+                    jd_content="JD",
+                    rules="RULES",
+                    company_content="COMPANY",
+                    company_risk_summary="RISK",
+                    candidate_context="CANDIDATE",
+                )
+
+        self.assertEqual(
+            prompt,
+            "rules=RULES\n"
+            "candidate=CANDIDATE\n"
+            "risk=RISK\n"
+            "company=COMPANY\n"
+            "jd=JD\n",
+        )
+
+    def test_build_prompt_reports_missing_external_template(self):
+        import auto_screening
+
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_path = Path(tmp) / "missing-screening-prompt-template.txt"
+            with patch("auto_screening.SCREENING_PROMPT_TEMPLATE_PATH", missing_path):
+                with self.assertRaises(FileNotFoundError) as cm:
+                    auto_screening._build_prompt(
+                        jd_content="JD",
+                        rules="RULES",
+                        company_content="COMPANY",
+                        company_risk_summary="RISK",
+                        candidate_context="CANDIDATE",
+                    )
+
+        self.assertIn("Screening prompt template not found", str(cm.exception))
+
     def test_run_llm_reads_codex_output_last_message(self):
         import auto_screening
 
@@ -513,6 +562,54 @@ class TestAutoScreening(unittest.TestCase):
 
 
 class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
+    def test_run_auto_blocks_incomplete_company_info_by_default(self):
+        from auto import run_auto
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            jd = tmp_path / "999000-testco-backend.md"
+            jd.write_text(
+                "# Backend\n\n## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n",
+                encoding="utf-8",
+            )
+            company_file = tmp_path / "company_info" / "testco.md"
+            company_file.parent.mkdir()
+            company_file.write_text("# TestCo\n", encoding="utf-8")
+            urls = tmp_path / "urls.txt"
+            urls.write_text("https://www.wanted.co.kr/wd/999000\n", encoding="utf-8")
+
+            extracted = MagicMock(output_path=jd, company="TestCo", title="Backend")
+            company_info = MagicMock(
+                company="TestCo",
+                file_path=company_file,
+                completeness=0.0,
+                thevc_attempted=False,
+                thevc_status="skipped",
+                investment_data_source="none",
+            )
+            screening = MagicMock(
+                screening_path=tmp_path / "screening.md",
+                verdict="지원 보류",
+                used_fallback=False,
+            )
+
+            with patch("auto.STATE_DIR", tmp_path / "state"), \
+                 patch("auto.load_config", return_value={"notifications": {}}), \
+                 patch("auto.find_existing_jd", return_value=None), \
+                 patch("auto.extract_jd_from_url", return_value=extracted), \
+                 patch("auto.ensure_company_info", return_value=company_info), \
+                 patch("auto.run_screening", return_value=screening) as mock_screening, \
+                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                results, summary = run_auto(
+                    from_urls=urls,
+                    run_id="test-company-info-default-block",
+                )
+
+            self.assertEqual(summary.failed, 1)
+            self.assertEqual(summary.screened, 0)
+            self.assertEqual(results[0].status, "blocked_company_info")
+            mock_screening.assert_not_called()
+
     def test_run_auto_blocks_screening_when_company_info_incomplete(self):
         from auto import run_auto
 
