@@ -16,15 +16,18 @@
 
 > Source of truth: `.claude/plans/piped-sprouting-swing.md` (original Phase 3 plan). Items below are additions.
 
-### 3A: Path centralization
+### 3A: Path centralization + config/state contract
 
 - [ ] Create `templates/jd/paths.py` with project path constants:
   - `REPO_ROOT`, `PRIVATE_DIR`, `SCREENING_DIR`, `SUMMARY_PATH`, `COMPANY_INFO_DIR`, `JOB_POSTINGS_DIR`, `CONFIG_PATH` (search_config.yaml)
 - [ ] Replace 8+ independent `SCREENING_DIR` definitions across audit_*.py, append_reclass_summary.py
 - [ ] Replace 4 independent `CONFIG_PATH` definitions (search.py, search_quick.py, quick_filter.py, worker.py)
 - [ ] Consolidate `search_helpers._read_search_config` to use shared `CONFIG_PATH`
+- [ ] Document config/state file contract: which files are inputs (search_config.yaml, screening rules), which are derived state (run state JSON, SUMMARY.md), and who owns writes
 
-### 3B: headhunter_filler.py decomposition
+### 3B: headhunter_filler.py decomposition (separate work unit from JD refactoring)
+
+> This is a `templates/build/` concern — do NOT mix with JD pipeline changes in the same commits/PRs.
 
 - [ ] Extract DOCX helpers → `templates/build/docx_helpers.py` (~120 LOC: clear_runs, add_run, insert_paragraph_after, set_plain, delete_paragraph, fill_table_cell, etc.)
 - [ ] Extract data loading → reuse from `resume_builder.py` (one source of truth for `calculate_tenure`, company/project parsing)
@@ -33,6 +36,9 @@
 
 ### 3C: run_auto further decomposition
 
+> **Precondition:** Restore default-value regression (verify current characterization tests pass with existing defaults before touching dispatch logic).
+
+- [ ] Verify characterization tests cover current default behavior (add if missing)
 - [ ] Extract each `--*-only` mode into dedicated function
 - [ ] `run_auto` becomes a thin dispatcher: parse mode → call handler
 - [ ] Target: run_auto < 80 lines
@@ -42,6 +48,13 @@
 - [ ] Move `_build_prompt` template → `private/prompts/screening_system.txt` (or .md)
 - [ ] `auto_screening.py` loads and formats at runtime
 - [ ] Screening rules remain in existing separate file (already externalized)
+
+### 3E: Search and queue contract cleanup
+
+- [ ] `filter_and_dedup` — clarify ownership: search_helpers vs caller; document dedup semantics (by ID? by company+title?)
+- [ ] GroupBy experience filter — align with Wanted/Remember filter logic or document why different
+- [ ] queue/worker contract — define queue item lifecycle (pending → processing → done/error), make state transitions explicit
+- [ ] Consolidate remaining local `slugify()` wrappers in `check_companies.py`, `remember_batch_extract.py`, `wanted_extract.py` → use `naming.slugify_company` directly
 
 ## Phase 4: Screening Test Hardening
 
