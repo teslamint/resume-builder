@@ -11,8 +11,8 @@ except ImportError:
     from constants import JOB_POSTINGS_DIR
 
 
-def normalize_company_name(name: str) -> str:
-    """Normalize company name for fuzzy matching.
+def normalize_company_name_narrow(name: str) -> str:
+    """Narrowly normalize company name for JD-file fuzzy matching.
 
     Intentionally narrower than naming.normalize_company_name — strips only
     (주)/(유)/(사) and collapses whitespace for JD-file extraction context.
@@ -32,7 +32,7 @@ def extract_from_jd_files(company_name: str) -> PlatformData | None:
     if not JOB_POSTINGS_DIR.exists():
         return None
 
-    norm_name = normalize_company_name(company_name)
+    norm_name = normalize_company_name_narrow(company_name)
     matching_files: list[Path] = []
 
     for md_file in JOB_POSTINGS_DIR.rglob("*.md"):
@@ -42,7 +42,7 @@ def extract_from_jd_files(company_name: str) -> PlatformData | None:
             content = md_file.read_text(encoding="utf-8")
         except Exception:
             continue
-        norm_content = normalize_company_name(content[:500])
+        norm_content = normalize_company_name_narrow(content[:500])
         if norm_name in norm_content:
             matching_files.append(md_file)
 

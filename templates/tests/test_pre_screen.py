@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """Tests for pre_screen module — 4-tier LLM short-circuit."""
-import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-
-ROOT = Path(__file__).parent.parent / "jd"
-sys.path.insert(0, str(ROOT))
 
 
 class TestPreScreenJD(unittest.TestCase):

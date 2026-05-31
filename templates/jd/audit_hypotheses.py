@@ -25,28 +25,45 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 _JD_DIR = Path(__file__).resolve().parent
 if str(_JD_DIR) not in sys.path:
     sys.path.insert(0, str(_JD_DIR))
-from path_utils import extract_job_id_from_filename  # noqa: E402
-from verdict import normalize_verdict  # noqa: E402
+try:
+    from .constants import (  # noqa: E402
+        BASE_DIR,
+        COMPANY_INFO_DIR,
+        JOB_POSTINGS_DIR,
+        SCREENING_DIR,
+        SUMMARY_PATH,
+    )
+    from .path_utils import extract_job_id_from_filename  # noqa: E402
+    from .verdict import normalize_verdict  # noqa: E402
+except ImportError:
+    from constants import (  # noqa: E402
+        BASE_DIR,
+        COMPANY_INFO_DIR,
+        JOB_POSTINGS_DIR,
+        SCREENING_DIR,
+        SUMMARY_PATH,
+    )
+    from path_utils import extract_job_id_from_filename  # noqa: E402
+    from verdict import normalize_verdict  # noqa: E402
 
-SCREENING_DIR = REPO_ROOT / "private" / "jd_analysis" / "screening"
-COMPANY_INFO_DIR = REPO_ROOT / "private" / "company_info"
-SUMMARY_MD = SCREENING_DIR / "SUMMARY.md"
+REPO_ROOT = BASE_DIR
+SUMMARY_MD = SUMMARY_PATH
+
 JOB_POSTING_DIRS = {
-    "pass": REPO_ROOT / "private" / "job_postings" / "pass",
-    "high": REPO_ROOT / "private" / "job_postings" / "conditional" / "high",
+    "pass": JOB_POSTINGS_DIR / "pass",
+    "high": JOB_POSTINGS_DIR / "conditional" / "high",
     "hold": (
-        REPO_ROOT / "private" / "job_postings" / "conditional",
-        REPO_ROOT / "private" / "job_postings" / "conditional" / "hold",
+        JOB_POSTINGS_DIR / "conditional",
+        JOB_POSTINGS_DIR / "conditional" / "hold",
     ),
-    "middle": REPO_ROOT / "private" / "job_postings" / "conditional" / "middle",
-    "low": REPO_ROOT / "private" / "job_postings" / "conditional" / "low",
-    "applied": REPO_ROOT / "private" / "job_postings" / "applied",
-    "rejected": REPO_ROOT / "private" / "job_postings" / "rejected",
-    "unprocessed": REPO_ROOT / "private" / "job_postings" / "unprocessed",
+    "middle": JOB_POSTINGS_DIR / "conditional" / "middle",
+    "low": JOB_POSTINGS_DIR / "conditional" / "low",
+    "applied": JOB_POSTINGS_DIR / "applied",
+    "rejected": JOB_POSTINGS_DIR / "rejected",
+    "unprocessed": JOB_POSTINGS_DIR / "unprocessed",
 }
 
 # Folders whose membership is the direct output of the verdict pipeline.
@@ -455,7 +472,7 @@ def main() -> int:
         })
 
     # Write CSVs
-    out_dir = REPO_ROOT / "private" / "jd_analysis"
+    out_dir = SCREENING_DIR.parent
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {
         "h1": out_dir / f"r2_h1_company_info_gaps_{date_tag}.csv",

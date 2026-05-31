@@ -21,18 +21,11 @@ import sys
 import time
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from typing import List, Set
 from urllib.parse import quote, urljoin
 
-import yaml
-
-# Paths
-BASE_DIR = Path(__file__).parent.parent.parent
-CONFIG_PATH = BASE_DIR / "private" / "job_postings" / "search_config.yaml"
-STATE_PATH = BASE_DIR / "private" / "job_postings" / ".search_state.json"
-
 try:
+    from .constants import CONFIG_PATH, JOB_POSTINGS_DIR
     from .experience_filter import filter_experience
     from .groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
@@ -49,6 +42,7 @@ try:
         load_and_scrape_remember,
     )
 except ImportError:
+    from constants import CONFIG_PATH, JOB_POSTINGS_DIR
     from experience_filter import filter_experience
     from groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
@@ -66,6 +60,9 @@ except ImportError:
     )
 
 logger = logging.getLogger(__name__)
+
+# Paths
+STATE_PATH = JOB_POSTINGS_DIR / ".search_state.json"
 
 
 def load_config() -> dict:

@@ -2,14 +2,10 @@
 """Tests for screening structure validation.
 
 Run:
-    python3 templates/tests/test_screening_validation.py -v
+    uv run python -m pytest templates/tests/test_screening_validation.py -v
 """
 
-import sys
 import unittest
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "jd"))
 
 
 VALID_FULL = """\

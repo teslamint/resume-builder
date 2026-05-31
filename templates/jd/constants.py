@@ -12,6 +12,8 @@ JOB_POSTINGS_DIR = PRIVATE_DIR / "job_postings"
 JD_ANALYSIS_DIR = PRIVATE_DIR / "jd_analysis"
 COMPANY_INFO_DIR = PRIVATE_DIR / "company_info"
 SCREENING_DIR = JD_ANALYSIS_DIR / "screening"
+SUMMARY_PATH = SCREENING_DIR / "SUMMARY.md"
+CONFIG_PATH = JOB_POSTINGS_DIR / "search_config.yaml"
 
 VERDICT_FOLDER_MAP = {
     "지원 추천": "conditional/high",

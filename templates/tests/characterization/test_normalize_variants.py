@@ -14,7 +14,7 @@ Functions under test:
 
   Normalize (fuzzy matching):
     5. utils._normalize_company_name()     — _LEGAL_ENTITY_RE (broad: Inc, Corp, Co.Ltd, 주식회사, ㈜)
-    6. company_extractor._normalize_company_name()  — narrow: (주)/(유)/(사) only, strips spaces
+    6. ce_jd_files.normalize_company_name_narrow() — narrow: (주)/(유)/(사) only, strips spaces
     7. recollect_company_info.normalize_name_key()  — strips all non-alnum, removes parenthetical
 """
 
@@ -27,7 +27,7 @@ from naming import slugify_company as naming_slugify
 from wanted_extract import slugify as wanted_slugify
 from remember_batch_extract import slugify as remember_slugify
 from check_companies import slugify as check_slugify
-from ce_jd_files import normalize_company_name as ce_normalize
+from ce_jd_files import normalize_company_name_narrow as ce_normalize
 from recollect_company_info import normalize_name_key
 
 
@@ -149,8 +149,8 @@ class TestUtilsNormalize:
         assert "카카오" in result and "뱅크" in result
 
 
-class TestCompanyExtractorNormalize:
-    """company_extractor._normalize_company_name() — narrow regex, strips ALL spaces."""
+class TestCeJdFilesNormalizeNarrow:
+    """ce_jd_files.normalize_company_name_narrow() — narrow regex, strips ALL spaces."""
 
     def test_removes_ju(self):
         assert ce_normalize("(주)카카오") == "카카오"

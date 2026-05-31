@@ -25,18 +25,17 @@ from typing import List, Optional
 
 import yaml
 
-# Paths
-BASE_DIR = Path(__file__).parent.parent.parent
-JOB_POSTINGS_DIR = BASE_DIR / "private" / "job_postings"
-UNPROCESSED_DIR = JOB_POSTINGS_DIR / "unprocessed"
-CONFIG_PATH = JOB_POSTINGS_DIR / "search_config.yaml"
-
 try:
+    from .constants import CONFIG_PATH, JOB_POSTINGS_DIR
     from .queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
 except ImportError:
+    from constants import CONFIG_PATH, JOB_POSTINGS_DIR
     from queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
 
 logger = logging.getLogger(__name__)
+
+# Paths
+UNPROCESSED_DIR = JOB_POSTINGS_DIR / "unprocessed"
 
 # Constants
 MAX_DESCRIPTION_LENGTH = 5000
