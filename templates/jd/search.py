@@ -90,6 +90,8 @@ _PLAYWRIGHT_HARD_FAILURE_MARKERS = (
     "executable doesn't exist",
     "playwright install",
 )
+_FALSE_ENV_VALUES = {"0", "false", "no", "off"}
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
 @dataclass
@@ -158,8 +160,31 @@ def load_state() -> SearchState:
         return SearchState()
 
 
+def _env_bool(name: str) -> Optional[bool]:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+
+    normalized = value.strip().lower()
+    if normalized in _FALSE_ENV_VALUES:
+        return False
+    if normalized in _TRUE_ENV_VALUES:
+        return True
+    return None
+
+
+def _running_in_codex_desktop_seatbelt() -> bool:
+    origin = os.environ.get("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "").lower()
+    return os.environ.get("CODEX_SANDBOX") == "seatbelt" and "codex desktop" in origin
+
+
 def _playwright_allowed(platform: str, config: dict) -> bool:
     if platform in _PLAYWRIGHT_DISABLED:
+        return False
+    browser_env = _env_bool("JD_SEARCH_BROWSER")
+    if browser_env is not None:
+        return browser_env
+    if _running_in_codex_desktop_seatbelt():
         return False
     platform_cfg = config.get("platforms", {}).get(platform, {})
     return platform_cfg.get("enable_playwright", platform_cfg.get("use_playwright", True))
