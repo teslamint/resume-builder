@@ -2,6 +2,7 @@
 """Remember 채용공고 일괄 추출 스크립트"""
 import json
 import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -17,11 +18,28 @@ except ImportError:
 def slugify(text):
     return _slugify(text, max_len=50, fallback="")
 
-def fetch_posting(posting_id):
-    url = f'https://career.rememberapp.co.kr/job/posting/{posting_id}'
+def _fetch_with_urllib(url):
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req, timeout=15) as resp:
-        html = resp.read().decode('utf-8')
+        return resp.read().decode('utf-8')
+
+
+def _fetch_with_curl(url):
+    result = subprocess.run(
+        ['curl', '-sS', '-m', '15', '-H', 'User-Agent: Mozilla/5.0', url],
+        capture_output=True, text=True, timeout=20,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f'curl failed: {result.stderr.strip()}')
+    return result.stdout
+
+
+def fetch_posting(posting_id):
+    url = f'https://career.rememberapp.co.kr/job/posting/{posting_id}'
+    try:
+        html = _fetch_with_urllib(url)
+    except OSError:
+        html = _fetch_with_curl(url)
     m = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
     if not m:
         return None
