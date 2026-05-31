@@ -7,10 +7,8 @@ After consolidation, these same inputs must produce the same outputs
 
 Functions under test:
   Slugify (filesystem-safe):
-    1. utils.slugify_company()             — truncate 60, fallback "unknown-company"
-    2. wanted_extract.slugify()            — truncate 50, no fallback
-    3. remember_batch_extract.slugify()    — truncate 50, no fallback
-    4. check_companies.slugify()           — truncate 50, no fallback
+    1. naming.slugify_company()            — truncate 60, fallback "unknown-company" (default)
+    2. naming.slugify_company(max_len=50, fallback="") — used by extract/check scripts
 
   Normalize (fuzzy matching):
     5. utils._normalize_company_name()     — _LEGAL_ENTITY_RE (broad: Inc, Corp, Co.Ltd, 주식회사, ㈜)

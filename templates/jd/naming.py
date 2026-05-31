@@ -26,9 +26,7 @@ def slugify_company(
 
     Parameterized to cover all existing variants:
       - utils.slugify_company:           max_len=60, fallback="unknown-company"
-      - wanted_extract.slugify:          max_len=50, fallback=""
-      - remember_batch_extract.slugify:  max_len=50, fallback=""
-      - check_companies.slugify:         max_len=50, fallback=""
+      - (consolidated) all extract/check scripts: max_len=50, fallback=""
     """
     text = _JU_PREFIX_RE.sub("", name or "").strip()
     text = _NON_ALNUM_HANGUL_RE.sub(" ", text).strip()
