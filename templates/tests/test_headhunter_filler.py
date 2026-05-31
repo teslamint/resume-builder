@@ -13,6 +13,7 @@ from headhunter_filler import (
     _fill_cover_letter_inject,
     _clear_between_anchors,
 )
+from resume_builder import calculate_tenure
 
 
 def _make_doc(texts: list[str]) -> Document:
@@ -108,6 +109,12 @@ class TestFillCoverLetterInject:
 
 
 class TestDocxHelpers:
+    def test_helpers_are_shared_from_docx_helpers_module(self):
+        import headhunter_filler
+        from docx_helpers import set_plain as shared_set_plain
+
+        assert headhunter_filler.set_plain is shared_set_plain
+
     def test_set_plain_replaces_text(self):
         doc = _make_doc(["original"])
         p = doc.paragraphs[0]
@@ -121,3 +128,46 @@ class TestDocxHelpers:
         insert_paragraph_after(ref, "second", font_name="맑은 고딕")
         texts = [p.text for p in doc.paragraphs]
         assert texts[1] == "second"
+
+
+class TestSharedResumeDataHelpers:
+    def test_calculate_tenure_supports_headhunter_duration_only_format(self):
+        result = calculate_tenure(
+            "2020.09 ~ 2022.09",
+            separator="~",
+            include_period=False,
+            error_value="",
+        )
+        assert result == "2년 1개월"
+
+    def test_calculate_tenure_preserves_resume_builder_default_format(self):
+        result = calculate_tenure("2020.09 - 2022.09")
+        assert result == "2020.09 - 2022.09 (2년 1개월)"
+
+    def test_resume_builder_owns_contact_and_education_parsers(self, tmp_path):
+        from resume_builder import _parse_contact, _parse_education
+
+        contact_path = tmp_path / "contact.md"
+        contact_path.write_text(
+            "# Contact\n\n- Name: 홍길동\n- Email: test@example.com\n- GitHub: github.com/test\n",
+            encoding="utf-8",
+        )
+        education_path = tmp_path / "education.md"
+        education_path.write_text(
+            "## Seoul Univ\n\n- Period: 2010.03 - 2014.02\n- Major: Computer Science\n- Status: 졸업\n",
+            encoding="utf-8",
+        )
+
+        assert _parse_contact(contact_path) == {
+            "name": "홍길동",
+            "email": "test@example.com",
+            "github": "github.com/test",
+        }
+        assert _parse_education(education_path) == [
+            {
+                "school": "Seoul Univ",
+                "period": "2010.03 - 2014.02",
+                "major": "Computer Science",
+                "status": "졸업",
+            }
+        ]

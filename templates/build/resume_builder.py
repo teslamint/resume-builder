@@ -336,29 +336,88 @@ def extract_company_info_full(content):
     return info
 
 
-def calculate_tenure(period_str):
-    """Calculate tenure from period string like '2023.10 - 현재' or '2020.09 - 2022.09'"""
-    parts = period_str.split(' - ')
+def _parse_contact(path: Path) -> dict:
+    data = {"name": "", "email": "", "github": ""}
+    if not path.exists():
+        return data
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("- Name:"):
+            data["name"] = line.split(":", 1)[1].strip()
+        elif line.startswith("- Email:"):
+            data["email"] = line.split(":", 1)[1].strip()
+        elif line.startswith("- GitHub:"):
+            data["github"] = line.split(":", 1)[1].strip()
+    return data
+
+
+def _parse_education(path: Path) -> list[dict]:
+    entries = []
+    if not path.exists():
+        return entries
+    current: dict | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            if current:
+                entries.append(current)
+            current = {"school": line[3:].strip(), "period": "", "major": "", "status": ""}
+        elif current and line.startswith("- Period:"):
+            current["period"] = line.split(":", 1)[1].strip()
+        elif current and line.startswith("- Major:"):
+            current["major"] = line.split(":", 1)[1].strip()
+        elif current and line.startswith("- Status:"):
+            current["status"] = line.split(":", 1)[1].strip()
+    if current:
+        entries.append(current)
+    return entries
+
+
+def _period_separator_text(separator: str) -> str:
+    stripped = separator.strip()
+    return f" {stripped} " if stripped in {"-", "~"} else separator
+
+
+def _split_period(period_str: str, separator: str) -> list[str]:
+    stripped = separator.strip()
+    if stripped == "-":
+        pattern = r"\s+-\s+"
+    else:
+        pattern = rf"\s*{re.escape(stripped)}\s*"
+    return re.split(pattern, period_str.strip(), maxsplit=1)
+
+
+def _parse_year_month(value: str, default_month: int) -> tuple[int, int]:
+    parts = re.split(r"[.-]", value)
+    year = int(parts[0])
+    month = int(parts[1]) if len(parts) > 1 else default_month
+    return year, month
+
+
+def calculate_tenure(
+    period_str,
+    *,
+    separator: str = "-",
+    include_period: bool = True,
+    error_value: str | None = None,
+):
+    """Calculate tenure from strings like '2023.10 - 현재' or '2020.09 ~ 2022.09'."""
+    fallback = period_str if error_value is None else error_value
+    parts = _split_period(period_str, separator)
     if len(parts) != 2:
-        return period_str
+        return fallback
 
     start_str = parts[0].strip()
     end_str = parts[1].strip()
 
     try:
-        start_parts = start_str.split('.')
-        start_year = int(start_parts[0])
-        start_month = int(start_parts[1]) if len(start_parts) > 1 else 1
+        start_year, start_month = _parse_year_month(start_str, 1)
 
-        if end_str == '현재':
+        if end_str in ('현재', '재직중'):
             end_date = datetime.now()
             end_year = end_date.year
             end_month = end_date.month
             end_label = '재직중'
         else:
-            end_parts = end_str.split('.')
-            end_year = int(end_parts[0])
-            end_month = int(end_parts[1]) if len(end_parts) > 1 else 12
+            end_year, end_month = _parse_year_month(end_str, 12)
             end_label = end_str
 
         total_months = (end_year - start_year) * 12 + (end_month - start_month) + 1
@@ -372,9 +431,11 @@ def calculate_tenure(period_str):
         else:
             tenure = f"{months}개월"
 
-        return f"{start_str} - {end_label} ({tenure})"
+        if not include_period:
+            return tenure
+        return f"{start_str}{_period_separator_text(separator)}{end_label} ({tenure})"
     except (ValueError, IndexError):
-        return period_str
+        return fallback
 
 
 def extract_section(content, section_name):
@@ -430,6 +491,75 @@ def extract_project_info(content):
             info['responsibilities'].append(line[2:].strip())
 
     return info
+
+
+def _normalize_period_separator(period: str, separator: str) -> str:
+    parts = re.split(r"\s+-\s+|\s*~\s*", period.strip(), maxsplit=1)
+    if len(parts) != 2:
+        return period
+    return f"{parts[0].strip()}{_period_separator_text(separator)}{parts[1].strip()}"
+
+
+def _load_company(company_dir: Path, personal_companies: dict) -> dict | None:
+    profile_path = company_dir / "profile.md"
+    if not profile_path.exists():
+        return None
+
+    raw = profile_path.read_text(encoding="utf-8")
+    content = filter_content(raw, "job")
+    info = extract_company_info_full(content)
+    if not info["name"]:
+        return None
+
+    period = _normalize_period_separator(info["period"], "~")
+    tenure = calculate_tenure(period, separator="~", include_period=False, error_value="")
+    dir_name = company_dir.name
+
+    hh = personal_companies.get(dir_name, {})
+
+    projects = []
+    proj_dir = company_dir / "projects"
+    if proj_dir.is_dir():
+        for pf in sorted(proj_dir.glob("*.md")):
+            if pf.name == "CLAUDE.md":
+                continue
+            proj_raw = pf.read_text(encoding="utf-8")
+            proj_content = filter_content(proj_raw, "job")
+            pi = extract_project_info(proj_content)
+            if pi["title"]:
+                projects.append(pi)
+
+    duties_bullets = []
+    achievement_bullets = []
+    for proj in projects:
+        duties_bullets.extend(proj.get("responsibilities", []))
+        achievement_bullets.extend(proj.get("achievements", []))
+
+    duties_summary_parts = []
+    for proj in projects:
+        ts = ", ".join(proj.get("tech_stack", [])[:3]) if proj.get("tech_stack") else ""
+        label = proj["title"]
+        if ts:
+            label += f" ({ts})"
+        duties_summary_parts.append(label)
+    duties_summary = " / ".join(duties_summary_parts)
+
+    return {
+        "dir_name": dir_name,
+        "name": info["name"],
+        "period": period,
+        "tenure": tenure,
+        "department": hh.get("department", ""),
+        "role": info.get("role", ""),
+        "employment": info.get("employment", "정규직"),
+        "intro": hh.get("intro", []),
+        "tech_stack_summary": hh.get("tech_stack_summary", ""),
+        "duties_summary": duties_summary,
+        "duties_bullets": duties_bullets,
+        "achievement_bullets": achievement_bullets,
+        "resign_reason": hh.get("resign_reason", ""),
+        "projects": projects,
+    }
 
 
 def build_wanted(variant):
