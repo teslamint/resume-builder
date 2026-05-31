@@ -4,17 +4,34 @@
 
 **Scope:** templates/jd/ + templates/build/ — 111 Python files, 26k LOC, 832 tests
 
+**Prior phases:** Phase 1 (ce_* extractor split) and Phase 2 (search_helpers extraction) are complete — see git history (`refactor(jd):` commits from 2026-04-09 onward). This document covers Phase 0 + Phase 3 onward.
+
 ---
 
 ## Phase 0: Quick Wins (standalone, no dependency)
 
-- [ ] Remove `sys.path.insert` from 5 test files (pyproject.toml `pythonpath` already handles this)
-  - `test_headhunter_filler.py`, `test_backfill_wanted_company_info.py`, `test_screening_validation.py`, `test_pre_screen.py`, `test_pre_screen_helpers.py`, `test_career_builder.py`, `test_quick_filter.py`
-- [ ] Resolve `ce_jd_files.py:normalize_company_name` vs `naming.py:normalize_company_name` — same logic → import from naming; different logic → rename to clarify intent
+- [ ] Remove `sys.path.insert` from 7 test files (pyproject.toml `pythonpath` covers `templates/build`, `templates/jd`, `example/interview`)
+  - `test_headhunter_filler.py` (→ templates/build ✓)
+  - `test_backfill_wanted_company_info.py` (→ templates/jd ✓)
+  - `test_screening_validation.py` (→ templates/jd ✓)
+  - `test_pre_screen.py` (ROOT = templates/jd ✓)
+  - `test_pre_screen_helpers.py` (ROOT = templates/jd ✓)
+  - `test_career_builder.py` (→ templates/build ✓)
+  - `test_quick_filter.py` (→ templates/jd ✓)
+  - Verified: each insert target resolves to a directory already in pyproject.toml pythonpath
+- [ ] Resolve `ce_jd_files.py:normalize_company_name` vs `naming.py:normalize_company_name` — same logic → import from naming; different logic → rename to clarify intent (related to 3E slugify consolidation)
 
-## Phase 3: Structural Refactoring (extends existing plan)
+## Phase 3: Structural Refactoring
 
-> Source of truth: `.claude/plans/piped-sprouting-swing.md` (original Phase 3 plan). Items below are additions.
+### Dependency order
+
+```
+3A (paths) ──► 3C (run_auto uses central paths)
+           ──► 3E (search/queue use central paths)
+Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same naming domain)
+3B (DOCX filler) is independent — separate work unit
+3D (prompt externalization) is independent
+```
 
 ### 3A: Path centralization + config/state contract
 
@@ -30,13 +47,15 @@
 > This is a `templates/build/` concern — do NOT mix with JD pipeline changes in the same commits/PRs.
 
 - [ ] Extract DOCX helpers → `templates/build/docx_helpers.py` (~120 LOC: clear_runs, add_run, insert_paragraph_after, set_plain, delete_paragraph, fill_table_cell, etc.)
-- [ ] Extract data loading → reuse from `resume_builder.py` (one source of truth for `calculate_tenure`, company/project parsing)
-  - Remove duplicate `_calc_tenure_str`, `_parse_contact`, `_parse_education`, `_load_company`
+- [ ] Reconcile `_calc_tenure_str` with `resume_builder.calculate_tenure` into a single implementation
+  - They differ in: period separator handling (`~` vs `-`), "재직중" support, return format on error
+  - Must verify both caller sites (headhunter fill + resume build) still produce correct output after unification
+- [ ] Extract remaining data loading (`_parse_contact`, `_parse_education`, `_load_company`) → reuse from or merge into `resume_builder.py`
 - [ ] Remaining headhunter_filler.py: template analysis + fill logic only
 
 ### 3C: run_auto further decomposition
 
-> **Precondition:** Restore default-value regression (verify current characterization tests pass with existing defaults before touching dispatch logic).
+> **Precondition:** Verify `DEFAULT_MIN_COMPLETENESS=70.0` regression — run with `min_completeness` unset and confirm incomplete company info (< 70%) does NOT pass through to screening. Add characterization test if missing.
 
 - [ ] Verify characterization tests cover current default behavior (add if missing)
 - [ ] Extract each `--*-only` mode into dedicated function
@@ -51,10 +70,16 @@
 
 ### 3E: Search and queue contract cleanup
 
+> Also: verify TheVC round parser boundary cases (nav-tab false positives) as a pre-existing regression gate before modifying search modules.
+
 - [ ] `filter_and_dedup` — clarify ownership: search_helpers vs caller; document dedup semantics (by ID? by company+title?)
+  - **Done when:** docstring specifies dedup key + test asserts dedup behavior with duplicate inputs
 - [ ] GroupBy experience filter — align with Wanted/Remember filter logic or document why different
+  - **Done when:** either unified filter function exists with platform-specific config, OR difference documented in code comment with rationale
 - [ ] queue/worker contract — define queue item lifecycle (pending → processing → done/error), make state transitions explicit
+  - **Done when:** state transitions are typed (enum or literal union) + test covers each transition + invalid transitions raise
 - [ ] Consolidate remaining local `slugify()` wrappers in `check_companies.py`, `remember_batch_extract.py`, `wanted_extract.py` → use `naming.slugify_company` directly
+  - **Done when:** grep finds zero local `def slugify` outside `naming.py` + all existing tests still pass
 
 ## Phase 4: Screening Test Hardening
 
