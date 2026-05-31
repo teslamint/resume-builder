@@ -103,6 +103,21 @@ def search_slug(company_name: str, context) -> str | None:
     return None
 
 
+def parse_round_from_text(body_text: str) -> str | None:
+    """Extract investment round label from body text, ignoring page navigation."""
+    m = re.search(
+        r"(?:현재\s*라운드|최근\s*(?:투자|라운드)|투자\s*단계|라운드)\s*[:\s]*(Seed|Pre-A|Pre-B|Series\s*[A-Z]\+?|Pre\s*IPO|IPO|M&A)",
+        body_text,
+        re.IGNORECASE,
+    )
+    if not m:
+        m = re.search(
+            r"(Series\s*[A-Z]\+?|Pre\s*IPO)\s",
+            body_text,
+        )
+    return m.group(1).strip() if m else None
+
+
 def extract_thevc(company_name: str, context) -> PlatformData | None:
     """Extract investment info from TheVC SPA via Playwright."""
     slug = search_slug(company_name, context)
@@ -140,13 +155,9 @@ def extract_thevc(company_name: str, context) -> PlatformData | None:
 
         body_text = page.inner_text("body")
 
-        round_match = re.search(
-            r"(Seed|Pre-A|Pre-B|Series\s*[A-Z]\+?|IPO|M&A)",
-            body_text,
-            re.IGNORECASE,
-        )
-        if round_match:
-            data.investment_round = round_match.group(1).strip()
+        parsed_round = parse_round_from_text(body_text)
+        if parsed_round:
+            data.investment_round = parsed_round
 
         total_match = re.search(r"(?:누적|총\s*투자[금액]?)\s*([\d,]+(?:\.\d+)?)\s*억", body_text)
         if total_match:
