@@ -8,9 +8,9 @@
 
 ---
 
-## Phase 0: Quick Wins (standalone, no dependency)
+## Phase 0: Quick Wins (standalone, no dependency) ✅
 
-- [ ] Remove `sys.path.insert` from 7 test files (pyproject.toml `pythonpath` covers `templates/build`, `templates/jd`, `example/interview`)
+- [x] Remove `sys.path.insert` from 7 test files (pyproject.toml `pythonpath` covers `templates/build`, `templates/jd`, `example/interview`)
   - `test_headhunter_filler.py` (→ templates/build ✓)
   - `test_backfill_wanted_company_info.py` (→ templates/jd ✓)
   - `test_screening_validation.py` (→ templates/jd ✓)
@@ -19,7 +19,7 @@
   - `test_career_builder.py` (→ templates/build ✓)
   - `test_quick_filter.py` (→ templates/jd ✓)
   - Verified: each insert target resolves to a directory already in pyproject.toml pythonpath
-- [ ] Resolve `ce_jd_files.py:normalize_company_name` vs `naming.py:normalize_company_name` — same logic → import from naming; different logic → rename to clarify intent (related to 3E slugify consolidation)
+- [x] Resolve `ce_jd_files.py:normalize_company_name` vs `naming.py:normalize_company_name` — different logic → renamed to `normalize_company_name_narrow` to clarify intent
 
 ## Phase 3: Structural Refactoring
 
@@ -33,13 +33,12 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 3D (prompt externalization) is independent
 ```
 
-### 3A: Path centralization + config/state contract
+### 3A: Path centralization + config/state contract ✅
 
-- [ ] Create `templates/jd/paths.py` with project path constants:
-  - `REPO_ROOT`, `PRIVATE_DIR`, `SCREENING_DIR`, `SUMMARY_PATH`, `COMPANY_INFO_DIR`, `JOB_POSTINGS_DIR`, `CONFIG_PATH` (search_config.yaml)
-- [ ] Replace 8+ independent `SCREENING_DIR` definitions across audit_*.py, append_reclass_summary.py
-- [ ] Replace 4 independent `CONFIG_PATH` definitions (search.py, search_quick.py, quick_filter.py, worker.py)
-- [ ] Consolidate `search_helpers._read_search_config` to use shared `CONFIG_PATH`
+- [x] Added `SUMMARY_PATH` and `CONFIG_PATH` to existing `constants.py` (no new paths.py — constants.py already had BASE_DIR, PRIVATE_DIR, etc.)
+- [x] Replace 8+ independent `SCREENING_DIR` definitions across audit_*.py, freshness_check.py
+- [x] Replace 4 independent `CONFIG_PATH` definitions (search.py, search_quick.py, quick_filter.py, worker.py)
+- [x] `search_helpers._read_search_config` callers already pass CONFIG_PATH — verified
 - [ ] Document config/state file contract: which files are inputs (search_config.yaml, screening rules), which are derived state (run state JSON, SUMMARY.md), and who owns writes
 
 ### 3B: headhunter_filler.py decomposition (separate work unit from JD refactoring)
@@ -55,18 +54,18 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 
 ### 3C: run_auto further decomposition
 
-> **Precondition:** Verify `DEFAULT_MIN_COMPLETENESS=70.0` regression — run with `min_completeness` unset and confirm incomplete company info (< 70%) does NOT pass through to screening. Add characterization test if missing.
+> **Precondition:** ✅ `DEFAULT_MIN_COMPLETENESS=70.0` regression fixed (was accidentally set to 0.0 in a4ed43d). Characterization test added.
 
-- [ ] Verify characterization tests cover current default behavior (add if missing)
+- [x] Verify characterization tests cover current default behavior (added test_run_auto_blocks_incomplete_company_info_by_default)
 - [ ] Extract each `--*-only` mode into dedicated function
 - [ ] `run_auto` becomes a thin dispatcher: parse mode → call handler
 - [ ] Target: run_auto < 80 lines
 
-### 3D: Prompt externalization
+### 3D: Prompt externalization ✅
 
-- [ ] Move `_build_prompt` template → `private/prompts/screening_system.txt` (or .md)
-- [ ] `auto_screening.py` loads and formats at runtime
-- [ ] Screening rules remain in existing separate file (already externalized)
+- [x] Move `_build_prompt` template → `templates/jd/prompts/screening_system.txt`
+- [x] `auto_screening.py` loads and formats at runtime (with FileNotFoundError on missing template)
+- [x] Screening rules remain in existing separate file (already externalized)
 
 ### 3E: Search and queue contract cleanup
 
@@ -78,8 +77,8 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
   - **Done when:** either unified filter function exists with platform-specific config, OR difference documented in code comment with rationale
 - [ ] queue/worker contract — define queue item lifecycle (pending → processing → done/error), make state transitions explicit
   - **Done when:** state transitions are typed (enum or literal union) + test covers each transition + invalid transitions raise
-- [ ] Consolidate remaining local `slugify()` wrappers in `check_companies.py`, `remember_batch_extract.py`, `wanted_extract.py` → use `naming.slugify_company` directly
-  - **Done when:** grep finds zero local `def slugify` outside `naming.py` + all existing tests still pass
+- [x] Consolidate remaining local `slugify()` wrappers in `check_companies.py`, `remember_batch_extract.py`, `wanted_extract.py` → use `naming.slugify_company` directly
+  - ✅ grep finds zero local `def slugify` outside `naming.py` + 817 tests pass
 
 ## Phase 4: Screening Test Hardening
 
