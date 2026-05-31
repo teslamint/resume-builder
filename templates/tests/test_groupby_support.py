@@ -136,6 +136,36 @@ def test_search_wanted_http_fallback_does_not_import_playwright_when_disabled():
     assert "wanted" not in search._PLAYWRIGHT_DISABLED
 
 
+def test_codex_seatbelt_sandbox_uses_http_fallback_without_playwright():
+    import search
+
+    search._PLAYWRIGHT_DISABLED.clear()
+    config = {
+        "platforms": {
+            "wanted": {"base_url": "https://www.wanted.co.kr"},
+        },
+        "execution": {},
+    }
+    outcome = ScrapeOutcome(results=[])
+
+    with patch.dict(
+        "os.environ",
+        {
+            "CODEX_SANDBOX": "seatbelt",
+            "CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop",
+        },
+    ), \
+         patch("search._load_sync_playwright") as load_playwright, \
+         patch("search.get_rejected_companies", return_value=set()), \
+         patch("search.search_wanted_api", return_value=outcome) as api_fallback:
+        result = search.search_wanted("backend", config, search.SearchState())
+
+    assert result.total_found == 0
+    load_playwright.assert_not_called()
+    api_fallback.assert_called_once()
+    assert "wanted" not in search._PLAYWRIGHT_DISABLED
+
+
 def test_search_wanted_falls_back_to_api_when_playwright_import_missing():
     import search
 
