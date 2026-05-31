@@ -897,11 +897,20 @@ def _fill_salary_inject(doc, target_config, resume, rules, font):
 
 def _fill_cover_letter_inject(doc, target_config, rules, font):
     cover_pat = _p(rules, "cover_letter", r"자기\s*소개서")
-    end_pat = _p(rules, "cover_letter_end", r"개인정보.*동의|동의함|$")
+    end_pat = _p(rules, "cover_letter_end",
+                 r"개인정보.*동의|동의함|20\d{2}년\s*\d{1,2}월\s*\d{1,2}일|지원자\s*[:：]")
 
     header, h_idx, end_p, _ = _clear_between_anchors(doc, cover_pat, end_pat)
     if header is None:
         return
+
+    if end_p is None:
+        elem = header._element.getnext()
+        while elem is not None:
+            next_e = elem.getnext()
+            if elem.tag == qn("w:p"):
+                elem.getparent().remove(elem)
+            elem = next_e
 
     set_plain(header, "자기소개서", bold=True, size=SECTION_SIZE, font_name=font)
 
