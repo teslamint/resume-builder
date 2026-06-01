@@ -110,7 +110,13 @@ def move_to_folder(file_path: Path, target_folder: str, dry_run: bool = False) -
 
 
 def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType]:
-    """Extract canonical verdict from screening analysis content."""
+    """Extract canonical verdict from screening analysis content.
+
+    When multiple verdict blocks exist (e.g. re-screened files), returns
+    the most conservative (worst-case) verdict for routing safety.
+    """
+    candidates: List[VerdictType] = []
+
     single_line_patterns = [
         r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$",
         r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$",
@@ -121,22 +127,26 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
         r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$",
     ]
     for pattern in single_line_patterns:
-        match = re.search(pattern, screening_content, re.IGNORECASE | re.MULTILINE)
-        if match:
-            verdict = normalize_verdict(match.group(1))
-            if verdict:
-                return verdict
+        for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):
+            v = normalize_verdict(match.group(1))
+            if v:
+                candidates.append(v)
+
+    if candidates:
+        return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
 
     section_patterns = [
         r"(?is)^##\s*최종\s*판정\s*\n(.*?)(?=^##\s|\Z)",
         r"(?is)^##\s*판정\s*\n(.*?)(?=^##\s|\Z)",
     ]
     for pattern in section_patterns:
-        section_match = re.search(pattern, screening_content, re.MULTILINE)
-        if section_match:
-            verdict = _extract_verdict_from_section(section_match.group(1))
-            if verdict:
-                return verdict
+        for section_match in re.finditer(pattern, screening_content, re.MULTILINE):
+            v = _extract_verdict_from_section(section_match.group(1))
+            if v:
+                candidates.append(v)
+
+    if candidates:
+        return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
 
     heading_candidates = re.findall(r"^\s*#{2,6}\s*(.+?)\s*$", screening_content, re.MULTILINE)
     return _pick_worst_case_verdict(heading_candidates)
