@@ -94,21 +94,26 @@ def get_platform_from_url(url: str) -> Optional[str]:
     return None
 
 
-_BASE_SEARCH_DIRS = [
+_ACTIVE_SEARCH_DIRS = [
     JOB_POSTINGS_DIR,
     JOB_POSTINGS_DIR / "pass",
     JOB_POSTINGS_DIR / "conditional",
     JOB_POSTINGS_DIR / "conditional" / "high",
     JOB_POSTINGS_DIR / "conditional" / "hold",
-    # Retired active buckets; keep lookup-only until historical files migrate.
-    JOB_POSTINGS_DIR / "conditional" / "middle",
-    JOB_POSTINGS_DIR / "conditional" / "low",
     JOB_POSTINGS_DIR / "applied",
     JOB_POSTINGS_DIR / "rejected",
     JOB_POSTINGS_DIR / "high_priority",
     JOB_POSTINGS_DIR / "on_going",
     JOB_POSTINGS_DIR / "closed",
 ]
+
+# Retired active buckets; keep lookup-only until historical files migrate.
+_LOOKUP_ONLY_SEARCH_DIRS = [
+    JOB_POSTINGS_DIR / "conditional" / "middle",
+    JOB_POSTINGS_DIR / "conditional" / "low",
+]
+
+_BASE_SEARCH_DIRS = _ACTIVE_SEARCH_DIRS + _LOOKUP_ONLY_SEARCH_DIRS
 
 
 def find_existing_jd(job_id: str, *, include_unprocessed: bool = False) -> Optional[Path]:

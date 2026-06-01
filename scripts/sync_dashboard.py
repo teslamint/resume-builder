@@ -444,8 +444,9 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
     """Merge new table rows into existing section content.
 
     Returns (merged_table, kept_count, added_count, updated_count).
-    Existing rows are preserved (manual edits kept). Only new IDs are appended.
-    Unknown company/position cells in existing rows are selectively updated.
+    Rows absent from the current generated table are pruned so retired buckets
+    leave the dashboard surface. Existing matching rows keep manual edits, and
+    Unknown company/position cells are selectively updated.
     """
     existing_entries = parse_dashboard_table(existing_content)
     new_entries = parse_dashboard_table(new_table)
@@ -494,12 +495,13 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
         id_match = re.search(r'\[(\d+)\]', line)
         if id_match:
             jid = id_match.group(1)
-            if jid in new_entries_by_id:
-                new_line = update_unknown_cells(line, new_entries_by_id[jid])
-                if new_line != line:
-                    updated_count += 1
-                updated_body_lines.append(new_line)
+            if jid not in new_entries_by_id:
                 continue
+            new_line = update_unknown_cells(line, new_entries_by_id[jid])
+            if new_line != line:
+                updated_count += 1
+            updated_body_lines.append(new_line)
+            continue
         updated_body_lines.append(line)
 
     new_table_lines = new_table.strip().split("\n")

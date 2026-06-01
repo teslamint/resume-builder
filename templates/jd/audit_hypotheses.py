@@ -95,17 +95,24 @@ def _pct(numerator: int, denominator: int) -> float:
 def load_file_locations() -> dict[str, str]:
     """Map filename → folder label."""
     loc = {}
-    folder_maps = (JOB_POSTING_DIRS, LOOKUP_ONLY_JOB_POSTING_DIRS)
-    for folder_map in folder_maps:
-        for label, paths in folder_map.items():
-            if isinstance(paths, Path):
-                paths = (paths,)
-            for path in paths:
-                if not path.exists():
-                    continue
-                for f in path.iterdir():
-                    if f.suffix == ".md":
-                        loc.setdefault(f.name, label)
+    for label, paths in JOB_POSTING_DIRS.items():
+        if isinstance(paths, Path):
+            paths = (paths,)
+        for path in paths:
+            if not path.exists():
+                continue
+            for f in path.iterdir():
+                if f.suffix == ".md":
+                    loc[f.name] = label
+    for label, paths in LOOKUP_ONLY_JOB_POSTING_DIRS.items():
+        if isinstance(paths, Path):
+            paths = (paths,)
+        for path in paths:
+            if not path.exists():
+                continue
+            for f in path.iterdir():
+                if f.suffix == ".md":
+                    loc.setdefault(f.name, label)
     return loc
 
 
