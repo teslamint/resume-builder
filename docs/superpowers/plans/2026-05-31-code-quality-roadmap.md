@@ -94,13 +94,20 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 
 ## Phase 5: Observability (low priority, no rush)
 
-- [ ] Add `logger = logging.getLogger(__name__)` to auto.py, pipeline.py, search.py
-- [ ] Convert error-path `print()` → `logger.warning/error` (keep progress prints as-is)
-- [ ] Add `--verbose` flag → DEBUG level
-- [ ] Narrow `except Exception` in 15+ locations:
+- [x] Add `logger = logging.getLogger(__name__)` to auto.py, pipeline.py, search.py
+  - Also added to: notifications.py, company_validator.py, wanted_extract.py, remember_batch_extract.py, rescreen_truncated.py
+  - Standardized `_logger` → `logger` in search.py for consistency
+- [x] Convert error-path `print()` → `logger.warning/error` (keep progress prints as-is)
+  - 12 files, 75 insertions / 51 deletions across error paths
+  - Guard-clause warnings (e.g. notifications "channel not configured") also converted
+- [x] Add `--verbose` flag → DEBUG level
+  - `--verbose` / `-v` in auto.py argparse; `logging.basicConfig()` with WARNING default, DEBUG when verbose
+- [x] Narrow `except Exception` in 15+ locations:
   - At minimum: add `logger.warning(f"...: {e}")` before swallowing
   - Where possible: catch specific exceptions (OSError, TimeoutError, json.JSONDecodeError)
+  - 22 broad handlers addressed; defensive fallbacks (state loading) kept broad where narrowing proved unsafe
 - [ ] Consider `pyright --basic` in CI (type annotations already at 70-90% coverage)
+  - Deferred: evaluation-only item, not implementation
 
 ---
 
