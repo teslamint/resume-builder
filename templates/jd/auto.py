@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import logging
 import os
 import tempfile
 from dataclasses import asdict, dataclass
@@ -57,6 +58,7 @@ BASE_DIR = Path(__file__).parent.parent.parent
 RESULTS_DIR = BASE_DIR / "private" / "job_postings" / "auto_results"
 STATE_DIR = RESULTS_DIR
 DEFAULT_MIN_COMPLETENESS = 70.0
+logger = logging.getLogger(__name__)
 
 
 def _state_path(run_id: str) -> Path:
@@ -81,7 +83,8 @@ def _save_state(run_id: str, items: dict) -> None:
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to save state for %s: %s", run_id, exc)
         try:
             os.unlink(tmp_path)
         except OSError:
@@ -325,6 +328,7 @@ def _build_results_from_enrichment(
                 )
             )
         except Exception as exc:
+            logger.error("Company enrichment failed for %s: %s", company, exc)
             summary.failed += 1
             results.append(
                 AutoTaskResult(
@@ -735,6 +739,7 @@ def _process_urls(
             )
 
         except Exception as exc:
+            logger.error("Pipeline failed for %s: %s", job_id, exc)
             row.status = "failed"
             if not row.error_stage:
                 row.error_stage = "pipeline"
@@ -743,7 +748,6 @@ def _process_urls(
             state_items[job_id].update(status="failed", error=str(exc))
             _save_state(run_id, state_items)
             results.append(row)
-            print(f"   ❌ 실패: {exc}")
             if not continue_on_error:
                 break
 
@@ -887,8 +891,15 @@ def main() -> None:
     parser.add_argument(
         "--resume", action="store_true", help="마지막 실행에서 미완료 항목만 재처리"
     )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="상세 로그 출력 (DEBUG level)"
+    )
 
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(name)s %(levelname)s: %(message)s",
+    )
 
     if args.notify_test:
         config = load_config()

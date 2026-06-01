@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Remember 채용공고 일괄 추출 스크립트"""
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -14,6 +15,8 @@ try:
     from .naming import slugify_company as _slugify
 except ImportError:
     from naming import slugify_company as _slugify
+
+logger = logging.getLogger(__name__)
 
 def _fetch_with_urllib(url):
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -176,7 +179,7 @@ def main():
         try:
             d = fetch_posting(posting_id)
             if not d:
-                print(f"ERR: {posting_id} - no data")
+                logger.error("ERR: %s - no data", posting_id)
                 results.append({'id': posting_id, 'status': 'error', 'reason': 'no_data'})
                 continue
 
@@ -211,8 +214,8 @@ def main():
             print(f"OK: {posting_id} -> {filename}")
             time.sleep(0.5)
 
-        except Exception as e:
-            print(f"ERR: {posting_id} - {e}")
+        except (OSError, json.JSONDecodeError, KeyError, RuntimeError, subprocess.SubprocessError, TypeError, ValueError) as e:
+            logger.error("ERR: %s - %s", posting_id, e)
             results.append({'id': posting_id, 'status': 'error', 'reason': str(e)})
 
     # Save results as JSON for further processing

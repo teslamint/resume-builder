@@ -71,7 +71,7 @@ except ImportError:
         search_remember_api,
     )
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # Paths
 STATE_PATH = JOB_POSTINGS_DIR / ".search_state.json"
@@ -137,7 +137,7 @@ def load_config() -> dict:
     """Load search configuration."""
     result = _read_search_config(CONFIG_PATH)
     if result is None:
-        print(f"⚠️  Config not found: {CONFIG_PATH}")
+        logger.warning("Config not found: %s", CONFIG_PATH)
         return {}
     return result
 
@@ -151,8 +151,8 @@ def load_state() -> SearchState:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
             return SearchState.from_dict(data)
-    except Exception as e:
-        print(f"⚠️  Error loading state: {e}")
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as e:
+        logger.warning("Error loading state: %s", e)
         return SearchState()
 
 
@@ -189,7 +189,7 @@ def _playwright_allowed(platform: str, config: dict) -> bool:
 def _load_sync_playwright():
     try:
         from .browser_utils import sync_playwright
-    except Exception:
+    except ImportError:
         from browser_utils import sync_playwright
     return sync_playwright
 
@@ -239,10 +239,7 @@ def check_company_risks(company_name: str) -> Optional[dict]:
                     "incomplete": result.completeness_score < 70,
                 }
             except Exception as exc:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "check_company_risks failed for %s: %s", company_lower, exc
-                )
+                logger.warning("check_company_risks failed for %s: %s", company_lower, exc)
                 return None
     
     return None
@@ -294,7 +291,7 @@ def _outcome_to_search_result(
             )
             result.new_postings.append(posting)
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        logger.error("Search result filtering failed for %s: %s", query, e)
 
     return result
 
@@ -326,7 +323,7 @@ def _scrape_with_playwright_or_fallback(
                         browser.close()
         except Exception as e:
             _mark_playwright_unavailable(platform, e)
-            print(f"   ⚠️  Playwright 실행 실패로 API 폴백 사용: {e}")
+            logger.warning("Playwright failed for %s; using API fallback: %s", platform, e)
             return api_fallback_fn()
     else:
         print("   ℹ️  Playwright 비활성화 상태, API 폴백 사용")
@@ -402,7 +399,7 @@ def _prefetch_groupby(config: dict, state: "SearchState") -> "SearchResult":
     try:
         items = groupby_fetch_positions(position_types)
     except GroupByAPIError as e:
-        print(f"   ⚠️  GroupBy API 오류: {e}")
+        logger.warning("GroupBy API error: %s", e)
         return SearchResult(query="(groupby)", total_found=0)
 
     outcome = convert_groupby_to_raw_results(items, base_url)

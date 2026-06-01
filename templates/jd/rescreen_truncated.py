@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sys
 from pathlib import Path
@@ -22,6 +23,8 @@ from constants import COMPANY_INFO_DIR, JOB_POSTINGS_DIR, SCREENING_DIR
 from jd_content import load_company_info, extract_metadata_from_jd
 from path_utils import find_existing_jd
 from pipeline import classify_file
+
+logger = logging.getLogger(__name__)
 
 TARGET_IDS = [
     "227287", "234830", "252452", "291651", "294971", "295390",
@@ -89,7 +92,7 @@ def main() -> None:
             )
         except Exception as exc:
             results.append({"id": job_id, "status": "ERROR", "reason": str(exc)})
-            print(f"  -> ERROR: {exc}")
+            logger.error("Re-screening failed for %s: %s", job_id, exc)
             continue
 
         new_lines = len(result.raw_output.splitlines())

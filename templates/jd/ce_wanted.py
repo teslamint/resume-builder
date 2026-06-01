@@ -87,7 +87,7 @@ def extract_wanted(company_name: str, context) -> PlatformData | None:
     """Extract company info from Wanted company page via __NEXT_DATA__."""
     company_id = search_company_id(company_name, context)
     if not company_id:
-        print(f"   [wanted] 회사 검색 실패: {company_name}")
+        logger.warning("[wanted] 회사 검색 실패: %s", company_name)
         return None
 
     time.sleep(REQUEST_DELAY)
@@ -107,7 +107,7 @@ def extract_wanted(company_name: str, context) -> PlatformData | None:
 
     next_data = parse_next_data_company(html)
     if not next_data:
-        print(f"   [wanted] __NEXT_DATA__ 파싱 실패, 텍스트 fallback: {company_url}")
+        logger.warning("[wanted] __NEXT_DATA__ 파싱 실패, 텍스트 fallback: %s", company_url)
         extract_wanted_from_text(body_text, data)
         return data
 
@@ -129,7 +129,7 @@ def extract_wanted(company_name: str, context) -> PlatformData | None:
         company_summary = find_query_data(queries, "companySummary")
 
         if not company_info and not company_summary:
-            print(f"   [wanted] 회사 데이터 구조를 찾지 못함, 텍스트 fallback")
+            logger.warning("[wanted] 회사 데이터 구조를 찾지 못함, 텍스트 fallback")
             extract_wanted_from_text(body_text, data)
             return data
 
@@ -194,7 +194,7 @@ def extract_wanted(company_name: str, context) -> PlatformData | None:
 
         print(f"   [wanted] 추출 완료: {data.company_name} (id={company_id})")
     except Exception as e:
-        print(f"   [wanted] 데이터 파싱 오류: {e}")
+        logger.warning("[wanted] 데이터 파싱 오류: %s", e)
         extract_wanted_from_text(body_text, data)
 
     return data

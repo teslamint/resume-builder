@@ -49,8 +49,8 @@ def load_config() -> dict:
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
-    except Exception as e:
-        logger.debug(f"Failed to load config: {e}")
+    except (OSError, yaml.YAMLError) as e:
+        logger.warning("Failed to load config: %s", e)
         return {}
 
 
@@ -92,7 +92,7 @@ def extract_job_details(item: dict, context, config: dict) -> Optional[dict]:
             if desc_elem:
                 data["description"] = desc_elem.inner_text()[:MAX_DESCRIPTION_LENGTH]
         except Exception as e:
-            logger.debug(f"Failed to extract description: {e}")
+            logger.warning("Failed to extract description for %s: %s", item["job_id"], e)
 
         # Try to get requirements
         try:
@@ -100,19 +100,19 @@ def extract_job_details(item: dict, context, config: dict) -> Optional[dict]:
             if req_elem:
                 data["requirements"] = req_elem.inner_text()[:MAX_REQUIREMENTS_LENGTH]
         except Exception as e:
-            logger.debug(f"Failed to extract requirements: {e}")
+            logger.warning("Failed to extract requirements for %s: %s", item["job_id"], e)
 
         return data
 
     except Exception as e:
-        logger.debug(f"Job extraction failed for {item['job_id']}: {e}")
-        print(f"   ❌ 추출 실패: {e}")
+        logger.error("Job extraction failed for %s: %s", item["job_id"], e)
         return None
     finally:
         if page:
             try:
                 page.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to close page for %s: %s", item["job_id"], e)
                 pass
 
 
