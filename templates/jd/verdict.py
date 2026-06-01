@@ -65,7 +65,7 @@ def _extract_verdict_from_section(section: str) -> Optional[VerdictType]:
         line_stripped = line.strip()
         if not line_stripped:
             continue
-        heading_match = re.match(r"^#{2,6}\s*(.+)$", line_stripped)
+        heading_match = re.match(r"^#{1,6}\s*(.+)$", line_stripped)
         if heading_match:
             candidates.append(heading_match.group(1))
 
@@ -118,11 +118,10 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
     """
     candidates: List[VerdictType] = []
 
-    # Heading-style verdicts: only explicit 최종 판정 headings and table cells
+    # Heading-style verdicts: only explicit 최종 판정 headings on the same line
     heading_verdict_patterns = [
         r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$",
-        r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$",
-        r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
+        r"^\s*#{1,6}\s*최종\s*판정[ \t]+(.+?)\s*$",
         r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$",
     ]
     for pattern in heading_verdict_patterns:
