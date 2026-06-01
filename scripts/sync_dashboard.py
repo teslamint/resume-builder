@@ -512,9 +512,10 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
     new_entries = parse_dashboard_table(new_table)
 
     existing_ids = {e["job_id"] for e in existing_entries if e.get("job_id")}
-    existing_identities = {
+    existing_anonymous_identities = {
         identity
         for entry in existing_entries
+        if not entry.get("job_id")
         if (identity := dashboard_entry_identity(entry)) is not None
     }
     existing_raw_lines = set()
@@ -539,21 +540,7 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
             new_rows_by_id[jid] = line
         identity = dashboard_entry_identity(entry)
         if identity:
-            new_rows_by_identity[identity] = line
-
-    new_rows_to_add = []
-    for entry in new_entries:
-        job_id = entry.get("job_id")
-        if job_id and job_id in existing_ids:
-            continue
-        identity = dashboard_entry_identity(entry)
-        if identity and identity in existing_identities:
-            continue
-        matching_line = new_rows_by_id.get(job_id) if job_id else None
-        if matching_line is None and identity:
-            matching_line = new_rows_by_identity.get(identity)
-        if matching_line and matching_line.strip() not in existing_raw_lines:
-            new_rows_to_add.append(matching_line)
+            new_rows_by_identity.setdefault(identity, []).append(line)
 
     new_entries_by_id = {}
     new_entries_by_identity = {}
@@ -563,7 +550,42 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
             new_entries_by_id[jid] = entry
         identity = dashboard_entry_identity(entry)
         if identity:
-            new_entries_by_identity[identity] = entry
+            new_entries_by_identity.setdefault(identity, []).append(entry)
+
+    anonymous_match_by_identity = {}
+    matched_job_ids = set()
+    for entry in existing_entries:
+        if entry.get("job_id"):
+            continue
+        identity = dashboard_entry_identity(entry)
+        if identity is None or identity in anonymous_match_by_identity:
+            continue
+
+        for new_entry in new_entries_by_identity.get(identity, []):
+            jid = new_entry.get("job_id")
+            if jid and (jid in existing_ids or jid in matched_job_ids):
+                continue
+            anonymous_match_by_identity[identity] = new_entry
+            if jid:
+                matched_job_ids.add(jid)
+            break
+
+    new_rows_to_add = []
+    for entry in new_entries:
+        job_id = entry.get("job_id")
+        if job_id and job_id in existing_ids:
+            continue
+        if job_id and job_id in matched_job_ids:
+            continue
+        identity = dashboard_entry_identity(entry)
+        if not job_id and identity and identity in existing_anonymous_identities:
+            continue
+        matching_line = new_rows_by_id.get(job_id) if job_id else None
+        if matching_line is None and identity:
+            rows = new_rows_by_identity.get(identity, [])
+            matching_line = rows[0] if rows else None
+        if matching_line and matching_line.strip() not in existing_raw_lines:
+            new_rows_to_add.append(matching_line)
 
     existing_lines = existing_content.rstrip("\n").split("\n")
     table_header_lines = []
@@ -598,10 +620,10 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
             continue
 
         identity = dashboard_entry_identity(parsed_entries[0])
-        if identity is None or identity not in new_entries_by_identity:
+        if identity is None or identity not in anonymous_match_by_identity:
             continue
 
-        new_entry = new_entries_by_identity[identity]
+        new_entry = anonymous_match_by_identity[identity]
         new_line = line
         new_jid = new_entry.get("job_id")
         if new_jid:
