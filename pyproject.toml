@@ -14,6 +14,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pygments>=2.20.0",
+    "pyright>=1.1.409",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
 ]
@@ -21,3 +22,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["templates/tests"]
 pythonpath = ["templates/build", "templates/jd", "example/interview"]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+include = ["templates/jd", "templates/build"]
+extraPaths = ["templates/build", "templates/jd", "example/interview"]
