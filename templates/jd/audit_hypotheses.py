@@ -59,18 +59,22 @@ JOB_POSTING_DIRS = {
         JOB_POSTINGS_DIR / "conditional",
         JOB_POSTINGS_DIR / "conditional" / "hold",
     ),
-    "middle": JOB_POSTINGS_DIR / "conditional" / "middle",
-    "low": JOB_POSTINGS_DIR / "conditional" / "low",
     "applied": JOB_POSTINGS_DIR / "applied",
     "rejected": JOB_POSTINGS_DIR / "rejected",
     "unprocessed": JOB_POSTINGS_DIR / "unprocessed",
 }
 
+# Retired active verdict buckets. H3 should not count these as active verdict
+# outputs, but file-location lookup must still find historical postings there.
+LOOKUP_ONLY_JOB_POSTING_DIRS = {
+    "middle": JOB_POSTINGS_DIR / "conditional" / "middle",
+    "low": JOB_POSTINGS_DIR / "conditional" / "low",
+}
+
 # Folders whose membership is the direct output of the verdict pipeline.
 # H3 mismatch count is restricted to these so that status-managed folders
-# (applied/rejected/unprocessed) and unscored buckets (middle/low) do not
-# inflate the metric — those moves are driven by application status, not
-# by re-running screening.
+# (applied/rejected/unprocessed) do not inflate the metric — those moves are
+# driven by application status, not by re-running screening.
 H3_VERDICT_SCOPE = {"pass", "hold", "high"}
 
 # ---------- helpers ----------
@@ -100,6 +104,15 @@ def load_file_locations() -> dict[str, str]:
             for f in path.iterdir():
                 if f.suffix == ".md":
                     loc[f.name] = label
+    for label, paths in LOOKUP_ONLY_JOB_POSTING_DIRS.items():
+        if isinstance(paths, Path):
+            paths = (paths,)
+        for path in paths:
+            if not path.exists():
+                continue
+            for f in path.iterdir():
+                if f.suffix == ".md":
+                    loc.setdefault(f.name, label)
     return loc
 
 

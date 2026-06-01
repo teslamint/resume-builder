@@ -124,8 +124,6 @@ def test_load_file_locations_includes_all_tracked_posting_folders(tmp_path, monk
             tmp_path / "conditional",
             tmp_path / "conditional" / "hold",
         ),
-        "middle": tmp_path / "conditional" / "middle",
-        "low": tmp_path / "conditional" / "low",
         "rejected": tmp_path / "rejected",
     }
     for label, paths in folder_map.items():
@@ -144,9 +142,64 @@ def test_load_file_locations_includes_all_tracked_posting_folders(tmp_path, monk
 
     assert locations["123-hold-conditional-backend.md"] == "hold"
     assert locations["123-hold-hold-backend.md"] == "hold"
-    assert locations["123-middle-middle-backend.md"] == "middle"
-    assert locations["123-low-low-backend.md"] == "low"
     assert locations["123-rejected-rejected-backend.md"] == "rejected"
+
+
+def test_default_file_locations_exclude_retired_conditional_tier_buckets():
+    assert "middle" not in audit.JOB_POSTING_DIRS
+    assert "low" not in audit.JOB_POSTING_DIRS
+
+
+def test_load_file_locations_resolves_retired_conditional_tier_buckets_as_lookup_only(
+    tmp_path,
+    monkeypatch,
+):
+    active_map = {
+        "hold": tmp_path / "conditional" / "hold",
+    }
+    retired_map = {
+        "middle": tmp_path / "conditional" / "middle",
+        "low": tmp_path / "conditional" / "low",
+    }
+    for label, folder in {**active_map, **retired_map}.items():
+        folder.mkdir(parents=True)
+        (folder / f"123-{label}-backend.md").write_text("# JD\n", encoding="utf-8")
+
+    monkeypatch.setattr(audit, "JOB_POSTING_DIRS", active_map)
+    monkeypatch.setattr(audit, "LOOKUP_ONLY_JOB_POSTING_DIRS", retired_map)
+
+    locations = audit.load_file_locations()
+
+    assert locations["123-hold-backend.md"] == "hold"
+    assert locations["123-middle-backend.md"] == "middle"
+    assert locations["123-low-backend.md"] == "low"
+
+
+def test_load_file_locations_prefers_later_active_status_over_stale_verdict_copy(
+    tmp_path,
+    monkeypatch,
+):
+    filename = "123-acme-backend.md"
+    pass_dir = tmp_path / "pass"
+    applied_dir = tmp_path / "applied"
+    pass_dir.mkdir()
+    applied_dir.mkdir()
+    (pass_dir / filename).write_text("# Stale pass JD\n", encoding="utf-8")
+    (applied_dir / filename).write_text("# Current applied JD\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        audit,
+        "JOB_POSTING_DIRS",
+        {
+            "pass": pass_dir,
+            "applied": applied_dir,
+        },
+    )
+    monkeypatch.setattr(audit, "LOOKUP_ONLY_JOB_POSTING_DIRS", {})
+
+    locations = audit.load_file_locations()
+
+    assert locations[filename] == "applied"
 
 
 def test_pass_folder_cut_scope_uses_folder_ground_truth():

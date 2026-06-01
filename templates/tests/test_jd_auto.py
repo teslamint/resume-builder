@@ -799,6 +799,37 @@ class TestScreeningOnlyFindsUnprocessed(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_base_search_dirs_keep_retired_conditional_tier_buckets_for_dedup(self):
+        """Retired tier buckets are lookup-only paths for duplicate detection."""
+        import path_utils
+
+        search_dirs = {
+            path.relative_to(path_utils.JOB_POSTINGS_DIR).as_posix()
+            for path in path_utils._BASE_SEARCH_DIRS
+            if path != path_utils.JOB_POSTINGS_DIR
+        }
+
+        self.assertIn("conditional/middle", search_dirs)
+        self.assertIn("conditional/low", search_dirs)
+
+    def test_base_search_dirs_put_retired_conditional_tiers_after_active_statuses(self):
+        """Lookup-only retired buckets must not win over active status files."""
+        import path_utils
+
+        search_dirs = [
+            path.relative_to(path_utils.JOB_POSTINGS_DIR).as_posix()
+            for path in path_utils._BASE_SEARCH_DIRS
+            if path != path_utils.JOB_POSTINGS_DIR
+        ]
+
+        first_retired_index = min(
+            search_dirs.index("conditional/middle"),
+            search_dirs.index("conditional/low"),
+        )
+
+        for active_status in ("applied", "rejected", "high_priority", "on_going", "closed"):
+            self.assertLess(search_dirs.index(active_status), first_retired_index)
+
 
 class TestAutoJdPathAfterClassify(unittest.TestCase):
     """Verify that jd_path in result row reflects post-classification file location."""

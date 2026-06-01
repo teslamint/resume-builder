@@ -81,6 +81,22 @@ DIR_TO_STATUS = {
     "rejected": "서류 탈락",
 }
 
+ACTIVE_JOB_POSTING_SCAN_DIRS = [
+    "applied",
+    "conditional",
+    "conditional/high",
+    "conditional/hold",
+    "pass",
+    "rejected",
+]
+
+# Retired active buckets; keep lookup-only for Obsidian -> resume updates
+# until historical files migrate out of these folders.
+LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS = [
+    "conditional/middle",
+    "conditional/low",
+]
+
 
 def parse_frontmatter(content: str, file_path: Optional[Path] = None) -> tuple[dict, str]:
     """Parse YAML frontmatter from markdown."""
@@ -187,21 +203,13 @@ def extract_position_from_content(content: str) -> Optional[str]:
     return None
 
 
-def scan_job_postings() -> dict:
+def scan_job_postings(*, include_lookup_only: bool = False) -> dict:
     """Scan all job posting files and return structured data."""
     jobs = {}
-
-    # Include conditional subdirectories (high, hold, middle, low)
-    scan_dirs = [
-        "applied",
-        "conditional",
-        "conditional/high",
-        "conditional/hold",
-        "conditional/middle",
-        "conditional/low",
-        "pass",
-        "rejected",
-    ]
+    scan_dirs = list(ACTIVE_JOB_POSTING_SCAN_DIRS)
+    if include_lookup_only:
+        scan_dirs.extend(LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS)
+    lookup_only_dirs = set(LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS)
 
     for status_dir in scan_dirs:
         dir_path = JOB_POSTINGS / status_dir
@@ -219,8 +227,8 @@ def scan_job_postings() -> dict:
             
             # Use filename as unique key if no job_id
             key = job_id or file.stem
-            
-            jobs[key] = {
+
+            job = {
                 "file": file,
                 "filename": file.name,
                 "status_dir": status_dir,
@@ -231,8 +239,73 @@ def scan_job_postings() -> dict:
                 "position": position,
                 "reason": fm.get("reason", ""),
             }
+            if status_dir in lookup_only_dirs:
+                jobs.setdefault(key, job)
+            else:
+                jobs[key] = job
     
     return jobs
+
+
+def extract_job_id_from_dashboard_id_cell(id_cell: str) -> Optional[str]:
+    """Extract the numeric job ID from a dashboard ID/platform cell."""
+    id_match = re.search(r'\[(\d+)\]\([^)]+\)', id_cell)
+    if id_match:
+        return id_match.group(1)
+
+    id_match = re.match(r'^(\d+)', id_cell.strip())
+    if id_match:
+        return id_match.group(1)
+
+    return None
+
+
+def extract_dashboard_id_cell_from_row(line: str) -> Optional[str]:
+    """Extract the raw ID/platform cell from a dashboard table row."""
+    if not line.strip().startswith("|"):
+        return None
+
+    cells = [c.strip() for c in line.split("|")]
+    if cells and cells[0] == "":
+        cells = cells[1:]
+    if cells and cells[-1] == "":
+        cells = cells[:-1]
+    if not cells:
+        return None
+
+    first_cell = cells[0]
+    if first_cell.startswith("**") or first_cell.startswith("---") or first_cell == "-":
+        return None
+    return first_cell
+
+
+def extract_job_id_from_dashboard_row(line: str) -> Optional[str]:
+    """Extract job ID from a dashboard table row's first cell."""
+    id_cell = extract_dashboard_id_cell_from_row(line)
+    if id_cell is None:
+        return None
+
+    return extract_job_id_from_dashboard_id_cell(id_cell)
+
+
+def dashboard_entry_identity(entry: dict) -> Optional[tuple[str, str]]:
+    """Return a fallback dashboard identity for rows without stable job IDs."""
+    company = (entry.get("company") or "").strip()
+    position = (entry.get("position") or "").strip()
+    if not company or company in {"-", "Unknown"}:
+        return None
+    if not position or position in {"-", "Unknown"}:
+        return None
+    return (company.casefold(), position.casefold())
+
+
+def replace_dashboard_row_id_cell(raw_line: str, id_cell: str) -> str:
+    """Replace only the ID/platform cell of an existing dashboard table row."""
+    cells = raw_line.split("|")
+    if len(cells) < 3:
+        return raw_line
+    cells[1] = f" {id_cell} "
+    return "|".join(cells)
 
 
 def parse_dashboard_table(content: str) -> list[dict]:
@@ -278,10 +351,7 @@ def parse_dashboard_table(content: str) -> list[dict]:
             job_id = id_match.group(1)
             url = id_match.group(2)
         else:
-            # Try plain ID
-            id_match = re.match(r'^(\d+)', id_cell.strip())
-            if id_match:
-                job_id = id_match.group(1)
+            job_id = extract_job_id_from_dashboard_id_cell(id_cell)
         
         # Clean up company (remove markdown links, bold)
         company = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', company_cell)
@@ -359,6 +429,8 @@ def generate_dashboard_tables(jobs: dict) -> tuple[str, str]:
         
         if job_id and url:
             id_cell = f"[{job_id}]({url}) / {platform}"
+        elif job_id:
+            id_cell = f"{job_id} / {platform}"
         elif url:
             id_cell = f"[공고]({url}) / {platform}"
         else:
@@ -432,39 +504,88 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
     """Merge new table rows into existing section content.
 
     Returns (merged_table, kept_count, added_count, updated_count).
-    Existing rows are preserved (manual edits kept). Only new IDs are appended.
-    Unknown company/position cells in existing rows are selectively updated.
+    Rows absent from the current generated table are pruned so retired buckets
+    leave the dashboard surface. Existing matching rows keep manual edits, and
+    Unknown company/position cells are selectively updated.
     """
     existing_entries = parse_dashboard_table(existing_content)
     new_entries = parse_dashboard_table(new_table)
 
     existing_ids = {e["job_id"] for e in existing_entries if e.get("job_id")}
+    existing_anonymous_identities = {
+        identity
+        for entry in existing_entries
+        if not entry.get("job_id")
+        if (identity := dashboard_entry_identity(entry)) is not None
+    }
     existing_raw_lines = set()
     for line in existing_content.split("\n"):
         if line.strip().startswith("|") and not line.strip().startswith("| **") and not line.strip().startswith("| ---"):
             existing_raw_lines.add(line.strip())
+
+    new_rows_by_id = {}
+    new_rows_by_identity = {}
+    new_raw_lines = set()
+    for line in new_table.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("|") or stripped.startswith("| **") or stripped.startswith("| ---"):
+            continue
+        new_raw_lines.add(stripped)
+        parsed_entries = parse_dashboard_table(line)
+        if not parsed_entries:
+            continue
+        entry = parsed_entries[0]
+        jid = entry.get("job_id")
+        if jid:
+            new_rows_by_id[jid] = line
+        identity = dashboard_entry_identity(entry)
+        if identity:
+            new_rows_by_identity.setdefault(identity, []).append(line)
+
+    new_entries_by_id = {}
+    new_entries_by_identity = {}
+    for entry in new_entries:
+        jid = entry.get("job_id")
+        if jid:
+            new_entries_by_id[jid] = entry
+        identity = dashboard_entry_identity(entry)
+        if identity:
+            new_entries_by_identity.setdefault(identity, []).append(entry)
+
+    anonymous_match_by_identity = {}
+    matched_job_ids = set()
+    for entry in existing_entries:
+        if entry.get("job_id"):
+            continue
+        identity = dashboard_entry_identity(entry)
+        if identity is None or identity in anonymous_match_by_identity:
+            continue
+
+        for new_entry in new_entries_by_identity.get(identity, []):
+            jid = new_entry.get("job_id")
+            if jid and (jid in existing_ids or jid in matched_job_ids):
+                continue
+            anonymous_match_by_identity[identity] = new_entry
+            if jid:
+                matched_job_ids.add(jid)
+            break
 
     new_rows_to_add = []
     for entry in new_entries:
         job_id = entry.get("job_id")
         if job_id and job_id in existing_ids:
             continue
-        matching_line = None
-        for line in new_table.split("\n"):
-            if job_id and f"[{job_id}]" in line:
-                matching_line = line
-                break
-            elif not job_id and entry.get("company") and entry["company"] in line:
-                matching_line = line
-                break
+        if job_id and job_id in matched_job_ids:
+            continue
+        identity = dashboard_entry_identity(entry)
+        if not job_id and identity and identity in existing_anonymous_identities:
+            continue
+        matching_line = new_rows_by_id.get(job_id) if job_id else None
+        if matching_line is None and identity:
+            rows = new_rows_by_identity.get(identity, [])
+            matching_line = rows[0] if rows else None
         if matching_line and matching_line.strip() not in existing_raw_lines:
             new_rows_to_add.append(matching_line)
-
-    new_entries_by_id = {}
-    for entry in new_entries:
-        jid = entry.get("job_id")
-        if jid:
-            new_entries_by_id[jid] = entry
 
     existing_lines = existing_content.rstrip("\n").split("\n")
     table_header_lines = []
@@ -479,16 +600,42 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
     updated_body_lines = []
     updated_count = 0
     for line in table_body_lines:
-        id_match = re.search(r'\[(\d+)\]', line)
-        if id_match:
-            jid = id_match.group(1)
-            if jid in new_entries_by_id:
-                new_line = update_unknown_cells(line, new_entries_by_id[jid])
-                if new_line != line:
-                    updated_count += 1
-                updated_body_lines.append(new_line)
+        jid = extract_job_id_from_dashboard_row(line)
+        if jid:
+            if jid not in new_entries_by_id:
                 continue
-        updated_body_lines.append(line)
+            new_line = update_unknown_cells(line, new_entries_by_id[jid])
+            if new_line != line:
+                updated_count += 1
+            updated_body_lines.append(new_line)
+            continue
+        if line.strip() in new_raw_lines:
+            updated_body_lines.append(line)
+            continue
+
+        parsed_entries = parse_dashboard_table(line)
+        if not parsed_entries:
+            if not new_entries:
+                updated_body_lines.append(line)
+            continue
+
+        identity = dashboard_entry_identity(parsed_entries[0])
+        if identity is None or identity not in anonymous_match_by_identity:
+            continue
+
+        new_entry = anonymous_match_by_identity[identity]
+        new_line = line
+        new_jid = new_entry.get("job_id")
+        if new_jid:
+            new_row = new_rows_by_id.get(new_jid)
+            if new_row:
+                new_id_cell = extract_dashboard_id_cell_from_row(new_row)
+                if new_id_cell:
+                    new_line = replace_dashboard_row_id_cell(new_line, new_id_cell)
+        new_line = update_unknown_cells(new_line, new_entry)
+        if new_line != line:
+            updated_count += 1
+        updated_body_lines.append(new_line)
 
     new_table_lines = new_table.strip().split("\n")
     header_lines = [l for l in new_table_lines if l.strip().startswith("| **") or l.strip().startswith("| ---")]
@@ -600,7 +747,7 @@ def from_obsidian(dry_run: bool = False, dashboard_path: Optional[Path] = None):
     entries = parse_dashboard_table(content)
     print(f"   Found {len(entries)} entries in dashboard")
     
-    jobs = scan_job_postings()
+    jobs = scan_job_postings(include_lookup_only=True)
     
     # Deduplicate entries by job_id, keeping the last occurrence
     seen_ids = {}
