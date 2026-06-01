@@ -9,15 +9,17 @@ Extracts raw job listing data from search result pages or API responses. Does NO
 """
 from __future__ import annotations
 
-import logging
 import html
+import importlib
+import logging
 import re
+from contextlib import suppress
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Callable, Optional
 from urllib.parse import quote, urljoin
 
 try:
-    from .browser_utils import PlaywrightTimeoutError
     from .experience_filter import filter_experience
     from .http_client_base import http_text_request
     from .jd_content import is_rejected_company, parse_remember_experience
@@ -26,7 +28,6 @@ try:
     from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
     from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 except ImportError:
-    from browser_utils import PlaywrightTimeoutError
     from experience_filter import filter_experience
     from http_client_base import http_text_request
     from jd_content import is_rejected_company, parse_remember_experience
@@ -39,8 +40,22 @@ logger = logging.getLogger(__name__)
 KNOWN_PARSE_EXCEPTIONS = (AttributeError, KeyError, TypeError, ValueError)
 
 
+@lru_cache(maxsize=1)
+def _load_playwright_timeout_error() -> type[BaseException] | None:
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module(
+            "templates.jd.browser_utils"
+        ).PlaywrightTimeoutError
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module("browser_utils").PlaywrightTimeoutError
+    return None
+
+
 def _is_timeout_exception(error: Exception) -> bool:
-    if isinstance(error, (PlaywrightTimeoutError, TimeoutError)):
+    playwright_timeout_error = _load_playwright_timeout_error()
+    if playwright_timeout_error is not None and isinstance(error, playwright_timeout_error):
+        return True
+    if isinstance(error, TimeoutError):
         return True
     return str(error).strip().lower() == "timeout"
 
@@ -291,10 +306,6 @@ def _load_and_scrape_browser(page, search_url: str, config: SearchPageConfig, sc
             has_results.first.or_(no_results.first).wait_for(
                 state="attached", timeout=config.timeout_ms
             )
-        except (PlaywrightTimeoutError, TimeoutError) as e:
-            logger.debug("Timed out waiting for search results at %s: %s", search_url, e)
-            outcome.timed_out = True
-            return outcome
         except Exception as e:
             if _is_timeout_exception(e):
                 logger.debug("Timed out waiting for search results at %s: %s", search_url, e)
