@@ -59,7 +59,7 @@ jobs:
         run: python3 -m pytest tests/ -v
 
       - name: Validate schema
-        run: python3 templates/build/schema.py --validate-all --example
+        run: python -m templates.build.schema --validate-all --example
 
   build:
     runs-on: ubuntu-latest
