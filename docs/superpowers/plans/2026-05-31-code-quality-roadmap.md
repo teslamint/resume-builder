@@ -39,7 +39,8 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 - [x] Replace 8+ independent `SCREENING_DIR` definitions across audit_*.py, freshness_check.py
 - [x] Replace 4 independent `CONFIG_PATH` definitions (search.py, search_quick.py, quick_filter.py, worker.py)
 - [x] `search_helpers._read_search_config` callers already pass CONFIG_PATH — verified
-- [ ] Document config/state file contract: which files are inputs (search_config.yaml, screening rules), which are derived state (run state JSON, SUMMARY.md), and who owns writes
+- [x] Document config/state file contract: which files are inputs (search_config.yaml, screening rules), which are derived state (run state JSON, SUMMARY.md), and who owns writes
+  - See `docs/config-state-contract.md`
 
 ### 3B: headhunter_filler.py decomposition ✅
 
@@ -70,24 +71,26 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 
 > Also: verify TheVC round parser boundary cases (nav-tab false positives) as a pre-existing regression gate before modifying search modules.
 
-- [ ] `filter_and_dedup` — clarify ownership: search_helpers vs caller; document dedup semantics (by ID? by company+title?)
+- [x] `filter_and_dedup` — clarify ownership: search_helpers vs caller; document dedup semantics (by ID? by company+title?)
   - **Done when:** docstring specifies dedup key + test asserts dedup behavior with duplicate inputs
-- [ ] GroupBy experience filter — align with Wanted/Remember filter logic or document why different
+- [x] GroupBy experience filter — align with Wanted/Remember filter logic or document why different
   - **Done when:** either unified filter function exists with platform-specific config, OR difference documented in code comment with rationale
-- [ ] queue/worker contract — define queue item lifecycle (pending → processing → done/error), make state transitions explicit
+- [x] queue/worker contract — define queue item lifecycle (pending → processing → done/error), make state transitions explicit
   - **Done when:** state transitions are typed (enum or literal union) + test covers each transition + invalid transitions raise
 - [x] Consolidate remaining local `slugify()` wrappers in `check_companies.py`, `remember_batch_extract.py`, `wanted_extract.py` → use `naming.slugify_company` directly
   - ✅ grep finds zero local `def slugify` outside `naming.py` + 817 tests pass
 
 ## Phase 4: Screening Test Hardening
 
-- [ ] Inject `datetime.now()` dependency in `company_validator.py` (parameter or factory)
+- [x] Inject `datetime.now()` dependency in `company_validator.py` (parameter or factory)
   - `company_age = now_year - data.founded_year` (line 463)
-- [ ] Golden-file regression tests for `auto_screening.py`
+- [x] Golden-file regression tests for `auto_screening.py`
   - Fixed JD + rules → expected verdict structure
   - Mock LLM subprocess to return known output
 - [ ] Rule consistency tests: verify all 4 conditions + meta-rule 0.5 against sample corpus
+  - Deferred: requires private/ screening corpus as fixtures
 - [ ] Edge case coverage: polyglot rule, headhunter detection, closed-JD skip
+  - Deferred: requires private/ screening corpus as fixtures
 
 ## Phase 5: Observability (low priority, no rush)
 

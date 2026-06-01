@@ -2,12 +2,14 @@
 """Tests for company_validator.py — pure functions and file parsing."""
 
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from company_validator import (
     CompanyData,
     RiskFlag,
     ValidationResult,
+    add_risk_section_to_file,
     generate_report,
     parse_company_file,
     parse_money_billions,
@@ -16,6 +18,9 @@ from company_validator import (
     validate_company,
     validation_result_to_dict,
 )
+
+
+FROZEN_NOW = datetime(2026, 1, 15, 9, 30)
 
 
 class TestParseNumber(unittest.TestCase):
@@ -92,28 +97,31 @@ class TestValidateCompany(unittest.TestCase):
         defaults.update(kwargs)
         return CompanyData(**defaults)
 
+    def _validate(self, data):
+        return validate_company(data, Path("test.md"), now=FROZEN_NOW)
+
     def test_turnover_critical_no_net_positive(self):
         data = self._make_data(employee_left_1y=60, employee_joined_1y=30)
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_CRITICAL", codes)
 
     def test_turnover_critical_net_positive_downgrades_to_high(self):
         data = self._make_data(employee_left_1y=55, employee_joined_1y=70)
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_HIGH", codes)
         self.assertNotIn("TURNOVER_CRITICAL", codes)
 
     def test_turnover_high_no_net_positive(self):
         data = self._make_data(employee_left_1y=35, employee_joined_1y=20)
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_HIGH", codes)
 
     def test_turnover_high_net_positive_downgrades_to_medium(self):
         data = self._make_data(employee_left_1y=35, employee_joined_1y=50)
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_MEDIUM", codes)
         self.assertNotIn("TURNOVER_HIGH", codes)
@@ -121,48 +129,55 @@ class TestValidateCompany(unittest.TestCase):
     def test_turnover_medium_significant_decline_fires_flag(self):
         # 순감 -15% (< -10%): TURNOVER_MEDIUM 발생
         data = self._make_data(employee_left_1y=25, employee_joined_1y=10)  # net=-15, rate=-15%
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_MEDIUM", codes)
 
     def test_turnover_medium_net_positive_no_flag(self):
         data = self._make_data(employee_left_1y=25, employee_joined_1y=40)
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         turnover_codes = [f.code for f in result.risk_flags if "TURNOVER" in f.code]
         self.assertEqual(turnover_codes, [])
 
     def test_turnover_critical_slight_decline_downgrades_to_high(self):
         # 순감 -8% (> -10%): CRITICAL → HIGH
         data = self._make_data(employee_left_1y=52, employee_joined_1y=44)  # net=-8, rate=-8%
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         codes = [f.code for f in result.risk_flags]
         self.assertIn("TURNOVER_HIGH", codes)
         self.assertNotIn("TURNOVER_CRITICAL", codes)
 
     def test_completeness_all_required_present(self):
         data = self._make_data()
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         self.assertEqual(result.completeness_score, 100.0)
 
     def test_completeness_startup_partial(self):
         data = self._make_data(is_startup=True, investment_round="Series A")
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         # 3 base + 1 startup = 4 of 7
         self.assertAlmostEqual(result.completeness_score, 4 / 7 * 100, places=1)
 
     def test_no_risk_flags_for_healthy_company(self):
         data = self._make_data(employee_left_1y=10, employee_joined_1y=15)
-        result = validate_company(data, Path("test.md"))
+        result = self._validate(data)
         high_severity = [f for f in result.risk_flags if f.severity in ("critical", "high")]
         self.assertEqual(high_severity, [])
+
+    def test_early_stage_age_uses_injected_now(self):
+        data = self._make_data(is_startup=True, founded_year=2025)
+        result = validate_company(data, Path("test.md"), now=FROZEN_NOW)
+        flags = {f.code: f for f in result.risk_flags}
+        self.assertEqual(flags["EARLY_STAGE"].value, "1년")
 
 
 class TestGenerateReport(unittest.TestCase):
     def test_report_has_summary(self):
         data = CompanyData(name="ReportCo")
         result = ValidationResult(file_path=Path("test.md"), company_name="ReportCo", data=data)
-        report = generate_report([result])
+        report = generate_report([result], now=FROZEN_NOW)
         self.assertIn("기업정보 검증 리포트", report)
+        self.assertIn("생성일: 2026-01-15 09:30", report)
         self.assertIn("총 1개 기업", report)
 
     def test_report_risky_section(self):
@@ -173,8 +188,21 @@ class TestGenerateReport(unittest.TestCase):
             data=data,
             risk_flags=[RiskFlag(code="TURNOVER_CRITICAL", severity="critical", message="test")],
         )
-        report = generate_report([result])
+        report = generate_report([result], now=FROZEN_NOW)
         self.assertIn("주의 필요 기업", report)
+
+
+class TestAddRiskSectionToFile(unittest.TestCase):
+    def test_risk_section_uses_injected_now(self):
+        data = CompanyData(name="RiskSectionCo")
+        result = ValidationResult(
+            file_path=Path("test.md"),
+            company_name="RiskSectionCo",
+            data=data,
+            risk_flags=[RiskFlag(code="TURNOVER_HIGH", severity="high", message="test")],
+        )
+        section = add_risk_section_to_file(Path("test.md"), result, now=FROZEN_NOW)
+        self.assertIn("*자동 생성: 2026-01-15*", section)
 
 
 class TestValidationResultToDict(unittest.TestCase):
@@ -287,7 +315,7 @@ class TestParseCompanyFile(unittest.TestCase):
             )
 
             data = parse_company_file(p)
-            result = validate_company(data, p)
+            result = validate_company(data, p, now=FROZEN_NOW)
 
             self.assertTrue(data.is_startup)
             self.assertAlmostEqual(result.completeness_score, 3 / 7 * 100, places=1)

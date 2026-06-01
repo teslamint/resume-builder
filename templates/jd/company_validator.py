@@ -317,8 +317,9 @@ def parse_company_file(file_path: Path) -> CompanyData:
     return data
 
 
-def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
+def validate_company(data: CompanyData, file_path: Path, now: Optional[datetime] = None) -> ValidationResult:
     """Validate company data and generate risk flags."""
+    current_time = now or datetime.now()
     result = ValidationResult(
         file_path=file_path,
         company_name=data.name,
@@ -460,7 +461,7 @@ def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
     
     # 5. Young company (startup)
     if data.is_startup and data.founded_year:
-        company_age = datetime.now().year - data.founded_year
+        company_age = current_time.year - data.founded_year
         if company_age < RISK_THRESHOLDS["company_young"]:
             result.risk_flags.append(RiskFlag(
                 code="EARLY_STAGE",
@@ -482,11 +483,12 @@ def validate_company(data: CompanyData, file_path: Path) -> ValidationResult:
     return result
 
 
-def generate_report(results: List[ValidationResult]) -> str:
+def generate_report(results: List[ValidationResult], now: Optional[datetime] = None) -> str:
     """Generate validation report."""
+    current_time = now or datetime.now()
     lines = [
         "# 기업정보 검증 리포트",
-        f"\n*생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}*",
+        f"\n*생성일: {current_time.strftime('%Y-%m-%d %H:%M')}*",
         f"\n총 {len(results)}개 기업 분석\n",
         "---\n",
     ]
@@ -554,10 +556,15 @@ def generate_report(results: List[ValidationResult]) -> str:
     return "\n".join(lines)
 
 
-def add_risk_section_to_file(file_path: Path, result: ValidationResult) -> str:
+def add_risk_section_to_file(
+    file_path: Path,
+    result: ValidationResult,
+    now: Optional[datetime] = None,
+) -> str:
     """Generate risk section to add to company file."""
     if not result.risk_flags:
         return ""
+    current_time = now or datetime.now()
     
     lines = [
         "\n## ⚠️ 리스크 플래그\n",
@@ -572,7 +579,7 @@ def add_risk_section_to_file(file_path: Path, result: ValidationResult) -> str:
         icon = severity_icons.get(flag.severity, "")
         lines.append(f"| {icon} {flag.severity.upper()} | {flag.code} | {flag.message} |")
     
-    lines.append(f"\n*자동 생성: {datetime.now().strftime('%Y-%m-%d')}*\n")
+    lines.append(f"\n*자동 생성: {current_time.strftime('%Y-%m-%d')}*\n")
     
     return "\n".join(lines)
 
@@ -584,7 +591,8 @@ def validation_result_to_dict(result: ValidationResult) -> dict:
     return data
 
 
-def main():
+def main(now: Optional[datetime] = None):
+    current_time = now or datetime.now()
     parser = argparse.ArgumentParser(description="기업정보 검증 및 리스크 플래깅")
     parser.add_argument("--file", "-f", help="단일 파일 검증")
     parser.add_argument("--fix", action="store_true", help="리스크 섹션 자동 추가")
@@ -608,7 +616,7 @@ def main():
     for file_path in files:
         try:
             data = parse_company_file(file_path)
-            result = validate_company(data, file_path)
+            result = validate_company(data, file_path, now=current_time)
             results.append(result)
             
             # Print individual result
@@ -632,7 +640,7 @@ def main():
                 
                 # Fix mode - add risk section
                 if args.fix and result.risk_flags:
-                    risk_section = add_risk_section_to_file(file_path, result)
+                    risk_section = add_risk_section_to_file(file_path, result, now=current_time)
                     content = file_path.read_text(encoding='utf-8')
                     
                     # Remove existing risk section if present
@@ -657,7 +665,7 @@ def main():
     # Generate report
     report_path = None
     if args.report and results:
-        report = generate_report(results)
+        report = generate_report(results, now=current_time)
         REPORT_PATH.write_text(report, encoding='utf-8')
         report_path = str(REPORT_PATH)
         if not args.json:
@@ -666,7 +674,7 @@ def main():
 
     if args.json:
         payload = {
-            "generated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "generated_at": current_time.strftime('%Y-%m-%d %H:%M:%S'),
             "summary": {
                 "processed_files": len(results),
                 "error_files": len(errors),

@@ -380,6 +380,9 @@ def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> 
 
 # ---------------------------------------------------------------------------
 # GroupBy helpers — API-based, no Playwright needed
+# GroupBy provides structured (min, max) integers via API, so callers pass
+# those directly to filter_experience. Wanted/Remember expose Korean text and
+# rely on parse_experience_range() inside the common filter path.
 # ---------------------------------------------------------------------------
 
 def format_groupby_experience(item: dict) -> str:
@@ -631,7 +634,9 @@ def filter_and_dedup(
     """Apply title/company/experience filters and dedup against *seen_ids* + filesystem.
 
     Mutates *seen_ids* in-place (adds accepted and fs-dup canonical IDs).
-    Uses ``RawJobResult.duplicate_keys()`` for platform-aware dedup (Remember dual-key).
+    Uses ``RawJobResult.duplicate_keys()`` for platform-aware dedup:
+    canonical_id for most platforms, and [canonical_id, raw_id] for Remember.
+    Filesystem dedup is checked through ``is_duplicate()`` for each dedup key.
     """
     out = FilterResult()
 

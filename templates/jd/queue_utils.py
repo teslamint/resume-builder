@@ -11,6 +11,7 @@ import json
 import logging
 from dataclasses import dataclass, asdict
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -25,16 +26,39 @@ BASE_DIR = Path(__file__).parent.parent.parent
 QUEUE_PATH = BASE_DIR / "private" / "job_postings" / "queue.json"
 
 
+class QueueStatus(str, Enum):
+    """Valid queue item processing states."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    DONE = "done"
+    FAILED = "failed"
+
+    @classmethod
+    def coerce(cls, status: "QueueStatus | str") -> "QueueStatus":
+        try:
+            return cls(status)
+        except ValueError as exc:
+            valid = ", ".join(s.value for s in cls)
+            raise ValueError(f"Invalid queue status: {status!r}. Expected one of: {valid}") from exc
+
+
 @dataclass
 class QueueItem(DiscoveredJob):
     """Item in the processing queue."""
     query: str
     discovered_at: str
-    status: str = "pending"  # pending, processing, done, failed
+    status: QueueStatus = QueueStatus.PENDING
     platform: str = "wanted"
 
+    def __post_init__(self) -> None:
+        self.status = QueueStatus.coerce(self.status)
+
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        data["status"] = self.status.value
+        return data
+
 
 
 def load_queue(with_stats: bool = False) -> Union[List[dict], Tuple[List[dict], dict]]:
@@ -103,7 +127,7 @@ def save_queue(items: List[dict], stats: Optional[dict] = None) -> bool:
 
 def update_item_status(
     job_id: str,
-    status: str,
+    status: QueueStatus | str,
     result: Optional[str] = None
 ) -> bool:
     """
@@ -117,6 +141,8 @@ def update_item_status(
     Returns:
         True if update succeeded, False otherwise
     """
+    queue_status = QueueStatus.coerce(status)
+
     if not QUEUE_PATH.exists():
         return False
 
@@ -129,7 +155,7 @@ def update_item_status(
 
                 for item in items:
                     if item.get("job_id") == job_id:
-                        item["status"] = status
+                        item["status"] = queue_status.value
                         item["processed_at"] = datetime.now().isoformat()
                         if result:
                             item["result"] = result

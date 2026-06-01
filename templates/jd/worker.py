@@ -27,10 +27,10 @@ import yaml
 
 try:
     from .constants import CONFIG_PATH, JOB_POSTINGS_DIR
-    from .queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
+    from .queue_utils import QueueStatus, load_queue, save_queue, update_item_status, QUEUE_PATH
 except ImportError:
     from constants import CONFIG_PATH, JOB_POSTINGS_DIR
-    from queue_utils import load_queue, save_queue, update_item_status, QUEUE_PATH
+    from queue_utils import QueueStatus, load_queue, save_queue, update_item_status, QUEUE_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ def process_queue(
     if job_id:
         pending = [i for i in items if i["job_id"] == job_id]
     else:
-        pending = [i for i in items if i.get("status") == "pending"]
+        pending = [i for i in items if i.get("status") == QueueStatus.PENDING]
 
     if not pending:
         print("✅ 처리할 항목이 없습니다.")
@@ -212,7 +212,7 @@ def process_queue(
                 success, result = process_item(item, context, config)
 
                 # Update item status atomically with file locking
-                status = "done" if success else "failed"
+                status = QueueStatus.DONE if success else QueueStatus.FAILED
                 update_item_status(item["job_id"], status, result)
 
                 processed += 1
@@ -240,9 +240,9 @@ def show_status():
     """Show queue status."""
     items, stats = load_queue(with_stats=True)
     
-    pending = [i for i in items if i.get("status") == "pending"]
-    done = [i for i in items if i.get("status") == "done"]
-    failed = [i for i in items if i.get("status") == "failed"]
+    pending = [i for i in items if i.get("status") == QueueStatus.PENDING]
+    done = [i for i in items if i.get("status") == QueueStatus.DONE]
+    failed = [i for i in items if i.get("status") == QueueStatus.FAILED]
     
     print("=" * 60)
     print("📊 Queue Status")
@@ -277,7 +277,7 @@ def clear_done():
     items, stats = load_queue(with_stats=True)
     
     before = len(items)
-    items = [i for i in items if i.get("status") != "done"]
+    items = [i for i in items if i.get("status") != QueueStatus.DONE]
     after = len(items)
     
     save_queue(items, stats)
