@@ -371,6 +371,8 @@ def generate_dashboard_tables(jobs: dict) -> tuple[str, str]:
         
         if job_id and url:
             id_cell = f"[{job_id}]({url}) / {platform}"
+        elif job_id:
+            id_cell = f"{job_id} / {platform}"
         elif url:
             id_cell = f"[공고]({url}) / {platform}"
         else:
