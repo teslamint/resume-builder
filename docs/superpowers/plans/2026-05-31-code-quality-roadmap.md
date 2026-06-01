@@ -87,10 +87,12 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 - [x] Golden-file regression tests for `auto_screening.py`
   - Fixed JD + rules → expected verdict structure
   - Mock LLM subprocess to return known output
-- [~] Rule consistency tests: verify all 4 conditions + meta-rule 0.5 against sample corpus
-  - Partially implemented: synthetic fixtures test prompt assembly + verdict parsing pipeline for all 4 conditions (연봉/리드전가/업무범위/조직변동성) and meta-rule 0.5 evidence hierarchy
-  - LLM is mocked → tests verify plumbing (rules reach prompt, verdict is parsed correctly), not actual rule application
-  - True rule-consistency verification against real corpus: still deferred (requires private/ screening fixtures)
+- [x] Rule consistency tests: verify all 4 conditions + meta-rule 0.5 against sample corpus
+  - Synthetic fixtures: mocked LLM tests verify prompt assembly + verdict parsing for all 4 conditions
+  - Golden fixtures (committed): 6 sanitized screening outputs covering salary/lead/scope/volatility reject + all-pass recommend + evidence hierarchy hold
+  - Parser robustness: 35 verdict format variants from real corpus (emoji/bold/table/annotation patterns)
+  - Condition-logic coherence: automated verification that 4-condition results match final verdict per 0.5절 rules
+  - Full corpus sweep (1091 files): remains in operational audit scripts (audit_05.py, audit_hypotheses.py), not pytest
 - [x] Edge case coverage: polyglot rule, headhunter detection, closed-JD skip
   - headhunter detection: all 6 HEADHUNTING_KEYWORDS tested + negative case (deterministic)
   - closed-JD: all _CLOSED_MARKERS covered (deterministic)

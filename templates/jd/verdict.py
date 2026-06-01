@@ -65,7 +65,7 @@ def _extract_verdict_from_section(section: str) -> Optional[VerdictType]:
         line_stripped = line.strip()
         if not line_stripped:
             continue
-        heading_match = re.match(r"^#{2,6}\s*(.+)$", line_stripped)
+        heading_match = re.match(r"^#{1,6}\s*(.+)$", line_stripped)
         if heading_match:
             candidates.append(heading_match.group(1))
 
@@ -110,33 +110,55 @@ def move_to_folder(file_path: Path, target_folder: str, dry_run: bool = False) -
 
 
 def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType]:
-    """Extract canonical verdict from screening analysis content."""
-    single_line_patterns = [
+    """Extract canonical verdict from screening analysis content.
+
+    When multiple verdict blocks exist (e.g. re-screened files), returns
+    the most conservative (worst-case) verdict for routing safety.
+    Collects from both heading-style and section/table verdicts before deciding.
+    """
+    candidates: List[VerdictType] = []
+
+    # Heading-style verdicts: only explicit 최종 판정 headings on the same line
+    heading_verdict_patterns = [
         r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$",
-        r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$",
-        r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
-        r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
-        r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
-        r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
+        r"^\s*#{1,6}\s*최종\s*판정[ \t]+(.+?)\s*$",
         r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$",
     ]
-    for pattern in single_line_patterns:
-        match = re.search(pattern, screening_content, re.IGNORECASE | re.MULTILINE)
-        if match:
-            verdict = normalize_verdict(match.group(1))
-            if verdict:
-                return verdict
+    for pattern in heading_verdict_patterns:
+        for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):
+            v = normalize_verdict(match.group(1))
+            if v:
+                candidates.append(v)
 
+    # Section-based extraction (handles table and blockquote formats within verdict sections)
     section_patterns = [
         r"(?is)^##\s*최종\s*판정\s*\n(.*?)(?=^##\s|\Z)",
         r"(?is)^##\s*판정\s*\n(.*?)(?=^##\s|\Z)",
     ]
     for pattern in section_patterns:
-        section_match = re.search(pattern, screening_content, re.MULTILINE)
-        if section_match:
-            verdict = _extract_verdict_from_section(section_match.group(1))
-            if verdict:
-                return verdict
+        for section_match in re.finditer(pattern, screening_content, re.MULTILINE):
+            v = _extract_verdict_from_section(section_match.group(1))
+            if v:
+                candidates.append(v)
+
+    if candidates:
+        return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
+
+    # Legacy fallback: blockquote/결론/table verdicts (files without ## 최종 판정 section)
+    legacy_quote_patterns = [
+        r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
+        r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
+        r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
+        r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
+    ]
+    for pattern in legacy_quote_patterns:
+        for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):
+            v = normalize_verdict(match.group(1))
+            if v:
+                candidates.append(v)
+
+    if candidates:
+        return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
 
     heading_candidates = re.findall(r"^\s*#{2,6}\s*(.+?)\s*$", screening_content, re.MULTILINE)
     return _pick_worst_case_verdict(heading_candidates)
