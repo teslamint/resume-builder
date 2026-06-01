@@ -118,12 +118,11 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
     """
     candidates: List[VerdictType] = []
 
-    # Heading-style verdicts (scoped: only ### headings are unambiguous verdict markers)
+    # Heading-style verdicts: only explicit 최종 판정 headings and table cells
     heading_verdict_patterns = [
         r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$",
         r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$",
         r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
-        r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
         r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$",
     ]
     for pattern in heading_verdict_patterns:
@@ -146,10 +145,11 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
     if candidates:
         return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
 
-    # Legacy fallback: top-level blockquote verdicts (files without ## 최종 판정 section)
+    # Legacy fallback: blockquote/결론 verdicts (files without ## 최종 판정 section)
     legacy_quote_patterns = [
         r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
         r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
+        r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
     ]
     for pattern in legacy_quote_patterns:
         for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):

@@ -134,8 +134,9 @@ class TestConditionLogicRules:
         """
         content = (FIXTURES_DIR / fixture_name).read_text(encoding="utf-8")
         conditions = self._CONDITION_RE.findall(content)
-        if len(conditions) != 4:
-            pytest.skip(f"{fixture_name}: no 4-condition table found")
+        assert len(conditions) == 4, (
+            f"{fixture_name}: expected 4-condition table but found {len(conditions)} entries"
+        )
 
         verdict = parse_verdict_from_screening(content)
         pass_count = conditions.count("⭕")
@@ -148,11 +149,14 @@ class TestConditionLogicRules:
                 f"{fixture_name}: △ present but verdict is {verdict!r} "
                 f"(0.5절 requires hold path for manual review)"
             )
-        elif pass_count == 4:
+        elif pass_count >= 3:
+            # B 기준: 4조건 중 3개 이상 충족 → 비추천이면 안 됨
             assert verdict != "지원 비추천", (
-                f"{fixture_name}: all 4 conditions ⭕ but verdict is 비추천"
+                f"{fixture_name}: {pass_count}/4 conditions ⭕ (≥3 threshold met) "
+                f"but verdict is 비추천"
             )
-        elif pass_count < 3:
+        else:
+            # pass_count < 3, no △ → must be 비추천
             assert verdict == "지원 비추천", (
                 f"{fixture_name}: only {pass_count} ⭕ (no △) but verdict is {verdict!r}"
             )
