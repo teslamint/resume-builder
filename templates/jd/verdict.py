@@ -144,11 +144,12 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
     if candidates:
         return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
 
-    # Legacy fallback: blockquote/결론 verdicts (files without ## 최종 판정 section)
+    # Legacy fallback: blockquote/결론/table verdicts (files without ## 최종 판정 section)
     legacy_quote_patterns = [
         r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
         r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
         r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
+        r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
     ]
     for pattern in legacy_quote_patterns:
         for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):

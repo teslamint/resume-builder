@@ -54,8 +54,10 @@ class TestGoldenVerdictParsing:
     def test_verdict_extracted_correctly(self, golden_fixture):
         path, content = golden_fixture
         expected = self.EXPECTED_VERDICTS.get(path.name)
-        if expected is None:
-            pytest.skip(f"No expected verdict defined for {path.name}")
+        assert expected is not None, (
+            f"{path.name}: no expected verdict defined in EXPECTED_VERDICTS — "
+            f"every golden fixture must have an explicit expected verdict"
+        )
 
         result = parse_verdict_from_screening(content)
         assert result == expected, f"{path.name}: got {result!r}, expected {expected!r}"
