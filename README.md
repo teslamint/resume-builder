@@ -117,12 +117,12 @@ resume/
 | `/resume-build` | 이력서 빌드 및 검증 |
 
 자동화 스크립트:
-- `python3 templates/jd/auto.py`: 검색 → JD 추출 → 회사정보 추출 → 스크리닝 → 자동 분류
-- `python3 templates/jd/auto.py --from-urls <file>`: URL 파일 기반 배치 실행
-- `python3 templates/jd/auto.py --screening-only --from-urls <file>`: 기존 JD 대상 스크리닝/분류만 수행
-- `python3 templates/jd/auto.py --resume`: 이전 실행에서 미완료 항목만 재처리
-- `python3 templates/jd/auto.py --dry-run`: 미리보기 모드
-- `python3 templates/jd/auto.py --thevc-mode auto|skip|require`: 스타트업 투자정보(TheVC) 처리 정책 선택
+- `python -m templates.jd.auto`: 검색 → JD 추출 → 회사정보 추출 → 스크리닝 → 자동 분류
+- `python -m templates.jd.auto --from-urls <file>`: URL 파일 기반 배치 실행
+- `python -m templates.jd.auto --screening-only --from-urls <file>`: 기존 JD 대상 스크리닝/분류만 수행
+- `python -m templates.jd.auto --resume`: 이전 실행에서 미완료 항목만 재처리
+- `python -m templates.jd.auto --dry-run`: 미리보기 모드
+- `python -m templates.jd.auto --thevc-mode auto|skip|require`: 스타트업 투자정보(TheVC) 처리 정책 선택
 
 자세한 사용법은 [AI Workflow](docs/ai-workflow.md)를 참고하세요.
 
