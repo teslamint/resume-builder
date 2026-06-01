@@ -230,3 +230,95 @@ def test_to_obsidian_adds_active_plain_id_rows_when_url_is_missing(
     assert "444 / -" in updated
     assert "PlainIdCo" in updated
     assert "active without URL" in updated
+
+
+def test_to_obsidian_upgrades_legacy_anonymous_rows_when_plain_id_is_generated(
+    tmp_path,
+    monkeypatch,
+):
+    sync_dashboard = _load_sync_dashboard_module()
+    monkeypatch.setattr(sync_dashboard, "JOB_POSTINGS", tmp_path / "job_postings")
+
+    pass_dir = sync_dashboard.JOB_POSTINGS / "pass"
+    pass_dir.mkdir(parents=True)
+    (pass_dir / "555-active-backend.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "company: LegacyNoUrlCo",
+                "position: Backend",
+                "status: 패스",
+                "reason: generated reason",
+                "---",
+                "# Active JD",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dashboard = tmp_path / "dashboard.md"
+    dashboard.write_text(
+        "\n".join(
+            [
+                "# Jobs",
+                "## 📊 지원 현황 요약",
+                "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
+                "| --- | --- | --- | --- | --- |",
+                "| - | - | - | - | - |",
+                "## 검토 현황 요약",
+                "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
+                "| --- | --- | --- | --- | --- |",
+                "| - / - | LegacyNoUrlCo | Backend | 수동 상태 | keep manual reason |",
+                "## 🧠 판단 기준",
+                "criteria",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    sync_dashboard.to_obsidian(dry_run=False, force=False, dashboard_path=dashboard)
+
+    updated = dashboard.read_text(encoding="utf-8")
+    assert "555 / -" in updated
+    assert "수동 상태" in updated
+    assert "keep manual reason" in updated
+    assert "- / - | LegacyNoUrlCo" not in updated
+    assert updated.count("LegacyNoUrlCo") == 1
+
+
+def test_to_obsidian_prunes_anonymous_retired_rows_absent_from_active_scan(
+    tmp_path,
+    monkeypatch,
+):
+    sync_dashboard = _load_sync_dashboard_module()
+    monkeypatch.setattr(sync_dashboard, "JOB_POSTINGS", tmp_path / "job_postings")
+
+    retired_dir = sync_dashboard.JOB_POSTINGS / "conditional" / "middle"
+    retired_dir.mkdir(parents=True)
+    (retired_dir / "legacy-no-id-backend.md").write_text("# Retired JD\n", encoding="utf-8")
+
+    dashboard = tmp_path / "dashboard.md"
+    dashboard.write_text(
+        "\n".join(
+            [
+                "# Jobs",
+                "## 📊 지원 현황 요약",
+                "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
+                "| --- | --- | --- | --- | --- |",
+                "| - | - | - | - | - |",
+                "## 검토 현황 요약",
+                "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
+                "| --- | --- | --- | --- | --- |",
+                "| - / - | RetiredAnonCo | Backend | 검토중 | stale anonymous retired row |",
+                "## 🧠 판단 기준",
+                "criteria",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    sync_dashboard.to_obsidian(dry_run=False, force=False, dashboard_path=dashboard)
+
+    updated = dashboard.read_text(encoding="utf-8")
+    assert "RetiredAnonCo" not in updated
+    assert "stale anonymous retired row" not in updated
