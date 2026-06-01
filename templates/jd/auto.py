@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+if __package__ in {None, ""}:
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    __package__ = "templates.jd"
 
 try:
     from .auto_processor import DEFAULT_MIN_COMPLETENESS, _build_url_list, _process_urls

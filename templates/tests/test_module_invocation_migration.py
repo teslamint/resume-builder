@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -87,3 +89,15 @@ def test_importerror_fallback_count_stays_bounded() -> None:
         count += path.read_text(encoding="utf-8").count("except ImportError")
 
     assert count <= 15
+
+
+def test_auto_cli_help_works_via_direct_script_invocation() -> None:
+    result = subprocess.run(
+        [sys.executable, "templates/jd/auto.py", "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "usage:" in result.stdout.lower()
