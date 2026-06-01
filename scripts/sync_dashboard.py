@@ -247,6 +247,39 @@ def scan_job_postings(*, include_lookup_only: bool = False) -> dict:
     return jobs
 
 
+def extract_job_id_from_dashboard_id_cell(id_cell: str) -> Optional[str]:
+    """Extract the numeric job ID from a dashboard ID/platform cell."""
+    id_match = re.search(r'\[(\d+)\]\([^)]+\)', id_cell)
+    if id_match:
+        return id_match.group(1)
+
+    id_match = re.match(r'^(\d+)', id_cell.strip())
+    if id_match:
+        return id_match.group(1)
+
+    return None
+
+
+def extract_job_id_from_dashboard_row(line: str) -> Optional[str]:
+    """Extract job ID from a dashboard table row's first cell."""
+    if not line.strip().startswith("|"):
+        return None
+
+    cells = [c.strip() for c in line.split("|")]
+    if cells and cells[0] == "":
+        cells = cells[1:]
+    if cells and cells[-1] == "":
+        cells = cells[:-1]
+    if not cells:
+        return None
+
+    first_cell = cells[0]
+    if first_cell.startswith("**") or first_cell.startswith("---") or first_cell == "-":
+        return None
+
+    return extract_job_id_from_dashboard_id_cell(first_cell)
+
+
 def parse_dashboard_table(content: str) -> list[dict]:
     """Parse job entries from Obsidian dashboard tables."""
     entries = []
@@ -290,10 +323,7 @@ def parse_dashboard_table(content: str) -> list[dict]:
             job_id = id_match.group(1)
             url = id_match.group(2)
         else:
-            # Try plain ID
-            id_match = re.match(r'^(\d+)', id_cell.strip())
-            if id_match:
-                job_id = id_match.group(1)
+            job_id = extract_job_id_from_dashboard_id_cell(id_cell)
         
         # Clean up company (remove markdown links, bold)
         company = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', company_cell)
@@ -466,7 +496,7 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
             continue
         matching_line = None
         for line in new_table.split("\n"):
-            if job_id and f"[{job_id}]" in line:
+            if job_id and extract_job_id_from_dashboard_row(line) == job_id:
                 matching_line = line
                 break
             elif not job_id and entry.get("company") and entry["company"] in line:
@@ -494,9 +524,8 @@ def merge_table_rows(existing_content: str, new_table: str) -> tuple[str, int, i
     updated_body_lines = []
     updated_count = 0
     for line in table_body_lines:
-        id_match = re.search(r'\[(\d+)\]', line)
-        if id_match:
-            jid = id_match.group(1)
+        jid = extract_job_id_from_dashboard_row(line)
+        if jid:
             if jid not in new_entries_by_id:
                 continue
             new_line = update_unknown_cells(line, new_entries_by_id[jid])

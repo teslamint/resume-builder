@@ -126,6 +126,7 @@ def test_to_obsidian_prunes_dashboard_rows_absent_from_active_scan(tmp_path, mon
                 "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
                 "| --- | --- | --- | --- | --- |",
                 "| [333](https://example.com/333) / - | RetiredCo | Backend | 검토중 | stale retired row |",
+                "| 444 / - | RetiredPlainCo | Backend | 검토중 | stale retired plain row |",
                 "## 🧠 판단 기준",
                 "criteria",
             ]
@@ -135,7 +136,9 @@ def test_to_obsidian_prunes_dashboard_rows_absent_from_active_scan(tmp_path, mon
 
     sync_dashboard.to_obsidian(dry_run=False, force=False, dashboard_path=dashboard)
 
-    assert "333" not in dashboard.read_text(encoding="utf-8")
+    updated = dashboard.read_text(encoding="utf-8")
+    assert "333" not in updated
+    assert "444" not in updated
 
 
 def test_to_obsidian_preserves_active_id_rows_when_url_is_missing(
@@ -175,3 +178,55 @@ def test_to_obsidian_preserves_active_id_rows_when_url_is_missing(
     assert "[333](https://example.com/333)" in updated
     assert "keep this reason" in updated
     assert "333 / -" not in updated
+
+
+def test_to_obsidian_adds_active_plain_id_rows_when_url_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    sync_dashboard = _load_sync_dashboard_module()
+    monkeypatch.setattr(sync_dashboard, "JOB_POSTINGS", tmp_path / "job_postings")
+
+    pass_dir = sync_dashboard.JOB_POSTINGS / "pass"
+    pass_dir.mkdir(parents=True)
+    (pass_dir / "444-active-backend.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "company: PlainIdCo",
+                "position: Backend",
+                "status: 패스",
+                "reason: active without URL",
+                "---",
+                "# Active JD",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dashboard = tmp_path / "dashboard.md"
+    dashboard.write_text(
+        "\n".join(
+            [
+                "# Jobs",
+                "## 📊 지원 현황 요약",
+                "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
+                "| --- | --- | --- | --- | --- |",
+                "| - | - | - | - | - |",
+                "## 검토 현황 요약",
+                "| **ID** / 플랫폼 | **회사** | **포지션** | **최종 판단** | **핵심 사유 요약** |",
+                "| --- | --- | --- | --- | --- |",
+                "| - | - | - | - | - |",
+                "## 🧠 판단 기준",
+                "criteria",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    sync_dashboard.to_obsidian(dry_run=False, force=False, dashboard_path=dashboard)
+
+    updated = dashboard.read_text(encoding="utf-8")
+    assert "444 / -" in updated
+    assert "PlainIdCo" in updated
+    assert "active without URL" in updated
