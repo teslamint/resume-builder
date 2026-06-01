@@ -132,7 +132,7 @@ def _alias_match(alias: str, text: str) -> Optional[int]:
     return m.start() if m else None
 
 
-def parse_resume_sections(resume_path: Path, config: VerifierConfig = None) -> Dict[str, str]:
+def parse_resume_sections(resume_path: Path, config: Optional[VerifierConfig] = None) -> Dict[str, str]:
     config = config or DEFAULT_CONFIG
     content = resume_path.read_text(encoding="utf-8")
     sections: Dict[str, str] = {}
@@ -154,7 +154,7 @@ def parse_resume_sections(resume_path: Path, config: VerifierConfig = None) -> D
     return sections
 
 
-def extract_claims(interview_path: Path, config: VerifierConfig = None) -> List[Claim]:
+def extract_claims(interview_path: Path, config: Optional[VerifierConfig] = None) -> List[Claim]:
     config = config or DEFAULT_CONFIG
     content = interview_path.read_text(encoding="utf-8")
     lines = content.split("\n")
@@ -214,7 +214,7 @@ def extract_claims(interview_path: Path, config: VerifierConfig = None) -> List[
 
 
 def verify_claims(claims: List[Claim], sections: Dict[str, str],
-                   config: VerifierConfig = None) -> List[VerificationResult]:
+                   config: Optional[VerifierConfig] = None) -> List[VerificationResult]:
     config = config or DEFAULT_CONFIG
     results: List[VerificationResult] = []
     child_map = config.child_map

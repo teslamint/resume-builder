@@ -4,12 +4,14 @@
 import re
 import shutil
 from pathlib import Path
-from typing import Optional, List
+from typing import Literal, Optional, List, TypeAlias, cast
 
 try:
-    from .constants import VERDICT_FOLDER_MAP, VerdictType, VERDICT_PRIORITY, JOB_POSTINGS_DIR
+    from .constants import VERDICT_FOLDER_MAP, VERDICT_PRIORITY, JOB_POSTINGS_DIR
 except ImportError:
-    from constants import VERDICT_FOLDER_MAP, VerdictType, VERDICT_PRIORITY, JOB_POSTINGS_DIR
+    from constants import VERDICT_FOLDER_MAP, VERDICT_PRIORITY, JOB_POSTINGS_DIR
+
+VerdictType: TypeAlias = Literal["지원 추천", "지원 보류", "지원 비추천"]
 
 
 def normalize_verdict(verdict: str) -> Optional[VerdictType]:
@@ -49,10 +51,10 @@ def normalize_verdict(verdict: str) -> Optional[VerdictType]:
 def _pick_worst_case_verdict(verdicts: List[str]) -> Optional[VerdictType]:
     """For multi-position tables, keep conservative (worst-case) verdict."""
     normalized = [normalize_verdict(v) for v in verdicts]
-    candidates = [v for v in normalized if v is not None]
+    candidates = [cast(VerdictType, verdict) for verdict in normalized if verdict is not None]
     if not candidates:
         return None
-    return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
+    return cast(VerdictType, min(candidates, key=lambda v: VERDICT_PRIORITY[v]))
 
 
 def _extract_verdict_from_section(section: str) -> Optional[VerdictType]:

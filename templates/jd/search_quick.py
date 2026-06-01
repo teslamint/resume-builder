@@ -20,7 +20,7 @@ import re
 import sys
 import time
 from datetime import datetime
-from typing import List, Set
+from typing import Any, List, Set, cast
 from urllib.parse import quote, urljoin
 
 try:
@@ -141,11 +141,11 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
 
     # Load existing data
     seen_ids = load_seen_ids()
-    existing_queue = load_queue()
+    existing_queue = cast(List[dict[str, Any]], load_queue())
     queued_ids = {item["job_id"] for item in existing_queue if item.get("status") == QueueStatus.PENDING}
 
     new_items: List[QueueItem] = []
-    stats = {
+    stats: dict[str, int | float] = {
         "queries": len(queries),
         "total_found": 0,
         "new": 0,
@@ -364,7 +364,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
 
 def show_status():
     """Show queue status."""
-    queue = load_queue()
+    queue = cast(List[dict[str, Any]], load_queue())
     
     pending = [i for i in queue if i.get("status") == QueueStatus.PENDING]
     done = [i for i in queue if i.get("status") == QueueStatus.DONE]

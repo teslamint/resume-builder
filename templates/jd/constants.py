@@ -2,7 +2,7 @@
 """JD Pipeline Constants — paths, mappings, and type definitions."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 PROTECTED_STATUSES = {"rejected", "applied", "interview", "offer"}
 
@@ -21,7 +21,7 @@ VERDICT_FOLDER_MAP = {
     "지원 비추천": "pass",
 }
 
-VerdictType = Literal["지원 추천", "지원 보류", "지원 비추천"]
+VerdictType: TypeAlias = Literal["지원 추천", "지원 보류", "지원 비추천"]
 
 VERDICT_PRIORITY = {"지원 비추천": 0, "지원 보류": 1, "지원 추천": 2}
 

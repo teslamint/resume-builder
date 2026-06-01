@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
+from typing import Any, Callable
 
 try:
     from .ce_jd_files import extract_from_jd_files
@@ -39,11 +40,11 @@ logger = logging.getLogger(__name__)
 REQUEST_DELAY = 1.5  # seconds between page navigations
 ALL_PLATFORMS = ("wanted", "saramin", "thevc")
 
-HTTP_EXTRACTORS: dict[str, callable] = {
+HTTP_EXTRACTORS: dict[str, Callable[[str], PlatformData | None]] = {
     "wanted": extract_wanted_http,
 }
 
-BROWSER_EXTRACTORS: dict[str, callable] = {
+BROWSER_EXTRACTORS: dict[str, Callable[[str, Any], PlatformData | None]] = {
     "saramin": extract_saramin,
     "thevc": extract_thevc,
 }
@@ -121,6 +122,8 @@ def extract_company_info(
         try:
             with pw_cm as pw:
                 if own_playwright:
+                    if pw is None:
+                        raise RuntimeError("Playwright context unavailable")
                     browser = pw.chromium.launch(
                         headless=True,
                         args=["--disable-blink-features=AutomationControlled"],

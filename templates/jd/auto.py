@@ -574,6 +574,8 @@ def _process_urls(
         )
 
         if is_dup:
+            if resolved_jd_path is None:
+                raise RuntimeError("duplicate JD path not resolved")
             summary.duplicates += 1
             row.status = "duplicate"
             row.jd_path = str(resolved_jd_path)

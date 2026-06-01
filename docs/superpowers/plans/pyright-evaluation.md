@@ -65,4 +65,6 @@ The issue count is under the roadmap threshold of 50 distinct issues, so keeping
 
 ## Recommendation
 
-Defer adding Pyright to blocking CI for now. The basic configuration is useful for local evaluation, but CI would currently fail on 40 existing errors. A practical path is to fix the hotspots above in small follow-up patches, then add a CI job once `uv run pyright templates/jd templates/build` exits cleanly.
+~~Defer adding Pyright to blocking CI for now. The basic configuration is useful for local evaluation, but CI would currently fail on 40 existing errors. A practical path is to fix the hotspots above in small follow-up patches, then add a CI job once `uv run pyright templates/jd templates/build` exits cleanly.~~
+
+**Update (2026-06-01):** All 40 errors have been fixed. `uv run pyright templates/jd templates/build` now exits with 0 errors. Adding a blocking CI job is the next step (separate PR).
