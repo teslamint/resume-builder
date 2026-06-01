@@ -96,7 +96,7 @@ def extract_company_info(
         try:
             try:
                 from .browser_utils import sync_playwright
-            except Exception:
+            except ImportError:
                 from browser_utils import sync_playwright
             playwright_available = True
         except Exception as e:
@@ -112,7 +112,7 @@ def extract_company_info(
         if own_playwright:
             try:
                 from .browser_utils import sync_playwright
-            except Exception:
+            except ImportError:
                 from browser_utils import sync_playwright
             pw_cm = sync_playwright()
         else:
@@ -140,7 +140,7 @@ def extract_company_info(
                             else:
                                 platforms_failed.append(platform_name)
                         except Exception as e:
-                            print(f"   [{platform_name}] 예외: {e}")
+                            logger.warning("[%s] 예외: %s", platform_name, e)
                             platforms_failed.append(platform_name)
                         if i < len(browser_selected) - 1:
                             time.sleep(REQUEST_DELAY)
@@ -178,7 +178,7 @@ def extract_company_info(
             data_list.append(jd_result)
             platforms_used.append("jd")
     except Exception as e:
-        print(f"   [jd] 예외: {e}")
+        logger.warning("[jd] 예외: %s", e)
 
     # Build markdown
     if data_list:
@@ -204,7 +204,8 @@ def extract_company_info(
             parsed = parse_company_file(output_path)
             val_result = validate_company(parsed, output_path)
             completeness = val_result.completeness_score
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to validate generated company file %s: %s", output_path, e)
             pass
 
     return ExtractionResult(

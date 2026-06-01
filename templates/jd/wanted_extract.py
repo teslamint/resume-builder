@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Wanted 채용공고 추출 스크립트"""
 import json
+import logging
 import re
 import sys
 import urllib.request
@@ -10,6 +11,8 @@ try:
     from .naming import slugify_company as _slugify
 except ImportError:
     from naming import slugify_company as _slugify
+
+logger = logging.getLogger(__name__)
 
 def fetch_wanted_posting(job_id):
     """Wanted 채용공고 API 호출"""
@@ -130,8 +133,8 @@ url: https://www.wanted.co.kr/wd/{job_id}
             "status": "ok"
         }
 
-    except Exception as e:
-        print(f"ERROR: {job_id} - {e}", file=sys.stderr)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+        logger.error("ERROR: %s - %s", job_id, e)
         return None
 
 def main():

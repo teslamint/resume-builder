@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from collections import Counter
@@ -19,6 +20,8 @@ from datetime import datetime
 from typing import List, Optional, Dict
 from dataclasses import dataclass
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 try:
     from .constants import JOB_POSTINGS_DIR, SCREENING_DIR

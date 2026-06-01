@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import re
 import sys
 from dataclasses import asdict, dataclass, field
@@ -23,6 +24,7 @@ from typing import Dict, List, Optional, Tuple
 BASE_DIR = Path(__file__).parent.parent.parent
 COMPANY_INFO_DIR = BASE_DIR / "private" / "company_info"
 REPORT_PATH = BASE_DIR / "private" / "company_info" / "_validation_report.md"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -659,8 +661,7 @@ def main(now: Optional[datetime] = None):
                     
         except Exception as e:
             errors.append({"file": str(file_path), "error": str(e)})
-            if not args.json:
-                print(f"❌ Error processing {file_path}: {e}")
+            logger.error("Error processing %s: %s", file_path, e)
     
     # Generate report
     report_path = None

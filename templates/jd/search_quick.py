@@ -80,8 +80,8 @@ def load_seen_ids() -> Set[str]:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
             return set(data.get("seen_job_ids", []))
-    except Exception as e:
-        logger.debug(f"Failed to load seen_ids: {e}")
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as e:
+        logger.warning("Failed to load seen_ids: %s", e)
         return set()
 
 
@@ -95,8 +95,8 @@ def save_seen_ids(seen_ids: Set[str]) -> None:
         try:
             with open(STATE_PATH, "r", encoding="utf-8") as f:
                 state = json.load(f)
-        except Exception as e:
-            logger.debug(f"Failed to load state for update: {e}")
+        except (OSError, json.JSONDecodeError, AttributeError, TypeError, ValueError) as e:
+            logger.warning("Failed to load state for update: %s", e)
     
     state["seen_job_ids"] = list(seen_ids)
     state["last_run"] = datetime.now().isoformat()
@@ -229,7 +229,6 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
             print(f"   📊 결과: 발견 {fr.total_found + gb_exp_dropped}개, 신규 {gb_new}개, 중복 {fr.duplicates}개, 필터 {fr.filtered_out + gb_exp_dropped}개")
         except GroupByAPIError as e:
             logger.warning("GroupBy API error: %s", e)
-            print(f"   ⚠️  GroupBy API 오류: {e}")
             stats["errors"] += 1
 
     with sync_playwright() as p:
@@ -275,7 +274,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             stats["filtered"] += fr.filtered_out
                             print(f"   📊 결과: {fr.total_found}개 (새: {q_new}, 중복: {fr.duplicates}, 필터: {fr.filtered_out})")
                     except Exception as e:
-                        print(f"   ❌ Error: {e}")
+                        logger.error("Wanted quick search failed for %s: %s", query, e)
                         stats["errors"] += 1
                     finally:
                         page.close()
@@ -321,7 +320,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                             stats["filtered"] += fr.filtered_out
                             print(f"   📊 결과: {fr.total_found}개 (새: {q_new}, 중복: {fr.duplicates}, 필터: {fr.filtered_out})")
                     except Exception as e:
-                        print(f"   ❌ Error: {e}")
+                        logger.error("Remember quick search failed for %s: %s", query, e)
                         stats["errors"] += 1
                     finally:
                         page.close()

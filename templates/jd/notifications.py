@@ -4,12 +4,15 @@ Extracted from auto.py for reuse by worker.py and other pipeline components.
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from auto import AutoTaskResult, RunSummary
+
+logger = logging.getLogger(__name__)
 
 
 def send_notification(message: str, config: dict) -> bool:
@@ -19,10 +22,10 @@ def send_notification(message: str, config: dict) -> bool:
     target = notifications.get("target")
     account = notifications.get("account")
     if not channel:
-        print("   ⚠️  알림 채널 미설정")
+        logger.warning("Notification channel not configured")
         return False
     if not target:
-        print("   ⚠️  알림 대상 미설정 (notifications.target)")
+        logger.warning("Notification target not configured")
         return False
 
     try:
@@ -49,13 +52,13 @@ def send_notification(message: str, config: dict) -> bool:
             print(f"   ✅ 알림 전송 완료 ({channel}:{target})")
             return True
         error_output = result.stderr.strip() or result.stdout.strip() or "unknown error"
-        print(f"   ⚠️  알림 전송 실패: {error_output}")
+        logger.warning("Notification send failed: %s", error_output)
         return False
     except FileNotFoundError:
-        print("   ⚠️  openclaw 명령 없음 - 알림 스킵")
+        logger.warning("openclaw command not found; skipping notification")
         return False
-    except Exception as exc:
-        print(f"   ⚠️  알림 오류: {exc}")
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("Notification error: %s", exc)
         return False
 
 
