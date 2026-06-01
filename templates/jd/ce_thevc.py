@@ -17,13 +17,16 @@ from urllib.parse import quote
 try:
     from .ce_types import PlatformData
     from .constants import COMPANY_INFO_DIR
+    from .constants import get_rate_limit
     from .naming import slugify_company
 except ImportError:
     from ce_types import PlatformData
     from constants import COMPANY_INFO_DIR
+    from constants import get_rate_limit
     from naming import slugify_company
 
 REQUEST_DELAY = 1.5
+REQUEST_DELAY = get_rate_limit("thevc", REQUEST_DELAY)
 
 
 def search_slug_single(keyword: str, context) -> str | None:

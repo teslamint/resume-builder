@@ -248,7 +248,7 @@ def main():
     if args.output:
         with open(args.output, 'w', encoding='utf-8') as f:
             f.write(result)
-        print(f"Written to {args.output}", file=sys.stderr)
+        print(f"Written to {args.output}")
     else:
         print(result)
 

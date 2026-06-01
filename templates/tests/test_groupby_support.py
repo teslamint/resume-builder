@@ -81,7 +81,7 @@ def test_run_quick_search_groupby_populates_queue_item_fields():
     }
     raw = RawJobResult(
         raw_id="8807",
-        canonical_id="groupby-8807",
+        job_id="groupby-8807",
         title="Backend Engineer",
         company="GroupBy Co",
         experience="경력 3년 이상",

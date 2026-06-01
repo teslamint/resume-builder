@@ -177,7 +177,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
         count = 0
         for raw in fr.accepted:
             new_items.append(QueueItem(
-                job_id=raw.canonical_id,
+                job_id=raw.job_id,
                 url=raw.url,
                 title=raw.title,
                 company=raw.company,
@@ -186,7 +186,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
                 platform=platform,
                 discovered_at=datetime.now().isoformat(),
             ))
-            queued_ids.add(raw.canonical_id)
+            queued_ids.add(raw.job_id)
             count += 1
         return count
 
@@ -205,7 +205,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
             exp_filtered = []
             gb_exp_dropped = 0
             for raw in gb_outcome.results:
-                orig_item = next((it for it in gb_items if f"groupby-{it['id']}" == raw.canonical_id), None)
+                orig_item = next((it for it in gb_items if f"groupby-{it['id']}" == raw.job_id), None)
                 if orig_item:
                     exp_min, exp_max = groupby_experience_values(orig_item)
                     if filter_experience(raw.experience, config, min_years=exp_min, max_years=exp_max):

@@ -7,7 +7,6 @@ import logging
 import re
 import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -16,12 +15,14 @@ try:
     from .company_extractor import extract_company_info
     from .company_match_verify import verify_company_match
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from .http_client_base import http_text_request
     from .jd_content import _PAREN_RE as _HEADING_PAREN_RE, extract_heading_company, extract_metadata_from_jd
     from .naming import slugify_company
 except ImportError:
     from company_extractor import extract_company_info
     from company_match_verify import verify_company_match
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from http_client_base import http_text_request
     from jd_content import _PAREN_RE as _HEADING_PAREN_RE, extract_heading_company, extract_metadata_from_jd
     from naming import slugify_company
 
@@ -210,9 +211,7 @@ def _existing_needs_thevc_enrichment(path: Path, completeness: float) -> bool:
 def _fetch_url_text(url: str, timeout: int = 15) -> str:
     if not url.startswith(("https://", "http://")):
         raise ValueError(f"Unsupported URL scheme: {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read(2 * 1024 * 1024).decode("utf-8", errors="ignore")
+    return http_text_request(url, timeout=timeout, max_bytes=2 * 1024 * 1024)
 
 
 def _strip_html(html: str) -> str:

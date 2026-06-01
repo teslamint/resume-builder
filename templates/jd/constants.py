@@ -2,7 +2,7 @@
 """JD Pipeline Constants — paths, mappings, and type definitions."""
 
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 PROTECTED_STATUSES = {"rejected", "applied", "interview", "offer"}
 
@@ -45,3 +45,33 @@ STATUS_ALIASES = {
     "offer": "offer",
     "오퍼": "offer",
 }
+
+
+def load_search_config(path: Path | None = None) -> dict[str, Any]:
+    """Load the shared JD search config, returning an empty dict on failure."""
+    config_path = path or CONFIG_PATH
+    if not config_path.exists():
+        return {}
+
+    try:
+        import yaml
+    except ImportError:
+        return {}
+
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+    return data if isinstance(data, dict) else {}
+
+
+def get_rate_limit(platform: str, default: float, *, path: Path | None = None) -> float:
+    """Read a per-platform request delay from search_config.yaml."""
+    config = load_search_config(path)
+    raw_value = config.get("rate_limits", {}).get(platform)
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return default

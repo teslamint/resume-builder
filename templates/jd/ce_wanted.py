@@ -8,12 +8,15 @@ from urllib.parse import quote
 
 try:
     from .ce_types import PlatformData
+    from .constants import get_rate_limit
 except ImportError:
     from ce_types import PlatformData
+    from constants import get_rate_limit
 
 logger = logging.getLogger(__name__)
 
 REQUEST_DELAY = 1.5
+REQUEST_DELAY = get_rate_limit("wanted", REQUEST_DELAY)
 
 
 def search_company_id(company_name: str, context) -> str | None:

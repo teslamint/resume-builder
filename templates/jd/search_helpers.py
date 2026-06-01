@@ -12,34 +12,32 @@ from __future__ import annotations
 import logging
 import html
 import re
-import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
 
 try:
     from .experience_filter import filter_experience
+    from .http_client_base import http_text_request
     from .jd_content import is_rejected_company, parse_remember_experience
+    from .models import DiscoveredJob
     from .path_utils import is_duplicate
-    from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
+    from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 except ImportError:
     from experience_filter import filter_experience
+    from http_client_base import http_text_request
     from jd_content import is_rejected_company, parse_remember_experience
+    from models import DiscoveredJob
     from path_utils import is_duplicate
-    from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
+    from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 
 logger = logging.getLogger(__name__)
 
 
 def _fetch_html(url: str, timeout_seconds: int = 15) -> str:
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
-        return response.read().decode("utf-8", errors="ignore")
+    return http_text_request(url, timeout=timeout_seconds)
 
 
 def _split_html_lines(raw: str) -> list[str]:
@@ -50,22 +48,17 @@ def _split_html_lines(raw: str) -> list[str]:
 
 
 @dataclass
-class RawJobResult:
+class RawJobResult(DiscoveredJob):
     """A single job listing extracted from a search page."""
     raw_id: str              # Platform-native ID (e.g., "12345")
-    canonical_id: str        # Normalized ID (e.g., "remember-12345" or "12345")
-    title: str
-    company: str
-    experience: str
-    url: str                 # Full URL to the posting
     href: str                # Original href from the DOM element
     platform: str            # "wanted" or "remember"
 
     def duplicate_keys(self) -> list[str]:
-        """All IDs to check for dedup. Remember uses dual-key (canonical + raw)."""
+        """All IDs to check for dedup. Remember uses dual-key (job_id + raw_id)."""
         if self.platform == "remember":
-            return [self.canonical_id, self.raw_id]
-        return [self.canonical_id]
+            return [self.job_id, self.raw_id]
+        return [self.job_id]
 
 
 @dataclass
@@ -158,7 +151,7 @@ def load_and_scrape_wanted(page, search_url: str, config: SearchPageConfig) -> S
 
                 outcome.results.append(RawJobResult(
                     raw_id=job_id,
-                    canonical_id=job_id,
+                    job_id=job_id,
                     title=title,
                     company=company,
                     experience=experience,
@@ -241,12 +234,12 @@ def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) ->
                 title = lines[1]
                 experience = parse_remember_experience(lines[2:])
 
-                canonical_id = f"remember-{raw_id}"
+                job_id = f"remember-{raw_id}"
                 full_url = f"{config.base_url}/job/posting/{raw_id}"
 
                 outcome.results.append(RawJobResult(
                     raw_id=raw_id,
-                    canonical_id=canonical_id,
+                    job_id=job_id,
                     title=title,
                     company=company,
                     experience=experience,
@@ -300,7 +293,7 @@ def load_and_scrape_wanted_http(search_url: str, config: SearchPageConfig) -> Sc
 
         outcome.results.append(RawJobResult(
             raw_id=job_id,
-            canonical_id=job_id,
+            job_id=job_id,
             title=title,
             company=company,
             experience=experience,
@@ -353,7 +346,7 @@ def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> 
         title = lines[1]
         experience = parse_remember_experience(lines[2:])
 
-        canonical_id = f"remember-{raw_id}"
+        job_id = f"remember-{raw_id}"
         full_url = (
             f"{config.base_url}/job/posting/{raw_id}"
             if href.startswith("/job/posting/")
@@ -362,7 +355,7 @@ def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> 
 
         outcome.results.append(RawJobResult(
             raw_id=raw_id,
-            canonical_id=canonical_id,
+            job_id=job_id,
             title=title,
             company=company,
             experience=experience,
@@ -438,12 +431,12 @@ def convert_groupby_to_raw_results(
                 continue
 
             startup = item.get("startup") or {}
-            canonical_id = f"groupby-{item_id}"
+            job_id = f"groupby-{item_id}"
 
             outcome.candidate_count += 1
             outcome.results.append(RawJobResult(
-                raw_id=canonical_id,
-                canonical_id=canonical_id,
+                raw_id=str(item_id),
+                job_id=job_id,
                 title=(item.get("name") or "").strip(),
                 company=(startup.get("name") or "").strip(),
                 experience=format_groupby_experience(item),
@@ -497,7 +490,7 @@ def convert_wanted_to_raw_results(
             outcome.candidate_count += 1
             outcome.results.append(RawJobResult(
                 raw_id=job_id,
-                canonical_id=job_id,
+                job_id=job_id,
                 title=(item.get("position") or "").strip(),
                 company=(company_info.get("name") or "").strip(),
                 experience=wanted_format_exp(item),
@@ -547,12 +540,12 @@ def convert_remember_to_raw_results(
 
             organization = item.get("organization") or {}
             raw_id = str(item_id)
-            canonical_id = f"remember-{raw_id}"
+            job_id = f"remember-{raw_id}"
 
             outcome.candidate_count += 1
             outcome.results.append(RawJobResult(
                 raw_id=raw_id,
-                canonical_id=canonical_id,
+                job_id=job_id,
                 title=(item.get("title") or "").strip(),
                 company=(organization.get("name") or "").strip(),
                 experience=remember_format_exp(item),
@@ -633,9 +626,9 @@ def filter_and_dedup(
 ) -> FilterResult:
     """Apply title/company/experience filters and dedup against *seen_ids* + filesystem.
 
-    Mutates *seen_ids* in-place (adds accepted and fs-dup canonical IDs).
+    Mutates *seen_ids* in-place (adds accepted and fs-dup job IDs).
     Uses ``RawJobResult.duplicate_keys()`` for platform-aware dedup:
-    canonical_id for most platforms, and [canonical_id, raw_id] for Remember.
+    job_id for most platforms, and [job_id, raw_id] for Remember.
     Filesystem dedup is checked through ``is_duplicate()`` for each dedup key.
     """
     out = FilterResult()
@@ -668,10 +661,10 @@ def filter_and_dedup(
                 break
         if fs_dup:
             out.duplicates += 1
-            seen_ids.add(raw.canonical_id)
+            seen_ids.add(raw.job_id)
             continue
 
         out.accepted.append(raw)
-        seen_ids.add(raw.canonical_id)
+        seen_ids.add(raw.job_id)
 
     return out

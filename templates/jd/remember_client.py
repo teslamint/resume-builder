@@ -8,8 +8,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-import urllib.error
-import urllib.request
 from typing import Optional
 
 try:
@@ -22,10 +20,6 @@ logger = logging.getLogger(__name__)
 REMEMBER_API_BASE = "https://career-api.rememberapp.co.kr"
 REMEMBER_BASE_URL = "https://career.rememberapp.co.kr"
 REMEMBER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json",
     "Content-Type": "application/json",
     "Origin": REMEMBER_BASE_URL,

@@ -11,7 +11,7 @@ from remember_client import (
 
 
 class TestRequestPost:
-    @patch("remember_client.urllib.request.urlopen")
+    @patch("http_client_base.urllib.request.urlopen")
     def test_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"data": [{"id": 1}], "meta": {"total_count": 1}}'
@@ -22,7 +22,7 @@ class TestRequestPost:
         result = _request_post("/job_postings/search", {"page": 1})
         assert result["data"][0]["id"] == 1
 
-    @patch("remember_client.urllib.request.urlopen")
+    @patch("http_client_base.urllib.request.urlopen")
     def test_http_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.HTTPError(
@@ -34,7 +34,7 @@ class TestRequestPost:
         except RememberAPIError as e:
             assert "HTTP 500" in str(e)
 
-    @patch("remember_client.urllib.request.urlopen")
+    @patch("http_client_base.urllib.request.urlopen")
     def test_invalid_json(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b"not json"

@@ -6,27 +6,26 @@ import re
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 try:
+    from .http_client_base import DEFAULT_USER_AGENT, http_text_request
     from .naming import slugify_company as _slugify
 except ImportError:
+    from http_client_base import DEFAULT_USER_AGENT, http_text_request
     from naming import slugify_company as _slugify
 
 logger = logging.getLogger(__name__)
 
 def _fetch_with_urllib(url):
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read().decode('utf-8')
+    return http_text_request(url, timeout=15)
 
 
 def _fetch_with_curl(url):
     result = subprocess.run(
-        ['curl', '-sS', '-m', '15', '-H', 'User-Agent: Mozilla/5.0', url],
+        ['curl', '-sS', '-m', '15', '-H', f'User-Agent: {DEFAULT_USER_AGENT}', url],
         capture_output=True, text=True, timeout=20,
     )
     if result.returncode != 0:

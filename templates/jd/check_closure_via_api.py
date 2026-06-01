@@ -12,9 +12,13 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from .http_client_base import http_text_request
+except ImportError:
+    from http_client_base import http_text_request
 
 HIGH = Path("private/job_postings/conditional/high")
 CLOSED = Path("private/job_postings/closed")
@@ -27,9 +31,7 @@ def fetch_wanted_due(job_id: str) -> tuple[str | None, str]:
     """Wanted job_id로 due_time 가져옴. (due_time, error)"""
     url = f'https://www.wanted.co.kr/wd/{job_id}'
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode('utf-8')
+        html = http_text_request(url, timeout=15)
         m = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
         if not m:
             return None, "no __NEXT_DATA__"

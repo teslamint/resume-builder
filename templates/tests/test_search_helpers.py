@@ -20,7 +20,7 @@ from search_helpers import (
 class TestRawJobResult:
     def test_wanted_duplicate_keys_single(self):
         r = RawJobResult(
-            raw_id="12345", canonical_id="12345",
+            raw_id="12345", job_id="12345",
             title="T", company="C", experience="E",
             url="u", href="h", platform="wanted",
         )
@@ -28,7 +28,7 @@ class TestRawJobResult:
 
     def test_remember_duplicate_keys_dual(self):
         r = RawJobResult(
-            raw_id="67890", canonical_id="remember-67890",
+            raw_id="67890", job_id="remember-67890",
             title="T", company="C", experience="E",
             url="u", href="h", platform="remember",
         )
@@ -50,18 +50,18 @@ class TestScrapeOutcome:
 
 def _raw_job(
     raw_id: str,
-    canonical_id: str,
+    job_id: str,
     *,
     platform: str = "wanted",
 ) -> RawJobResult:
     return RawJobResult(
         raw_id=raw_id,
-        canonical_id=canonical_id,
-        title=f"Backend {canonical_id}",
+        job_id=job_id,
+        title=f"Backend {job_id}",
         company="TestCo",
         experience="경력 무관",
-        url=f"https://example.com/jobs/{canonical_id}",
-        href=f"/jobs/{canonical_id}",
+        url=f"https://example.com/jobs/{job_id}",
+        href=f"/jobs/{job_id}",
         platform=platform,
     )
 
@@ -69,7 +69,7 @@ def _raw_job(
 class TestFilterAndDedup:
     @patch("search_helpers.is_duplicate", return_value=(False, None))
     @patch("search_helpers.filter_experience", return_value=False)
-    def test_duplicate_canonical_id_is_filtered(self, mock_filter_experience, mock_is_duplicate):
+    def test_duplicate_job_id_is_filtered(self, mock_filter_experience, mock_is_duplicate):
         seen_ids = set()
         result = filter_and_dedup(
             [
@@ -82,7 +82,7 @@ class TestFilterAndDedup:
             config_excludes=[],
         )
 
-        assert [job.canonical_id for job in result.accepted] == ["wanted-100"]
+        assert [job.job_id for job in result.accepted] == ["wanted-100"]
         assert result.duplicates == 1
         assert seen_ids == {"wanted-100"}
 
@@ -101,7 +101,7 @@ class TestFilterAndDedup:
             config_excludes=[],
         )
 
-        assert [job.canonical_id for job in result.accepted] == ["wanted-100", "wanted-101"]
+        assert [job.job_id for job in result.accepted] == ["wanted-100", "wanted-101"]
         assert result.duplicates == 0
         assert seen_ids == {"wanted-100", "wanted-101"}
 
@@ -235,7 +235,7 @@ class TestLoadAndScrapeWanted:
 
         assert len(outcome.results) == 1
         assert outcome.results[0].raw_id == "12345"
-        assert outcome.results[0].canonical_id == "12345"
+        assert outcome.results[0].job_id == "12345"
         assert outcome.results[0].title == "Senior Backend"
         assert outcome.results[0].company == "TestCo"
         assert outcome.results[0].platform == "wanted"
@@ -276,7 +276,7 @@ class TestLoadAndScrapeRemember:
         )
         outcome = load_and_scrape_remember(page, "https://url", config)
         assert len(outcome.results) == 1
-        assert outcome.results[0].canonical_id == "remember-111"
+        assert outcome.results[0].job_id == "remember-111"
 
     def test_remember_dual_key(self):
         link = MagicMock()
@@ -291,7 +291,7 @@ class TestLoadAndScrapeRemember:
         outcome = load_and_scrape_remember(page, "https://url", config)
         r = outcome.results[0]
         assert r.raw_id == "555"
-        assert r.canonical_id == "remember-555"
+        assert r.job_id == "remember-555"
         assert r.duplicate_keys() == ["remember-555", "555"]
 
     def test_remember_title_company_order(self):
@@ -324,7 +324,7 @@ class TestLoadAndScrapeRemember:
 
 
 class TestLoadAndScrapeWantedHttp:
-    @patch("search_helpers._fetch_html")
+    @patch("search_helpers.http_text_request")
     def test_extracts_numeric_job_ids(self, mock_fetch):
         mock_fetch.return_value = (
             '<a href="/wd/12345?query=test">Senior Backend<br/>TestCo<br/>3년 이상</a>'
@@ -338,14 +338,14 @@ class TestLoadAndScrapeWantedHttp:
         assert outcome.results[0].company == "TestCo"
         assert outcome.results[1].raw_id == "67890"
 
-    @patch("search_helpers._fetch_html")
+    @patch("search_helpers.http_text_request")
     def test_no_results(self, mock_fetch):
         mock_fetch.return_value = '<div>검색 결과가 없습니다</div>'
         config = SearchPageConfig(base_url="https://www.wanted.co.kr")
         outcome = load_and_scrape_wanted_http("https://url", config)
         assert outcome.no_results is True
 
-    @patch("search_helpers._fetch_html")
+    @patch("search_helpers.http_text_request")
     def test_dedup_in_page(self, mock_fetch):
         mock_fetch.return_value = (
             '<a href="/wd/12345">Title<br/>Co</a>'
@@ -357,7 +357,7 @@ class TestLoadAndScrapeWantedHttp:
 
 
 class TestLoadAndScrapeRememberHttp:
-    @patch("search_helpers._fetch_html")
+    @patch("search_helpers.http_text_request")
     def test_extracts_numeric_job_ids(self, mock_fetch):
         mock_fetch.return_value = (
             '<a href="/job/posting/44444?jdViewSource=inweb_list">'
@@ -367,11 +367,11 @@ class TestLoadAndScrapeRememberHttp:
         outcome = load_and_scrape_remember_http("https://url", config)
         assert len(outcome.results) == 1
         assert outcome.results[0].raw_id == "44444"
-        assert outcome.results[0].canonical_id == "remember-44444"
+        assert outcome.results[0].job_id == "remember-44444"
         assert outcome.results[0].company == "CompanyA"
         assert outcome.results[0].title == "Title1"
 
-    @patch("search_helpers._fetch_html")
+    @patch("search_helpers.http_text_request")
     def test_filters_without_jdViewSource(self, mock_fetch):
         mock_fetch.return_value = (
             '<a href="/job/posting/11111">CompanyB<br/>Title2</a>'
@@ -380,7 +380,7 @@ class TestLoadAndScrapeRememberHttp:
         outcome = load_and_scrape_remember_http("https://url", config)
         assert len(outcome.results) == 0
 
-    @patch("search_helpers._fetch_html")
+    @patch("search_helpers.http_text_request")
     def test_no_results(self, mock_fetch):
         mock_fetch.return_value = '<div>총 0개 공고</div>'
         config = SearchPageConfig(base_url="https://career.rememberapp.co.kr")
@@ -412,7 +412,7 @@ class TestConvertWantedToRawResults:
 
         r0 = outcome.results[0]
         assert r0.raw_id == "12345"
-        assert r0.canonical_id == "12345"
+        assert r0.job_id == "12345"
         assert r0.title == "Backend Engineer"
         assert r0.company == "TestCo"
         assert r0.experience == "3~7년"
@@ -446,7 +446,7 @@ class TestConvertRememberToRawResults:
 
         r0 = outcome.results[0]
         assert r0.raw_id == "44444"
-        assert r0.canonical_id == "remember-44444"
+        assert r0.job_id == "remember-44444"
         assert r0.title == "Server Developer"
         assert r0.company == "RememberCo"
         assert r0.experience == "경력 3~5년"

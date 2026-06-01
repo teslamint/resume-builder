@@ -22,6 +22,7 @@ try:
     from .ce_types import ExtractionResult, PlatformData
     from .ce_wanted import extract_wanted_http
     from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from .constants import get_rate_limit
     from .naming import slugify_company as _slugify_company
 except ImportError:
     from ce_jd_files import extract_from_jd_files
@@ -31,6 +32,7 @@ except ImportError:
     from ce_types import ExtractionResult, PlatformData
     from ce_wanted import extract_wanted_http
     from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+    from constants import get_rate_limit
     from naming import slugify_company as _slugify_company
 
 import logging
@@ -48,6 +50,10 @@ BROWSER_EXTRACTORS: dict[str, Callable[[str, Any], PlatformData | None]] = {
     "saramin": extract_saramin,
     "thevc": extract_thevc,
 }
+
+
+def _rate_limit_for(platform_name: str) -> float:
+    return get_rate_limit(platform_name, REQUEST_DELAY)
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +96,7 @@ def extract_company_info(
             logger.warning("[%s-http] 예외: %s", platform_name, e)
             platforms_failed.append(platform_name)
         if i < len(http_selected) - 1:
-            time.sleep(REQUEST_DELAY)
+            time.sleep(_rate_limit_for(platform_name))
 
     playwright_available = browser_context is not None
     if browser_selected and not browser_context:
@@ -146,7 +152,7 @@ def extract_company_info(
                             logger.warning("[%s] 예외: %s", platform_name, e)
                             platforms_failed.append(platform_name)
                         if i < len(browser_selected) - 1:
-                            time.sleep(REQUEST_DELAY)
+                            time.sleep(_rate_limit_for(platform_name))
                 finally:
                     if own_playwright and browser:
                         browser.close()

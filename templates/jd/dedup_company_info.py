@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -50,6 +51,7 @@ BUILD_DIR = BASE_DIR / "private" / "build"
 REPORT_PATH = BUILD_DIR / "dedup_company_info_report.md"
 ACTIONS_PATH = BUILD_DIR / "dedup_actions.sh"
 MERGE_DIFF_DIR = BUILD_DIR / "dedup_merge_diffs"
+logger = logging.getLogger(__name__)
 
 REF_GREP_DIRS = [
     BASE_DIR / "private" / "jd_analysis",
@@ -441,15 +443,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = p.parse_args(argv)
 
     if not args.queue.exists():
-        print(f"queue not found: {args.queue}", file=sys.stderr)
+        logger.error("Queue not found: %s", args.queue)
         return 2
 
     groups = parse_queue(args.queue)
     if not groups:
-        print(f"no groups parsed from {args.queue}", file=sys.stderr)
+        logger.error("No groups parsed from %s", args.queue)
         return 1
 
-    print(f"parsed {len(groups)} groups from {args.queue.name}", file=sys.stderr)
+    print(f"parsed {len(groups)} groups from {args.queue.name}")
     classifications = [classify_group(g) for g in groups]
 
     if args.dry_run:
@@ -470,13 +472,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0
 
     emit_report(classifications, REPORT_PATH)
-    print(f"wrote {REPORT_PATH.relative_to(BASE_DIR)}", file=sys.stderr)
+    print(f"wrote {REPORT_PATH.relative_to(BASE_DIR)}")
 
     if args.emit_actions:
         emit_actions(classifications, ACTIONS_PATH)
-        print(f"wrote {ACTIONS_PATH.relative_to(BASE_DIR)}", file=sys.stderr)
+        print(f"wrote {ACTIONS_PATH.relative_to(BASE_DIR)}")
         emit_merge_diffs(classifications, MERGE_DIFF_DIR)
-        print(f"wrote diffs under {MERGE_DIFF_DIR.relative_to(BASE_DIR)}/", file=sys.stderr)
+        print(f"wrote diffs under {MERGE_DIFF_DIR.relative_to(BASE_DIR)}/")
 
     return 0
 

@@ -4,12 +4,13 @@ import json
 import logging
 import re
 import sys
-import urllib.request
 from pathlib import Path
 
 try:
+    from .http_client_base import http_text_request
     from .naming import slugify_company as _slugify
 except ImportError:
+    from http_client_base import http_text_request
     from naming import slugify_company as _slugify
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,7 @@ logger = logging.getLogger(__name__)
 def fetch_wanted_posting(job_id):
     """Wanted 채용공고 API 호출"""
     url = f'https://www.wanted.co.kr/wd/{job_id}'
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        html = resp.read().decode('utf-8')
+    html = http_text_request(url, timeout=15)
 
     # __NEXT_DATA__ JSON 추출
     m = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
