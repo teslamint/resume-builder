@@ -539,7 +539,7 @@ Expected: all PASS (same count as baseline + new ce_merge tests)
 - [ ] **Step 6: Verify CLI still works**
 
 ```bash
-uv run python templates/jd/company_extractor.py --help
+uv run python -m templates.jd.company_extractor --help
 ```
 
 Expected: prints help text without errors

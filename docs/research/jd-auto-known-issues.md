@@ -6,7 +6,7 @@ Surfaced during the 2026-04-27/28 incident triage of `templates/jd/auto.py`. Eac
 
 - **Status**: **Resolved 2026-04-28** (branch `jd-screening-experience-match`)
 - **Location**: `templates/jd/auto.py:98-115` (`_find_latest_state`)
-- **Symptom**: `python3 templates/jd/auto.py --resume` retried items from a stale `jd-batch-...` run instead of the most recent timestamp-prefixed run, even though the timestamp run was newer in wall-clock time.
+- **Symptom**: `python -m templates.jd.auto --resume` retried items from a stale `jd-batch-...` run instead of the most recent timestamp-prefixed run, even though the timestamp run was newer in wall-clock time.
 - **Root cause**: `sorted(state_files, reverse=True)` sorts by filename lexically. Because `j > 2` in ASCII, every file named `.auto_state_jd-batch-*.json` is ordered before `.auto_state_2026MMDD_HHMMSS.json` regardless of mtime. The first file with any non-`done` item is returned.
 - **Fix**: Replaced `sorted(state_files, reverse=True)` with `sorted(state_files, key=lambda p: p.stat().st_mtime, reverse=True)`. Regression test added: `templates/tests/test_auto_state.py::TestFindLatestStateMtime`.
 
@@ -37,7 +37,7 @@ Surfaced during the 2026-04-27/28 incident triage of `templates/jd/auto.py`. Eac
   curl -sS --max-time 30 "https://www.saramin.co.kr/zf_user/search/company?searchword=test"
   # Body is the meta-refresh to /error/HTTP_BAD_REQUEST.php
   ```
-  Or run `python3 templates/jd/auto.py --from-urls <single-wanted-url> 2>&1 | grep saramin` and observe the `Page.goto: Timeout 20000ms exceeded` from `ce_saramin`.
+  Or run `python -m templates.jd.auto --from-urls <single-wanted-url> 2>&1 | grep saramin` and observe the `Page.goto: Timeout 20000ms exceeded` from `ce_saramin`.
 - **Applied partial fix**: `--disable-blink-features=AutomationControlled` added to `company_extractor.py` Chromium launch args. No effect on Saramin's gate.
 - **Fix history**:
   - 1차 2026-04-28: `--disable-blink-features=AutomationControlled` — no effect
@@ -51,6 +51,6 @@ Surfaced during the 2026-04-27/28 incident triage of `templates/jd/auto.py`. Eac
 - **Backfill path (Path B)**:
   - `templates/jd/enrich_saramin_company_info.py` — dedicated script, reads from saramin queue, uses Patchright + `--headed` option.
   - Setup (one-time): `uv sync && uv run patchright install chromium`
-  - Run: `uv run python3 templates/jd/enrich_saramin_company_info.py --headed --limit 3`
+  - Run: `uv run python -m templates.jd.enrich_saramin_company_info --headed --limit 3`
   - Kill criterion: if 0/3 companies succeed with Patchright + headed, status → `Mitigated (Saramin permanently best-effort)`.
 - **Tmaxsoft caveat**: 티맥스소프트's stub at `private/company_info/티맥스소프트.md` shows every field as `정보 없음`, indicating *both* Wanted and Saramin extraction failed — not just Saramin. Fixing Saramin alone will not unblock those JDs; their resolution likely needs a Wanted company-name normalization or a manual company info entry. This is a separate lane from issue #4.

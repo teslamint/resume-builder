@@ -476,7 +476,7 @@ Expected: 419 passed
 - [ ] **Step 8: Verify CLI**
 
 ```bash
-uv run python templates/jd/company_extractor.py --help
+uv run python -m templates.jd.company_extractor --help
 ```
 
 - [ ] **Step 9: Verify no circular imports**
