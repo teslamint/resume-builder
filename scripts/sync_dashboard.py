@@ -81,6 +81,22 @@ DIR_TO_STATUS = {
     "rejected": "서류 탈락",
 }
 
+ACTIVE_JOB_POSTING_SCAN_DIRS = [
+    "applied",
+    "conditional",
+    "conditional/high",
+    "conditional/hold",
+    "pass",
+    "rejected",
+]
+
+# Retired active buckets; keep lookup-only for Obsidian -> resume updates
+# until historical files migrate out of these folders.
+LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS = [
+    "conditional/middle",
+    "conditional/low",
+]
+
 
 def parse_frontmatter(content: str, file_path: Optional[Path] = None) -> tuple[dict, str]:
     """Parse YAML frontmatter from markdown."""
@@ -187,19 +203,12 @@ def extract_position_from_content(content: str) -> Optional[str]:
     return None
 
 
-def scan_job_postings() -> dict:
+def scan_job_postings(*, include_lookup_only: bool = False) -> dict:
     """Scan all job posting files and return structured data."""
     jobs = {}
-
-    # Include active conditional subdirectories.
-    scan_dirs = [
-        "applied",
-        "conditional",
-        "conditional/high",
-        "conditional/hold",
-        "pass",
-        "rejected",
-    ]
+    scan_dirs = list(ACTIVE_JOB_POSTING_SCAN_DIRS)
+    if include_lookup_only:
+        scan_dirs.extend(LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS)
 
     for status_dir in scan_dirs:
         dir_path = JOB_POSTINGS / status_dir
@@ -598,7 +607,7 @@ def from_obsidian(dry_run: bool = False, dashboard_path: Optional[Path] = None):
     entries = parse_dashboard_table(content)
     print(f"   Found {len(entries)} entries in dashboard")
     
-    jobs = scan_job_postings()
+    jobs = scan_job_postings(include_lookup_only=True)
     
     # Deduplicate entries by job_id, keeping the last occurrence
     seen_ids = {}

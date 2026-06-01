@@ -150,6 +150,31 @@ def test_default_file_locations_exclude_retired_conditional_tier_buckets():
     assert "low" not in audit.JOB_POSTING_DIRS
 
 
+def test_load_file_locations_resolves_retired_conditional_tier_buckets_as_lookup_only(
+    tmp_path,
+    monkeypatch,
+):
+    active_map = {
+        "hold": tmp_path / "conditional" / "hold",
+    }
+    retired_map = {
+        "middle": tmp_path / "conditional" / "middle",
+        "low": tmp_path / "conditional" / "low",
+    }
+    for label, folder in {**active_map, **retired_map}.items():
+        folder.mkdir(parents=True)
+        (folder / f"123-{label}-backend.md").write_text("# JD\n", encoding="utf-8")
+
+    monkeypatch.setattr(audit, "JOB_POSTING_DIRS", active_map)
+    monkeypatch.setattr(audit, "LOOKUP_ONLY_JOB_POSTING_DIRS", retired_map)
+
+    locations = audit.load_file_locations()
+
+    assert locations["123-hold-backend.md"] == "hold"
+    assert locations["123-middle-backend.md"] == "middle"
+    assert locations["123-low-backend.md"] == "low"
+
+
 def test_pass_folder_cut_scope_uses_folder_ground_truth():
     assert audit.is_pass_folder_cut("pass") is True
     assert audit.is_pass_folder_cut("hold") is False
