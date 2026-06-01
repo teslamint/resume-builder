@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass

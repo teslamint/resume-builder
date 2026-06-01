@@ -113,7 +113,7 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 - [x] Consider `pyright --basic` in CI (type annotations already at 70-90% coverage)
   - Evaluated: pyright 1.1.409, `typeCheckingMode = "basic"`, 68 files → 40 errors (below 50-issue threshold)
   - Config added to pyproject.toml (`[tool.pyright]` section) for local use
-  - Blocking CI deferred: 40 existing errors need fixing first (see `docs/superpowers/plans/pyright-evaluation.md`)
+  - ~~Blocking CI deferred: 40 existing errors need fixing first~~ → All 40 errors fixed (2026-06-01). CI job is a separate follow-up.
 
 ---
 

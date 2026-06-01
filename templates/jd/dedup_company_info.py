@@ -433,7 +433,7 @@ def emit_merge_diffs(classifications: list[Classification], out_dir: Path) -> No
 # ────────────────────────────── cli ──────────────────────────────
 
 def main(argv: Optional[list[str]] = None) -> int:
-    p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    p = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
     p.add_argument("--queue", type=Path, default=QUEUE_PATH, help="Path to cosmetic_duplicates_followup.txt")
     p.add_argument("--classify", action="store_true", help="Write report (default)")
     p.add_argument("--emit-actions", action="store_true", help="Also write shell script + merge diffs")

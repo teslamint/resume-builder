@@ -790,7 +790,7 @@ def _fill_personal_legacy(doc, resume, target_config, font):
 
 def _fill_education_legacy(doc, resume, font):
     header, idx = _find(doc, r"Education|학\s*력\s*사\s*항")
-    if not header:
+    if not header or idx is None:
         return
     edu = resume["education"]
     main_edu = edu[0] if edu else {}
@@ -821,7 +821,7 @@ def _fill_education_legacy(doc, resume, font):
 
 def _fill_career_summary_legacy(doc, resume, display_companies, target_config, font):
     header, idx = _find(doc, r"Work\s*Experience|경\s*력\s*사\s*항")
-    if not header:
+    if not header or idx is None:
         return
 
     te = resume["total_experience"]
@@ -860,7 +860,7 @@ def _fill_career_summary_legacy(doc, resume, display_companies, target_config, f
 
 def _fill_core_experiences_legacy(doc, display_companies, target_config, font):
     header, idx = _find(doc, r"Core\s*Experience|핵심.*역량|핵심.*경험")
-    if not header:
+    if not header or idx is None:
         return
 
     core_items = target_config.get("core_experiences", [])
@@ -921,7 +921,7 @@ def _fill_company_details_legacy(doc, mapping, companies, font):
     insert_before = mapping.get("insert_extra_companies_before", "자기소개서")
 
     detail_header, detail_idx = _find(doc, r"세부\s*경력\s*사항")
-    if not detail_header:
+    if not detail_header or detail_idx is None:
         return
 
     company_headers = []

@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Any, List, Optional, Set, cast
 from urllib.parse import quote, urljoin
 
 import logging
@@ -133,7 +133,7 @@ class SearchState:
         )
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     """Load search configuration."""
     result = _read_search_config(CONFIG_PATH)
     if result is None:
@@ -441,10 +441,19 @@ def run_search(
     state = load_state()
     
     if not queries:
-        queries = config.get("search_queries", ["백엔드 시니어"])
+        configured_queries = config.get("search_queries", ["백엔드 시니어"])
+        queries = cast(List[str], configured_queries) if isinstance(configured_queries, list) else ["백엔드 시니어"]
     
     if max_urls is None:
-        max_urls = config.get("execution", {}).get("max_urls_per_run", 20)
+        execution_config = config.get("execution", {})
+        if not isinstance(execution_config, dict):
+            execution_config = {}
+        configured_max_urls = execution_config.get("max_urls_per_run", 20)
+        max_urls = configured_max_urls if isinstance(configured_max_urls, int) else 20
+    else:
+        execution_config = config.get("execution", {})
+        if not isinstance(execution_config, dict):
+            execution_config = {}
     
     all_new_postings: List[JobPosting] = []
     total_found = 0
@@ -458,21 +467,27 @@ def run_search(
     print("=" * 60)
     
     platforms_config = config.get("platforms", {})
+    if not isinstance(platforms_config, dict):
+        platforms_config = {}
     search_funcs = {
         "wanted": search_wanted,
         "remember": search_remember,
     }
 
-    enabled_platforms = [
-        name for name, cfg in platforms_config.items()
-        if cfg.get("enabled", False) and name in search_funcs
-    ]
+    enabled_platforms: list[str] = []
+    for name, cfg in platforms_config.items():
+        if not isinstance(name, str) or not isinstance(cfg, dict):
+            continue
+        if cfg.get("enabled", False) and name in search_funcs:
+            enabled_platforms.append(name)
 
-    if not enabled_platforms and not platforms_config.get("groupby", {}).get("enabled", False):
+    groupby_cfg = platforms_config.get("groupby", {})
+    groupby_enabled = isinstance(groupby_cfg, dict) and bool(groupby_cfg.get("enabled", False))
+
+    if not enabled_platforms and not groupby_enabled:
         enabled_platforms = ["wanted"]
 
     # GroupBy prefetch — queryless platform, runs once before query loop
-    groupby_enabled = platforms_config.get("groupby", {}).get("enabled", False)
     all_platform_names = list(enabled_platforms)
     if groupby_enabled:
         all_platform_names.append("groupby")
@@ -515,7 +530,7 @@ def run_search(
             print(f"      - 중복: {result.duplicates}개")
             print(f"      - 필터링: {result.filtered_out}개")
 
-            time.sleep(config.get("execution", {}).get("request_delay", 2))
+            time.sleep(execution_config.get("request_delay", 2))
         else:
             continue
         break
