@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 class TestProcessUrlsCharacterization:
     def test_full_pipeline_persists_state_round_trip(self, tmp_path):
-        from auto import RunSummary, _load_state, _process_urls
+        from auto_processor import _process_urls
+        from auto_state import RunSummary, _load_state
         from auto_company import CompanyInfoResult
 
         run_id = "process-urls-state-round-trip"
@@ -42,13 +43,13 @@ class TestProcessUrlsCharacterization:
         )
         summary = RunSummary(run_id=run_id)
 
-        with patch("auto.STATE_DIR", tmp_path / "state"), \
-             patch("auto.find_existing_jd", side_effect=[None, classified_path]), \
-             patch("auto.extract_jd_from_url", return_value=extracted) as mock_extract, \
-             patch("auto.ensure_company_info", return_value=company_info) as mock_company, \
-             patch("auto.run_screening", return_value=screening) as mock_screening, \
-             patch("auto._classify", return_value=("지원 추천", "pass")) as mock_classify, \
-             patch("auto._cleanup_state") as mock_cleanup:
+        with patch("auto_state.STATE_DIR", tmp_path / "state"), \
+             patch("auto_processor.find_existing_jd", side_effect=[None, classified_path]), \
+             patch("auto_processor.extract_jd_from_url", return_value=extracted) as mock_extract, \
+             patch("auto_processor.ensure_company_info", return_value=company_info) as mock_company, \
+             patch("auto_processor.run_screening", return_value=screening) as mock_screening, \
+             patch("auto_processor._classify", return_value=("지원 추천", "pass")) as mock_classify, \
+             patch("auto_processor._cleanup_state") as mock_cleanup:
             results, updated = _process_urls(
                 urls=[url],
                 run_id=run_id,

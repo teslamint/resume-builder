@@ -6,13 +6,13 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from auto import _save_state, _load_state, _find_latest_state, _state_path, STATE_DIR
+from auto_state import _save_state, _load_state, _find_latest_state, _state_path, STATE_DIR
 
 
 class TestAtomicSaveState:
     def test_creates_valid_json(self, tmp_path):
-        with patch("auto.STATE_DIR", tmp_path), \
-             patch("auto._state_path", return_value=tmp_path / ".auto_state_test.json"):
+        with patch("auto_state.STATE_DIR", tmp_path), \
+             patch("auto_state._state_path", return_value=tmp_path / ".auto_state_test.json"):
             _save_state("test", {"job1": {"url": "u", "stage": "done", "status": "done"}})
 
         state_file = tmp_path / ".auto_state_test.json"
@@ -22,16 +22,16 @@ class TestAtomicSaveState:
         assert "job1" in data["items"]
 
     def test_no_temp_files_remain_on_success(self, tmp_path):
-        with patch("auto.STATE_DIR", tmp_path), \
-             patch("auto._state_path", return_value=tmp_path / ".auto_state_test.json"):
+        with patch("auto_state.STATE_DIR", tmp_path), \
+             patch("auto_state._state_path", return_value=tmp_path / ".auto_state_test.json"):
             _save_state("test", {"job1": {"url": "u"}})
 
         tmp_files = list(tmp_path.glob("*.tmp"))
         assert len(tmp_files) == 0
 
     def test_temp_file_cleaned_on_error(self, tmp_path):
-        with patch("auto.STATE_DIR", tmp_path), \
-             patch("auto._state_path", return_value=tmp_path / ".auto_state_test.json"), \
+        with patch("auto_state.STATE_DIR", tmp_path), \
+             patch("auto_state._state_path", return_value=tmp_path / ".auto_state_test.json"), \
              patch("json.dump", side_effect=RuntimeError("serialize error")):
             with pytest.raises(RuntimeError):
                 _save_state("test", {"bad": "data"})
@@ -42,7 +42,7 @@ class TestAtomicSaveState:
 
 class TestLoadState:
     def test_returns_empty_for_missing_file(self, tmp_path):
-        with patch("auto._state_path", return_value=tmp_path / "nonexistent.json"):
+        with patch("auto_state._state_path", return_value=tmp_path / "nonexistent.json"):
             assert _load_state("test") == {}
 
     def test_returns_items_from_valid_file(self, tmp_path):
@@ -52,7 +52,7 @@ class TestLoadState:
             "items": {"job1": {"stage": "done"}}
         }))
 
-        with patch("auto._state_path", return_value=state_file):
+        with patch("auto_state._state_path", return_value=state_file):
             result = _load_state("test")
 
         assert result == {"job1": {"stage": "done"}}
@@ -61,7 +61,7 @@ class TestLoadState:
         state_file = tmp_path / "bad.json"
         state_file.write_text("not valid json{{{")
 
-        with patch("auto._state_path", return_value=state_file):
+        with patch("auto_state._state_path", return_value=state_file):
             assert _load_state("test") == {}
 
 
@@ -86,7 +86,7 @@ class TestFindLatestStateMtime:
         os.utime(old_file, (1000, 1000))
         os.utime(new_file, (2000, 2000))
 
-        with patch("auto.STATE_DIR", tmp_path):
+        with patch("auto_state.STATE_DIR", tmp_path):
             result = _find_latest_state()
 
         assert result == "20260101_000000", (

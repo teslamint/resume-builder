@@ -436,131 +436,148 @@ def _thevc_failure_note(status: str) -> str:
     return "TheVC 투자정보 추출에 실패했습니다."
 
 
-def ensure_company_info(
+def _headhunting_company_result(company_name: str, dry_run: bool) -> CompanyInfoResult:
+    from datetime import date
+
+    file_path = COMPANY_INFO_DIR / f"{slugify_company(company_name)}.md"
+    if not file_path.exists() and not dry_run:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(
+            (
+                f"# {company_name}\n\n"
+                "⚠️ 헤드헌팅/서치펌 — 정보 수집 제외 대상.\n\n"
+                "---\n\n"
+                f"*확인일: {date.today().isoformat()}*\n"
+            ),
+            encoding="utf-8",
+        )
+    return CompanyInfoResult(
+        company=company_name,
+        file_path=file_path,
+        used_existing=True,
+        completeness=0.0,
+        thevc_attempted=False,
+        thevc_status="skipped",
+        investment_data_source="headhunting_excluded",
+    )
+
+
+def _verify_and_warn_homonym(output_path: Path, jd_path: Path) -> None:
+    try:
+        ok, conf, mismatches = verify_company_match(output_path, jd_path)
+        if not ok and mismatches:
+            import sys
+
+            print(
+                f"WARN: company_info({output_path.name}) vs JD({jd_path.name}) "
+                f"동음이의 매칭 가능성 (confidence={conf}). "
+                f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
+                file=sys.stderr,
+            )
+    except Exception as exc:
+        _log.warning("company_match_verify 실패 (%s): %s", output_path.name, exc)
+
+
+def _update_existing_company_info(
+    company_file: Path,
+    company_name: str,
     jd_path: Path,
     jd_url: str,
-    company_name: Optional[str] = None,
-    thevc_mode: str = "auto",
-    dry_run: bool = False,
-    min_completeness: float = 0.0,
+    thevc_mode: str,
+    min_completeness: float,
+    dry_run: bool,
 ) -> CompanyInfoResult:
-    if thevc_mode not in THEVC_MODES:
-        raise ValueError(f"유효하지 않은 thevc_mode: {thevc_mode}")
-
-    company = (company_name or _extract_company_name_from_jd(jd_path) or "unknown-company").strip()
-
-    if is_headhunting_company(company):
-        from datetime import date
-        slug = slugify_company(company)
-        file_path = COMPANY_INFO_DIR / f"{slug}.md"
-        if not file_path.exists() and not dry_run:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(
-                f"# {company}\n\n⚠️ 헤드헌팅/서치펌 — 정보 수집 제외 대상.\n\n---\n\n*확인일: {date.today().isoformat()}*\n",
-                encoding="utf-8",
-            )
-        return CompanyInfoResult(
-            company=company,
-            file_path=file_path,
-            used_existing=True,
-            completeness=0.0,
-            thevc_attempted=False,
-            thevc_status="skipped",
-            investment_data_source="headhunting_excluded",
-        )
-
-    existing = _find_existing_company_file(company)
+    _ = jd_url
     jd_text = jd_path.read_text(encoding="utf-8")
-    if existing:
-        completeness = -1.0
-        data = None
-        try:
-            data = parse_company_file(existing)
-            result = validate_company(data, existing)
-            completeness = result.completeness_score
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "completeness 파싱 실패 (%s): %s — re-collection 진행", existing, exc
-            )
+    completeness = -1.0
+    data = None
+    try:
+        data = parse_company_file(company_file)
+        completeness = validate_company(data, company_file).completeness_score
+    except Exception as exc:
+        _log.warning("completeness 파싱 실패 (%s): %s — re-collection 진행", company_file, exc)
 
-        startup_signal = (data.is_startup if data else False) or _looks_startup(jd_text)
-        missing_investment_data = (
-            data is not None
-            and (data.investment_round is None or data.investment_total is None)
+    startup_signal = (data.is_startup if data else False) or _looks_startup(jd_text)
+    missing_investment_data = data is not None and (
+        data.investment_round is None or data.investment_total is None
+    )
+    startup_needs_thevc = startup_signal and missing_investment_data
+
+    if completeness < 0 or completeness < min_completeness:
+        return _create_new_company_info(
+            company_name=company_name,
+            jd_path=jd_path,
+            jd_url=jd_url,
+            thevc_mode=thevc_mode,
+            dry_run=dry_run,
+            min_completeness=min_completeness,
         )
-        startup_needs_thevc = startup_signal and missing_investment_data
 
-        if completeness >= 0 and completeness >= min_completeness:
-            if startup_needs_thevc and thevc_mode != "skip":
-                if dry_run:
-                    if thevc_mode == "require":
-                        raise RuntimeError("TheVC 투자정보 수집 필요(dry-run에서 스킵) - require 모드")
-                    return CompanyInfoResult(
-                        company=company,
-                        file_path=existing,
-                        used_existing=True,
-                        completeness=completeness,
-                        thevc_attempted=False,
-                        thevc_status="skipped_dry_run",
-                        investment_data_source="",
-                    )
-                else:
-                    thevc_status, investment_data = _extract_thevc_investment(company)
-                    if thevc_status == "success" and investment_data:
-                        _inject_thevc_into_file(existing, investment_data)
-                        completeness = _completeness_score(existing)
-                        return CompanyInfoResult(
-                            company=company,
-                            file_path=existing,
-                            used_existing=True,
-                            completeness=completeness,
-                            thevc_attempted=True,
-                            thevc_status=thevc_status,
-                            investment_data_source="thevc",
-                        )
-
-                    if thevc_mode == "require":
-                        raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
-
-                thevc_note = _thevc_failure_note(thevc_status)
-                _inject_thevc_note_into_file(existing, thevc_note)
-                _append_to_queue(ENRICHMENT_QUEUE_PATH, company)
-                completeness = _completeness_score(existing)
-                return CompanyInfoResult(
-                    company=company,
-                    file_path=existing,
-                    used_existing=True,
-                    completeness=completeness,
-                    thevc_attempted=True,
-                    thevc_status=thevc_status,
-                    investment_data_source="existing",
-                )
-
-            try:
-                ok, conf, mismatches = verify_company_match(existing, jd_path)
-                if not ok and mismatches:
-                    import sys
-                    print(
-                        f"WARN: company_info({existing.name}) vs JD({jd_path.name}) "
-                        f"동음이의 매칭 가능성 (confidence={conf}). "
-                        f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
-                        file=sys.stderr,
-                    )
-            except Exception as exc:
-                _log.warning("company_match_verify 실패 (%s): %s", existing.name, exc)
+    if startup_needs_thevc and thevc_mode != "skip":
+        if dry_run:
+            if thevc_mode == "require":
+                raise RuntimeError("TheVC 투자정보 수집 필요(dry-run에서 스킵) - require 모드")
             return CompanyInfoResult(
-                company=company,
-                file_path=existing,
+                company=company_name,
+                file_path=company_file,
                 used_existing=True,
                 completeness=completeness,
                 thevc_attempted=False,
-                thevc_status="skipped",
-                investment_data_source="existing",
+                thevc_status="skipped_dry_run",
+                investment_data_source="",
             )
 
-    startup = _looks_startup(jd_text)
+        thevc_status, investment_data = _extract_thevc_investment(company_name)
+        if thevc_status == "success" and investment_data:
+            _inject_thevc_into_file(company_file, investment_data)
+            return CompanyInfoResult(
+                company=company_name,
+                file_path=company_file,
+                used_existing=True,
+                completeness=_completeness_score(company_file),
+                thevc_attempted=True,
+                thevc_status=thevc_status,
+                investment_data_source="thevc",
+            )
 
+        if thevc_mode == "require":
+            raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
+
+        _inject_thevc_note_into_file(company_file, _thevc_failure_note(thevc_status))
+        _append_to_queue(ENRICHMENT_QUEUE_PATH, company_name)
+        return CompanyInfoResult(
+            company=company_name,
+            file_path=company_file,
+            used_existing=True,
+            completeness=_completeness_score(company_file),
+            thevc_attempted=True,
+            thevc_status=thevc_status,
+            investment_data_source="existing",
+        )
+
+    _verify_and_warn_homonym(company_file, jd_path)
+    return CompanyInfoResult(
+        company=company_name,
+        file_path=company_file,
+        used_existing=True,
+        completeness=completeness,
+        thevc_attempted=False,
+        thevc_status="skipped",
+        investment_data_source="existing",
+    )
+
+
+def _create_new_company_info(
+    company_name: str,
+    jd_path: Path,
+    jd_url: str,
+    thevc_mode: str,
+    dry_run: bool,
+    min_completeness: float,
+) -> CompanyInfoResult:
+    _ = min_completeness
+    jd_text = jd_path.read_text(encoding="utf-8")
+    startup = _looks_startup(jd_text)
     thevc_attempted = False
     thevc_status = "skipped"
     investment_data = None
@@ -569,50 +586,51 @@ def ensure_company_info(
 
     if startup and thevc_mode != "skip":
         thevc_attempted = True
-        thevc_status, investment_data = _extract_thevc_investment(company)
+        thevc_status, investment_data = _extract_thevc_investment(company_name)
         if thevc_status == "success" and investment_data:
             investment_source = "thevc"
             thevc_note = "TheVC에서 투자정보를 추출했습니다."
         else:
             thevc_note = _thevc_failure_note(thevc_status)
             if not dry_run:
-                _append_to_queue(ENRICHMENT_QUEUE_PATH, company)
+                _append_to_queue(ENRICHMENT_QUEUE_PATH, company_name)
 
         if thevc_mode == "require" and thevc_status != "success":
             raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
 
-    slug = slugify_company(company)
-    output_path = COMPANY_INFO_DIR / f"{slug}.md"
-
-    # Phase 2: Wanted + Saramin extraction (skip on dry_run)
+    output_path = COMPANY_INFO_DIR / f"{slugify_company(company_name)}.md"
     extraction = None
     has_extraction = False
-
     if not dry_run:
         try:
             extraction = extract_company_info(
-                company_name=company,
+                company_name=company_name,
                 platforms=["wanted", "saramin"],
             )
             has_extraction = len(extraction.platforms_used) > 0
             if has_extraction:
                 output_path = extraction.file_path
-                _log.info("회사 정보 추출 완료: %s (platforms=%s)", company, extraction.platforms_used)
+                _log.info("회사 정보 추출 완료: %s (platforms=%s)", company_name, extraction.platforms_used)
             if "saramin" in extraction.platforms_failed:
-                _append_to_queue(SARAMIN_ENRICHMENT_QUEUE_PATH, company)
+                _append_to_queue(SARAMIN_ENRICHMENT_QUEUE_PATH, company_name)
         except Exception as exc:
-            _log.warning("회사 정보 추출 실패 (%s): %s — 스텁 fallback", company, exc)
+            _log.warning("회사 정보 추출 실패 (%s): %s — 스텁 fallback", company_name, exc)
             extraction = None
             has_extraction = False
 
-    # Phase 3: Build final file
     if has_extraction and extraction:
         if investment_data:
             _inject_thevc_into_file(output_path, investment_data)
         elif startup:
             _inject_thevc_note_into_file(output_path, thevc_note)
     else:
-        markdown = _build_company_info_markdown(company, jd_url, startup, thevc_note, investment_data)
+        markdown = _build_company_info_markdown(
+            company_name,
+            jd_url,
+            startup,
+            thevc_note,
+            investment_data,
+        )
         if not dry_run:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(markdown, encoding="utf-8")
@@ -621,32 +639,25 @@ def ensure_company_info(
     if not dry_run and output_path.exists():
         try:
             data = parse_company_file(output_path)
-            result = validate_company(data, output_path)
-            completeness = result.completeness_score
+            completeness = validate_company(data, output_path).completeness_score
         except Exception:
             completeness = 0.0
 
+        _verify_and_warn_homonym(output_path, jd_path)
         try:
             ok, conf, mismatches = verify_company_match(output_path, jd_path)
-            if not ok and mismatches:
-                import sys
-                print(
-                    f"WARN: company_info({output_path.name}) vs JD({jd_path.name}) "
-                    f"동음이의 매칭 가능성 (confidence={conf}). "
-                    f"company_info에만 있는 토큰: {mismatches[:5]} — 운영자 검토 권장",
-                    file=sys.stderr,
+            if not ok and mismatches and conf < 0.3:
+                completeness = 0.0
+                _log.warning(
+                    "동음이의 차단: %s (confidence=%.2f < 0.3) — 회사정보 무효화",
+                    output_path.name,
+                    conf,
                 )
-                if conf < 0.3:
-                    completeness = 0.0
-                    _log.warning(
-                        "동음이의 차단: %s (confidence=%.2f < 0.3) — 회사정보 무효화",
-                        output_path.name, conf,
-                    )
-        except Exception as exc:
-            _log.warning("company_match_verify 실패 (%s): %s", output_path.name, exc)
+        except Exception:
+            pass
 
     return CompanyInfoResult(
-        company=company,
+        company=company_name,
         file_path=output_path,
         used_existing=False,
         completeness=completeness,
@@ -655,3 +666,15 @@ def ensure_company_info(
         investment_data_source=investment_source if investment_source != "none" else
             ("extraction" if has_extraction else "none"),
     )
+
+
+def ensure_company_info(jd_path: Path, jd_url: str, company_name: Optional[str] = None, thevc_mode: str = "auto", dry_run: bool = False, min_completeness: float = 0.0) -> CompanyInfoResult:
+    if thevc_mode not in THEVC_MODES:
+        raise ValueError(f"유효하지 않은 thevc_mode: {thevc_mode}")
+    company = (company_name or _extract_company_name_from_jd(jd_path) or "unknown-company").strip()
+    if is_headhunting_company(company):
+        return _headhunting_company_result(company, dry_run)
+    company_file = _find_existing_company_file(company)
+    if company_file:
+        return _update_existing_company_info(company_file, company, jd_path, jd_url, thevc_mode, min_completeness, dry_run)
+    return _create_new_company_info(company, jd_path, jd_url, thevc_mode, dry_run, min_completeness)

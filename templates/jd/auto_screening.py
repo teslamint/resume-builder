@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 try:
     from .company_validator import parse_company_file, validate_company
@@ -49,6 +49,60 @@ class ScreeningResult:
     provider: str
     used_fallback: bool
     raw_output: str
+
+
+class LLMProvider(Protocol):
+    def run(self, prompt: str, timeout: int) -> tuple[str, str]:
+        """Return the provider name and LLM output."""
+        ...
+
+
+class CLIProvider:
+    def run(self, prompt: str, timeout: int) -> tuple[str, str]:
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+
+        errors: list[str] = []
+        for provider, cmd in _resolve_commands():
+            try:
+                returncode, stdout, stderr = _run_provider_command(
+                    provider,
+                    cmd,
+                    prompt,
+                    timeout,
+                    env,
+                )
+            except FileNotFoundError:
+                errors.append(f"{provider}: command not found")
+                continue
+            except subprocess.TimeoutExpired:
+                errors.append(f"{provider}: timed out after {timeout}s")
+                continue
+            except Exception as exc:
+                errors.append(f"{provider}: execution error: {exc}")
+                continue
+
+            if returncode != 0:
+                errors.append(_format_failed_process(provider, returncode, stdout, stderr))
+                continue
+
+            output = stdout.strip()
+            if not output:
+                errors.append(f"{provider}: returned empty output")
+                continue
+
+            return provider, output
+
+        raise RuntimeError("; ".join(errors) or "No LLM provider succeeded")
+
+
+class FakeProvider:
+    def __init__(self, output: str, provider_name: str = "fake"):
+        self.output = output
+        self.provider_name = provider_name
+
+    def run(self, prompt: str, timeout: int) -> tuple[str, str]:
+        return self.provider_name, self.output
 
 
 def _load_text(path: Optional[Path]) -> str:
@@ -276,35 +330,7 @@ def _run_provider_command(
 
 
 def _run_llm(prompt: str, timeout: int) -> tuple[str, str]:
-    env = os.environ.copy()
-    env.pop("CLAUDECODE", None)
-
-    errors: list[str] = []
-    for provider, cmd in _resolve_commands():
-        try:
-            returncode, stdout, stderr = _run_provider_command(provider, cmd, prompt, timeout, env)
-        except FileNotFoundError:
-            errors.append(f"{provider}: command not found")
-            continue
-        except subprocess.TimeoutExpired:
-            errors.append(f"{provider}: timed out after {timeout}s")
-            continue
-        except Exception as exc:
-            errors.append(f"{provider}: execution error: {exc}")
-            continue
-
-        if returncode != 0:
-            errors.append(_format_failed_process(provider, returncode, stdout, stderr))
-            continue
-
-        output = stdout.strip()
-        if not output:
-            errors.append(f"{provider}: returned empty output")
-            continue
-
-        return provider, output
-
-    raise RuntimeError("; ".join(errors) or "No LLM provider succeeded")
+    return CLIProvider().run(prompt, timeout)
 
 
 def _screening_filename(jd_path: Path) -> str:
@@ -443,6 +469,7 @@ def run_screening(
     company_file: Optional[Path],
     llm_timeout: int = 120,
     dry_run: bool = False,
+    llm_provider: Optional[LLMProvider] = None,
 ) -> ScreeningResult:
     jd_content = jd_path.read_text(encoding="utf-8")
     rules = load_screening_rules()
@@ -451,13 +478,14 @@ def run_screening(
     candidate_context = _load_candidate_context()
 
     prompt = _build_prompt(jd_content, rules, company_content, risk_summary, candidate_context)
+    provider_runner = llm_provider if llm_provider is not None else CLIProvider()
 
     provider = "fallback"
     used_fallback = False
     raw_output = ""
 
     try:
-        provider, raw_output = _run_llm(prompt, timeout=llm_timeout)
+        provider, raw_output = provider_runner.run(prompt, timeout=llm_timeout)
         verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
         normalized_output = _normalize_output(raw_output, verdict)
     except Exception as exc:
@@ -476,7 +504,10 @@ def run_screening(
                 "## 최종 판정 / ## 핵심 근거 순서로 출력하세요.\n\n"
             )
             try:
-                provider, raw_output = _run_llm(retry_prefix + prompt, timeout=llm_timeout)
+                provider, raw_output = provider_runner.run(
+                    retry_prefix + prompt,
+                    timeout=llm_timeout,
+                )
                 verdict = parse_verdict_from_screening(raw_output) or "지원 보류"
                 normalized_output = _normalize_output(raw_output, verdict)
             except Exception:

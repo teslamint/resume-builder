@@ -437,7 +437,7 @@ class TestAutoScreening(unittest.TestCase):
             "auto_screening._resolve_commands",
             return_value=[("codex", ["codex", "exec"])],
         ), patch("auto_screening.subprocess.run", side_effect=fake_run):
-            provider, output = auto_screening._run_llm("prompt", timeout=10)
+            provider, output = auto_screening.CLIProvider().run("prompt", timeout=10)
 
         self.assertEqual(provider, "codex")
         self.assertEqual(output, "## 기본 정보\n\ncodex final output")
@@ -468,7 +468,7 @@ class TestAutoScreening(unittest.TestCase):
             ],
         ), patch("auto_screening.subprocess.run", side_effect=fake_run):
             with self.assertRaises(RuntimeError) as cm:
-                auto_screening._run_llm("prompt", timeout=10)
+                auto_screening.CLIProvider().run("prompt", timeout=10)
 
         message = str(cm.exception)
         self.assertIn("claude: not logged in", message)
@@ -500,19 +500,26 @@ class TestAutoScreening(unittest.TestCase):
         self.assertIn("[source: companies/co/projects/api.md]", context)
 
     def test_run_screening_passes_candidate_context_to_llm(self):
+        import auto_screening
+
         from auto_screening import run_screening
 
         captured = {}
 
-        def fake_run_llm(prompt, timeout):
-            captured["prompt"] = prompt
-            return "test", (
+        class CapturingProvider(auto_screening.FakeProvider):
+            def run(self, prompt, timeout):
+                captured["prompt"] = prompt
+                return super().run(prompt, timeout)
+
+        provider = CapturingProvider(
+            (
                 "## 기본 정보\n\n| 항목 | 내용 |\n|------|------|\n| 회사명 | TestCo |\n\n"
                 "## 스크리닝 결과\n\n요약\n\n"
                 "## 이력/경험 매칭\n\n| 요건 | 매칭 |\n|------|------|\n\n"
                 "## 최종 판정\n\n### 최종 판정: 지원 보류\n\n"
                 "## 핵심 근거\n\n- 테스트\n"
             )
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -524,9 +531,13 @@ class TestAutoScreening(unittest.TestCase):
 
             with patch("auto_screening.SCREENING_DIR", tmp_path / "screening"), \
                  patch("auto_screening._load_candidate_context", return_value="[source: private/profile/summary-job.md]\n운영 안정성"), \
-                 patch("auto_screening._run_llm", side_effect=fake_run_llm), \
                  patch("auto_screening.update_summary"):
-                result = run_screening(jd_path=jd, company_file=None, dry_run=False)
+                result = run_screening(
+                    jd_path=jd,
+                    company_file=None,
+                    dry_run=False,
+                    llm_provider=provider,
+                )
 
         self.assertEqual(result.verdict, "지원 보류")
         self.assertIn("[후보자 이력/경험 근거]", captured["prompt"])
@@ -534,6 +545,12 @@ class TestAutoScreening(unittest.TestCase):
 
     def test_run_screening_fallback_when_llm_fails(self):
         from auto_screening import run_screening
+
+        class FailingProvider:
+            def run(self, prompt, timeout):
+                raise RuntimeError(
+                    "codex exit=1: Reading prompt from stdin...\n[스크리닝 규칙]\nsecret"
+                )
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -544,13 +561,14 @@ class TestAutoScreening(unittest.TestCase):
             )
 
             screening_dir = tmp_path / "screening"
-            with patch("auto_screening.SCREENING_DIR", screening_dir), patch(
-                "auto_screening._run_llm",
-                side_effect=RuntimeError(
-                    "codex exit=1: Reading prompt from stdin...\n[스크리닝 규칙]\nsecret"
-                ),
-            ), patch("auto_screening.update_summary"):
-                result = run_screening(jd_path=jd, company_file=None, dry_run=False)
+            with patch("auto_screening.SCREENING_DIR", screening_dir), \
+                 patch("auto_screening.update_summary"):
+                result = run_screening(
+                    jd_path=jd,
+                    company_file=None,
+                    dry_run=False,
+                    llm_provider=FailingProvider(),
+                )
 
             self.assertEqual(result.verdict, "지원 보류")
             self.assertTrue(result.used_fallback)
@@ -601,13 +619,13 @@ class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
                 used_fallback=False,
             )
 
-            with patch("auto.STATE_DIR", tmp_path / "state"), \
+            with patch("auto_state.STATE_DIR", tmp_path / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.ensure_company_info", return_value=company_info), \
-                 patch("auto.run_screening", return_value=screening) as mock_screening, \
-                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.ensure_company_info", return_value=company_info), \
+                 patch("auto_processor.run_screening", return_value=screening) as mock_screening, \
+                 patch("auto_processor._classify", return_value=("지원 보류", "conditional/hold")):
                 results, summary = run_auto(
                     from_urls=urls,
                     run_id="test-company-info-default-block",
@@ -644,12 +662,12 @@ class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
                 investment_data_source="none",
             )
 
-            with patch("auto.STATE_DIR", tmp_path / "state"), \
+            with patch("auto_state.STATE_DIR", tmp_path / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.ensure_company_info", return_value=company_info), \
-                 patch("auto.run_screening") as mock_screening:
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.ensure_company_info", return_value=company_info), \
+                 patch("auto_processor.run_screening") as mock_screening:
                 results, summary = run_auto(
                     from_urls=urls,
                     run_id="test-company-info-block",
@@ -693,13 +711,13 @@ class TestAutoPipelineCompanyInfoGate(unittest.TestCase):
                 used_fallback=False,
             )
 
-            with patch("auto.STATE_DIR", tmp_path / "state"), \
+            with patch("auto_state.STATE_DIR", tmp_path / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.ensure_company_info", return_value=company_info), \
-                 patch("auto.run_screening", return_value=screening) as mock_screening, \
-                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.ensure_company_info", return_value=company_info), \
+                 patch("auto_processor.run_screening", return_value=screening) as mock_screening, \
+                 patch("auto_processor._classify", return_value=("지원 보류", "conditional/hold")):
                 results, summary = run_auto(
                     from_urls=urls,
                     run_id="test-company-info-override",
@@ -767,7 +785,7 @@ class TestScreeningOnlyFindsUnprocessed(unittest.TestCase):
     """Verify Issue #2: _resolve_jd_path_for_screening finds JDs in unprocessed/ via find_jd_anywhere."""
 
     def test_resolve_jd_for_screening_finds_unprocessed_jd(self):
-        from auto import _resolve_jd_path_for_screening
+        from auto_processor import _resolve_jd_path_for_screening
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -869,13 +887,13 @@ class TestAutoJdPathAfterClassify(unittest.TestCase):
                 used_fallback=False,
             )
 
-            with patch("auto.STATE_DIR", tmp_path / "state"), \
+            with patch("auto_state.STATE_DIR", tmp_path / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", side_effect=[None, pass_path]), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.ensure_company_info", return_value=company_info), \
-                 patch("auto.run_screening", return_value=screening), \
-                 patch("auto._classify", return_value=("지원 추천", "pass")):
+                 patch("auto_processor.find_existing_jd", side_effect=[None, pass_path]), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.ensure_company_info", return_value=company_info), \
+                 patch("auto_processor.run_screening", return_value=screening), \
+                 patch("auto_processor._classify", return_value=("지원 추천", "pass")):
                 results, summary = run_auto(
                     from_urls=urls,
                     run_id="test-jd-path-after-classify",
@@ -902,17 +920,17 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
             jd, urls = self._setup(tmp, "888001-x-frontend.md",
                 "# Frontend\n## 포지션\n프론트엔드 개발자")
             extracted = MagicMock(output_path=jd, company="X", title="프론트엔드")
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {},
                        "quick_filters": {"title_include": [], "title_exclude": ["프론트엔드"]}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.pre_screen_jd", return_value=PreScreenResult(
                      hit=True, reason_code="title_exclude",
                      reason_detail="title_exclude: 프론트엔드", target_folder="pass")), \
-                 patch("auto.move_to_folder") as mock_move, \
-                 patch("auto.ensure_company_info") as mock_ci, \
-                 patch("auto.run_screening") as mock_scr:
+                 patch("auto_processor.move_to_folder") as mock_move, \
+                 patch("auto_processor.ensure_company_info") as mock_ci, \
+                 patch("auto_processor.run_screening") as mock_scr:
                 mock_move.return_value = jd
                 results, summary = run_auto(
                     from_urls=urls, run_id="test-prescreen-title",
@@ -936,17 +954,17 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
             jd, urls = self._setup(tmp, "888002-x-fe-be.md",
                 "# Hybrid\n## 포지션\nFrontend Backend Engineer")
             extracted = MagicMock(output_path=jd, company="X", title="Hybrid")
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.pre_screen_jd", return_value=PreScreenResult(
                      hit=True, reason_code="domain_frontend",
                      reason_detail="frontend + counter",
                      target_folder="conditional/hold", is_review=True)), \
-                 patch("auto.move_to_folder") as mock_move, \
-                 patch("auto.ensure_company_info") as mock_ci, \
-                 patch("auto.run_screening") as mock_scr:
+                 patch("auto_processor.move_to_folder") as mock_move, \
+                 patch("auto_processor.ensure_company_info") as mock_ci, \
+                 patch("auto_processor.run_screening") as mock_scr:
                 mock_move.return_value = jd
                 results, summary = run_auto(
                     from_urls=urls, run_id="test-prescreen-review",
@@ -968,16 +986,16 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
             jd, urls = self._setup(tmp, "888005-x-be.md",
                 "# Backend\n채용 마감\n## 포지션\nBackend Engineer")
             extracted = MagicMock(output_path=jd, company="X", title="Backend")
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.pre_screen_jd", return_value=PreScreenResult(
                      hit=True, reason_code="closed",
                      reason_detail="채용 마감 감지", target_folder="closed")), \
-                 patch("auto.move_to_folder") as mock_move, \
-                 patch("auto.ensure_company_info") as mock_ci, \
-                 patch("auto.run_screening") as mock_scr:
+                 patch("auto_processor.move_to_folder") as mock_move, \
+                 patch("auto_processor.ensure_company_info") as mock_ci, \
+                 patch("auto_processor.run_screening") as mock_scr:
                 mock_move.return_value = jd
                 results, summary = run_auto(
                     from_urls=urls, run_id="test-prescreen-closed",
@@ -997,17 +1015,17 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
             jd, urls = self._setup(tmp, "888006-acme-be.md",
                 "**회사**: Acme\n## 포지션\nBackend")
             extracted = MagicMock(output_path=jd, company="Acme", title="Backend")
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.pre_screen_jd", return_value=PreScreenResult(
                      hit=True, reason_code="prior_application",
                      reason_detail="직전 지원 이력: 2025-12-01",
                      target_folder="rejected")), \
-                 patch("auto.move_to_folder") as mock_move, \
-                 patch("auto.ensure_company_info") as mock_ci, \
-                 patch("auto.run_screening") as mock_scr:
+                 patch("auto_processor.move_to_folder") as mock_move, \
+                 patch("auto_processor.ensure_company_info") as mock_ci, \
+                 patch("auto_processor.run_screening") as mock_scr:
                 mock_move.return_value = jd
                 results, summary = run_auto(
                     from_urls=urls, run_id="test-prescreen-prior",
@@ -1032,15 +1050,15 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
                 investment_data_source="none")
             screening = MagicMock(screening_path=tmp / "scr.md",
                 verdict="지원 보류", used_fallback=False)
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.pre_screen_jd", return_value=PreScreenResult(
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.pre_screen_jd", return_value=PreScreenResult(
                      False, "", "", "")), \
-                 patch("auto.ensure_company_info", return_value=company_info) as mock_ci, \
-                 patch("auto.run_screening", return_value=screening) as mock_scr, \
-                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                 patch("auto_processor.ensure_company_info", return_value=company_info) as mock_ci, \
+                 patch("auto_processor.run_screening", return_value=screening) as mock_scr, \
+                 patch("auto_processor._classify", return_value=("지원 보류", "conditional/hold")):
                 results, summary = run_auto(
                     from_urls=urls, run_id="test-prescreen-pass-through",
                 )
@@ -1061,14 +1079,14 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
                 investment_data_source="none")
             screening = MagicMock(screening_path=tmp / "scr.md",
                 verdict="지원 보류", used_fallback=False)
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
-                 patch("auto.find_existing_jd", return_value=None), \
-                 patch("auto.extract_jd_from_url", return_value=extracted), \
-                 patch("auto.pre_screen_jd") as mock_pre, \
-                 patch("auto.ensure_company_info", return_value=company_info) as mock_ci, \
-                 patch("auto.run_screening", return_value=screening), \
-                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                 patch("auto_processor.find_existing_jd", return_value=None), \
+                 patch("auto_processor.extract_jd_from_url", return_value=extracted), \
+                 patch("auto_processor.pre_screen_jd") as mock_pre, \
+                 patch("auto_processor.ensure_company_info", return_value=company_info) as mock_ci, \
+                 patch("auto_processor.run_screening", return_value=screening), \
+                 patch("auto_processor._classify", return_value=("지원 보류", "conditional/hold")):
                 results, summary = run_auto(
                     from_urls=urls, run_id="test-no-prescreen", no_prescreen=True,
                 )
@@ -1095,15 +1113,15 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
                 investment_data_source="none")
             screening = MagicMock(screening_path=tmp / "scr.md",
                 verdict="지원 보류", used_fallback=False)
-            with patch("auto.STATE_DIR", tmp / "state"), \
+            with patch("auto_state.STATE_DIR", tmp / "state"), \
                  patch("auto.load_config", return_value={"notifications": {}}), \
                  patch("auto._find_latest_state", return_value="prev-run"), \
                  patch("auto._load_state", return_value=prev_state), \
-                 patch("auto.find_existing_jd", return_value=jd), \
-                 patch("auto.pre_screen_jd") as mock_pre, \
-                 patch("auto.ensure_company_info", return_value=company_info) as mock_ci, \
-                 patch("auto.run_screening", return_value=screening), \
-                 patch("auto._classify", return_value=("지원 보류", "conditional/hold")):
+                 patch("auto_processor.find_existing_jd", return_value=jd), \
+                 patch("auto_processor.pre_screen_jd") as mock_pre, \
+                 patch("auto_processor.ensure_company_info", return_value=company_info) as mock_ci, \
+                 patch("auto_processor.run_screening", return_value=screening), \
+                 patch("auto_processor._classify", return_value=("지원 보류", "conditional/hold")):
                 results, summary = run_auto(resume=True)
             mock_pre.assert_not_called()
             mock_ci.assert_called_once()
@@ -1112,7 +1130,8 @@ class TestAutoPipelinePreScreening(unittest.TestCase):
 
 class TestAutoMainDefaultSplit(unittest.TestCase):
     def test_main_default_runs_search_then_url_processing(self):
-        from auto import RunSummary, main
+        from auto import main
+        from auto_state import RunSummary
 
         calls = []
         urls_file = Path("/tmp/search_20990101_0000.txt")
@@ -1141,7 +1160,8 @@ class TestAutoMainDefaultSplit(unittest.TestCase):
         )
 
     def test_main_default_skips_processing_when_search_finds_no_urls(self):
-        from auto import RunSummary, main
+        from auto import main
+        from auto_state import RunSummary
 
         calls = []
 

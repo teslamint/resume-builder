@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from auto import AutoTaskResult, RunSummary
+    from auto_state import AutoTaskResult, RunSummary
 
 logger = logging.getLogger(__name__)
 

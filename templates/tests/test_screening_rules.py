@@ -8,7 +8,6 @@ controlled JD/company inputs.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -143,8 +142,6 @@ def _run_synthetic_screening(
     jd_path.write_text(jd_content, encoding="utf-8")
     company_path.write_text(company_content, encoding="utf-8")
 
-    monkeypatch.setenv("CLAUDE_SCREENING_CMD", "fake-llm --print")
-    monkeypatch.delenv("CODEX_SCREENING_CMD", raising=False)
     monkeypatch.setattr(auto_screening, "SCREENING_DIR", tmp_path / "screening")
     monkeypatch.setattr(auto_screening, "load_screening_rules", lambda: SYNTHETIC_RULES)
     monkeypatch.setattr(
@@ -153,24 +150,21 @@ def _run_synthetic_screening(
         lambda: SYNTHETIC_CANDIDATE_CONTEXT,
     )
 
-    def fake_run(cmd, input, text, capture_output, timeout, env):
-        assert cmd == ["fake-llm", "--print"]
-        assert text is True
-        assert capture_output is True
-        assert timeout == 10
-        assert SYNTHETIC_RULES in input
-        assert SYNTHETIC_CANDIDATE_CONTEXT in input
-        for snippet in prompt_snippets:
-            assert snippet in input
-        return subprocess.CompletedProcess(cmd, 0, stdout=llm_output, stderr="")
-
-    monkeypatch.setattr(auto_screening.subprocess, "run", fake_run)
+    class PromptCheckingProvider(auto_screening.FakeProvider):
+        def run(self, prompt: str, timeout: int) -> tuple[str, str]:
+            assert timeout == 10
+            assert SYNTHETIC_RULES in prompt
+            assert SYNTHETIC_CANDIDATE_CONTEXT in prompt
+            for snippet in prompt_snippets:
+                assert snippet in prompt
+            return super().run(prompt, timeout)
 
     return auto_screening.run_screening(
         jd_path=jd_path,
         company_file=company_path,
         llm_timeout=10,
         dry_run=True,
+        llm_provider=PromptCheckingProvider(llm_output, provider_name="claude"),
     )
 
 
