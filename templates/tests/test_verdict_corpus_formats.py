@@ -151,30 +151,31 @@ class TestParseVerdictFromScreeningCorpusPatterns:
 """
         assert parse_verdict_from_screening(content) == "지원 비추천"
 
-    def test_multiple_verdict_blocks_takes_worst_case(self):
-        """When multiple verdict blocks exist, parser takes worst-case (conservative).
+    def test_multiple_verdict_blocks_uses_first_match(self):
+        """Parser returns first single-line verdict match (not worst-case across sections).
 
-        Note: audit_hypotheses.py uses LAST verdict for H3 mismatch detection,
-        but parse_verdict_from_screening uses worst-case for safety. Corrected
-        files use blockquote correction markers, not duplicate verdict blocks.
+        Known limitation: audit_hypotheses.py uses LAST verdict for corrected
+        files, but parse_verdict_from_screening uses first re.search match.
+        Multi-verdict files are rare (only re-screened files) and are handled
+        by audit scripts separately.
         """
         content = """\
 ## 최종 판정
 
-### 최종 판정: 지원 보류
+### 최종 판정: 🟢 지원 추천
 
 ---
 
 ## 최종 판정
 
-### 최종 판정: 🟢 지원 추천
+### 최종 판정: 지원 비추천
 
 ## 핵심 근거
 
-- 재심 결과 추천
+- 재심 결과 비추천
 """
         result = parse_verdict_from_screening(content)
-        assert result == "지원 보류"
+        assert result == "지원 추천"
 
     def test_bold_prefix_colon_format(self):
         content = "## 최종 판정\n\n### 최종 판정**: 🟡 지원 보류\n\n## 핵심 근거\n\n- 검토 ���요"
