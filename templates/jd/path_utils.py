@@ -100,6 +100,9 @@ _BASE_SEARCH_DIRS = [
     JOB_POSTINGS_DIR / "conditional",
     JOB_POSTINGS_DIR / "conditional" / "high",
     JOB_POSTINGS_DIR / "conditional" / "hold",
+    # Retired active buckets; keep lookup-only until historical files migrate.
+    JOB_POSTINGS_DIR / "conditional" / "middle",
+    JOB_POSTINGS_DIR / "conditional" / "low",
     JOB_POSTINGS_DIR / "applied",
     JOB_POSTINGS_DIR / "rejected",
     JOB_POSTINGS_DIR / "high_priority",

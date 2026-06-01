@@ -799,13 +799,18 @@ class TestScreeningOnlyFindsUnprocessed(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_base_search_dirs_exclude_retired_conditional_tier_buckets(self):
+    def test_base_search_dirs_keep_retired_conditional_tier_buckets_for_dedup(self):
+        """Retired tier buckets are lookup-only paths for duplicate detection."""
         import path_utils
 
-        search_dirs = {str(path) for path in path_utils._BASE_SEARCH_DIRS}
+        search_dirs = {
+            path.relative_to(path_utils.JOB_POSTINGS_DIR).as_posix()
+            for path in path_utils._BASE_SEARCH_DIRS
+            if path != path_utils.JOB_POSTINGS_DIR
+        }
 
-        self.assertFalse(any(path.endswith("conditional/middle") for path in search_dirs))
-        self.assertFalse(any(path.endswith("conditional/low") for path in search_dirs))
+        self.assertIn("conditional/middle", search_dirs)
+        self.assertIn("conditional/low", search_dirs)
 
 
 class TestAutoJdPathAfterClassify(unittest.TestCase):
