@@ -410,7 +410,7 @@ def _prefetch_groupby(config: dict, state: "SearchState") -> "SearchResult":
         print("   📊 결과: 0개")
         return SearchResult(query="(groupby)", total_found=0)
 
-    # Pre-filter GroupBy experience using structured API data before common filter
+    # Pre-filter GroupBy experience with API min/max values; text-only platforms use the common parser.
     exp_filtered: list = []
     for raw in outcome.results:
         orig_item = next((it for it in items if f"groupby-{it['id']}" == raw.canonical_id), None)

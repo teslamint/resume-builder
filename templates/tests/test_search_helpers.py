@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock, call, patch
 
 from search_helpers import (
+    filter_and_dedup,
     RawJobResult,
     SearchPageConfig,
     ScrapeOutcome,
@@ -45,6 +46,86 @@ class TestScrapeOutcome:
         assert o.timed_out is False
         assert o.no_results is False
         assert o.error is None
+
+
+def _raw_job(
+    raw_id: str,
+    canonical_id: str,
+    *,
+    platform: str = "wanted",
+) -> RawJobResult:
+    return RawJobResult(
+        raw_id=raw_id,
+        canonical_id=canonical_id,
+        title=f"Backend {canonical_id}",
+        company="TestCo",
+        experience="경력 무관",
+        url=f"https://example.com/jobs/{canonical_id}",
+        href=f"/jobs/{canonical_id}",
+        platform=platform,
+    )
+
+
+class TestFilterAndDedup:
+    @patch("search_helpers.is_duplicate", return_value=(False, None))
+    @patch("search_helpers.filter_experience", return_value=False)
+    def test_duplicate_canonical_id_is_filtered(self, mock_filter_experience, mock_is_duplicate):
+        seen_ids = set()
+        result = filter_and_dedup(
+            [
+                _raw_job("100", "wanted-100"),
+                _raw_job("100", "wanted-100"),
+            ],
+            config={},
+            seen_ids=seen_ids,
+            rejected_companies=set(),
+            config_excludes=[],
+        )
+
+        assert [job.canonical_id for job in result.accepted] == ["wanted-100"]
+        assert result.duplicates == 1
+        assert seen_ids == {"wanted-100"}
+
+    @patch("search_helpers.is_duplicate", return_value=(False, None))
+    @patch("search_helpers.filter_experience", return_value=False)
+    def test_different_ids_are_accepted(self, mock_filter_experience, mock_is_duplicate):
+        seen_ids = set()
+        result = filter_and_dedup(
+            [
+                _raw_job("100", "wanted-100"),
+                _raw_job("101", "wanted-101"),
+            ],
+            config={},
+            seen_ids=seen_ids,
+            rejected_companies=set(),
+            config_excludes=[],
+        )
+
+        assert [job.canonical_id for job in result.accepted] == ["wanted-100", "wanted-101"]
+        assert result.duplicates == 0
+        assert seen_ids == {"wanted-100", "wanted-101"}
+
+    @patch("search_helpers.is_duplicate", return_value=(False, None))
+    @patch("search_helpers.filter_experience", return_value=False)
+    def test_remember_checks_canonical_and_raw_id(self, mock_filter_experience, mock_is_duplicate):
+        seen_ids = {"999"}
+        result = filter_and_dedup(
+            [
+                _raw_job(
+                    "999",
+                    "remember-999",
+                    platform="remember",
+                )
+            ],
+            config={},
+            seen_ids=seen_ids,
+            rejected_companies=set(),
+            config_excludes=[],
+        )
+
+        assert result.accepted == []
+        assert result.duplicates == 1
+        assert seen_ids == {"999"}
 
 
 def _make_wanted_page(*, timeout=False, no_results=False, links=None):

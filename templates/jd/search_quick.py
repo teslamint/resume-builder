@@ -19,7 +19,6 @@ import logging
 import re
 import sys
 import time
-from dataclasses import asdict
 from datetime import datetime
 from typing import List, Set
 from urllib.parse import quote, urljoin
@@ -30,7 +29,7 @@ try:
     from .groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from .jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from .path_utils import is_duplicate
-    from .queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
+    from .queue_utils import QUEUE_PATH, QueueItem, QueueStatus, load_queue, save_queue
     from .search_helpers import (
         SearchPageConfig,
         _read_search_config,
@@ -47,7 +46,7 @@ except ImportError:
     from groupby_client import GroupByAPIError, fetch_positions as groupby_fetch_positions
     from jd_content import get_rejected_companies, is_rejected_company, parse_remember_experience
     from path_utils import is_duplicate
-    from queue_utils import QUEUE_PATH, QueueItem, load_queue, save_queue
+    from queue_utils import QUEUE_PATH, QueueItem, QueueStatus, load_queue, save_queue
     from search_helpers import (
         SearchPageConfig,
         _read_search_config,
@@ -143,7 +142,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
     # Load existing data
     seen_ids = load_seen_ids()
     existing_queue = load_queue()
-    queued_ids = {item["job_id"] for item in existing_queue if item.get("status") == "pending"}
+    queued_ids = {item["job_id"] for item in existing_queue if item.get("status") == QueueStatus.PENDING}
 
     new_items: List[QueueItem] = []
     stats = {
@@ -202,7 +201,7 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
             gb_items = groupby_fetch_positions(position_types)
             gb_outcome = convert_groupby_to_raw_results(gb_items, base_url)
 
-            # Pre-filter GroupBy experience using structured API data
+            # Pre-filter GroupBy experience with API min/max values; text-only platforms use the common parser.
             exp_filtered = []
             gb_exp_dropped = 0
             for raw in gb_outcome.results:
@@ -348,10 +347,10 @@ def run_quick_search(dry_run: bool = False) -> tuple[List[QueueItem], dict]:
         save_seen_ids(seen_ids)
         
         # Add new items to queue
-        all_items = existing_queue + [asdict(item) for item in new_items]
+        all_items = existing_queue + [item.to_dict() for item in new_items]
         save_queue(all_items, stats)
         print(f"\n📁 큐 저장: {QUEUE_PATH}")
-        print(f"   대기 중: {len([i for i in all_items if i.get('status') == 'pending'])}개")
+        print(f"   대기 중: {len([i for i in all_items if i.get('status') == QueueStatus.PENDING])}개")
     
     if new_items:
         print(f"\n📋 새로 발견된 공고:")
@@ -368,9 +367,9 @@ def show_status():
     """Show queue status."""
     queue = load_queue()
     
-    pending = [i for i in queue if i.get("status") == "pending"]
-    done = [i for i in queue if i.get("status") == "done"]
-    failed = [i for i in queue if i.get("status") == "failed"]
+    pending = [i for i in queue if i.get("status") == QueueStatus.PENDING]
+    done = [i for i in queue if i.get("status") == QueueStatus.DONE]
+    failed = [i for i in queue if i.get("status") == QueueStatus.FAILED]
     
     print("📊 Queue Status")
     print(f"   대기: {len(pending)}개")
