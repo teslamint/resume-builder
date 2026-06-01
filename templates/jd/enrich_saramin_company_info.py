@@ -9,39 +9,26 @@ fills in empty fields in existing company_info files.
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .auto_company import (
-        SARAMIN_ENRICHMENT_QUEUE_PATH,
-        _resolve_company_alias,
-        is_headhunting_company,
-    )
-    from .ce_merge import build_enriched_markdown
-    from .ce_saramin import extract_saramin
-    from .ce_types import PlatformData
-    from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
-    from .naming import slugify_company
-    from .queue_utils import _append_to_queue
-except ImportError:
-    from auto_company import (
-        SARAMIN_ENRICHMENT_QUEUE_PATH,
-        _resolve_company_alias,
-        is_headhunting_company,
-    )
-    from ce_merge import build_enriched_markdown
-    from ce_saramin import extract_saramin
-    from ce_types import PlatformData
-    from company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
-    from naming import slugify_company
-    from queue_utils import _append_to_queue
-
-
+from .auto_company import (
+    SARAMIN_ENRICHMENT_QUEUE_PATH,
+    _resolve_company_alias,
+    is_headhunting_company,
+)
+from .ce_merge import build_enriched_markdown
+from .ce_saramin import extract_saramin
+from .ce_types import PlatformData
+from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
+from .naming import slugify_company
+from .queue_utils import _append_to_queue
 BASE_DIR = Path(__file__).parent.parent.parent
 REPORT_PATH = BASE_DIR / "private" / "build" / "saramin_enrichment_report.md"
+logger = logging.getLogger(__name__)
 
 _EMPTY_SENTINEL = frozenset({"정보 없음", "정보없음", "-", ""})
 
@@ -96,8 +83,8 @@ def scan_candidates(queue_path: Path = SARAMIN_ENRICHMENT_QUEUE_PATH) -> list[Sa
             try:
                 data = parse_company_file(file_path)
                 completeness = validate_company(data, file_path).completeness_score
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to calculate Saramin completeness for %s: %s", file_path, e)
 
         candidates.append(SaraminCandidate(company=company, file_path=file_path, completeness=completeness))
 
@@ -256,10 +243,7 @@ def main() -> None:
         print(f"리포트: {REPORT_PATH}")
         return
 
-    try:
-        from .browser_utils import sync_playwright
-    except ImportError:
-        from browser_utils import sync_playwright
+    from .browser_utils import sync_playwright
 
     results: list[SaraminEnrichmentResult] = []
     with sync_playwright() as pw:

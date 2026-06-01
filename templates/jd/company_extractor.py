@@ -2,9 +2,9 @@
 """Company info extraction from Wanted + Saramin + TheVC.
 
 Usage:
-    python3 templates/jd/company_extractor.py --company "김캐디"
-    python3 templates/jd/company_extractor.py --company "김캐디" --platforms wanted,saramin,thevc
-    python3 templates/jd/company_extractor.py --company "김캐디" --dry-run
+    python -m templates.jd.company_extractor --company "김캐디"
+    python -m templates.jd.company_extractor --company "김캐디" --platforms wanted,saramin,thevc
+    python -m templates.jd.company_extractor --company "김캐디" --dry-run
 """
 
 from __future__ import annotations
@@ -14,27 +14,15 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-try:
-    from .ce_jd_files import extract_from_jd_files
-    from .ce_merge import build_enriched_markdown, merge_platform_data
-    from .ce_saramin import extract_saramin
-    from .ce_thevc import extract_thevc
-    from .ce_types import ExtractionResult, PlatformData
-    from .ce_wanted import extract_wanted_http
-    from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from .constants import get_rate_limit
-    from .naming import slugify_company as _slugify_company
-except ImportError:
-    from ce_jd_files import extract_from_jd_files
-    from ce_merge import build_enriched_markdown, merge_platform_data
-    from ce_saramin import extract_saramin
-    from ce_thevc import extract_thevc
-    from ce_types import ExtractionResult, PlatformData
-    from ce_wanted import extract_wanted_http
-    from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-    from constants import get_rate_limit
-    from naming import slugify_company as _slugify_company
-
+from .ce_jd_files import extract_from_jd_files
+from .ce_merge import build_enriched_markdown, merge_platform_data
+from .ce_saramin import extract_saramin
+from .ce_thevc import extract_thevc
+from .ce_types import ExtractionResult, PlatformData
+from .ce_wanted import extract_wanted_http
+from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
+from .constants import get_rate_limit
+from .naming import slugify_company as _slugify_company
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,10 +89,7 @@ def extract_company_info(
     playwright_available = browser_context is not None
     if browser_selected and not browser_context:
         try:
-            try:
-                from .browser_utils import sync_playwright
-            except ImportError:
-                from browser_utils import sync_playwright
+            from .browser_utils import sync_playwright
             playwright_available = True
         except Exception as e:
             logger.warning("Playwright 사용 불가 — HTTP 폴백으로 전환: %s", e)
@@ -117,10 +102,7 @@ def extract_company_info(
         from contextlib import nullcontext
 
         if own_playwright:
-            try:
-                from .browser_utils import sync_playwright
-            except ImportError:
-                from browser_utils import sync_playwright
+            from .browser_utils import sync_playwright
             pw_cm = sync_playwright()
         else:
             pw_cm = nullcontext()

@@ -1,5 +1,6 @@
 """Shared DOCX manipulation helpers for resume template fillers."""
 import copy
+import logging
 import re
 
 from docx.oxml import OxmlElement
@@ -9,6 +10,7 @@ from docx.shared import Emu, RGBColor
 DEFAULT_FONT = "맑은 고딕"
 DEFAULT_COLOR = RGBColor(0, 0, 0)
 SECTION_SIZE = Emu(139700)  # 11pt
+logger = logging.getLogger(__name__)
 
 
 def _font_name(mapping: dict) -> str:
@@ -118,5 +120,5 @@ def fill_table_cell(doc, table_index, row, col, text, font_name=DEFAULT_FONT):
         if not extra_p.text.strip():
             try:
                 delete_paragraph(extra_p)
-            except Exception:
-                pass
+            except (AttributeError, ValueError) as e:
+                logger.debug("Failed to delete empty paragraph: %s", e)

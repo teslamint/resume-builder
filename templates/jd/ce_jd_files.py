@@ -1,14 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
-try:
-    from .ce_types import PlatformData
-    from .constants import JOB_POSTINGS_DIR
-except ImportError:
-    from ce_types import PlatformData
-    from constants import JOB_POSTINGS_DIR
+from .ce_types import PlatformData
+from .constants import JOB_POSTINGS_DIR
+logger = logging.getLogger(__name__)
 
 
 def normalize_company_name_narrow(name: str) -> str:
@@ -40,7 +38,8 @@ def extract_from_jd_files(company_name: str) -> PlatformData | None:
             continue
         try:
             content = md_file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, UnicodeError) as e:
+            logger.debug("Failed to read JD file %s while scanning: %s", md_file, e)
             continue
         norm_content = normalize_company_name_narrow(content[:500])
         if norm_name in norm_content:
@@ -58,7 +57,8 @@ def extract_from_jd_files(company_name: str) -> PlatformData | None:
     for md_file in matching_files:
         try:
             content = md_file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, UnicodeError) as e:
+            logger.debug("Failed to read matched JD file %s: %s", md_file, e)
             continue
 
         # Investment round

@@ -856,8 +856,8 @@ def _fill_career_summary_legacy(doc, resume, display_companies, target_config, f
     for leftover in template_rows[len(display_companies):]:
         try:
             delete_paragraph(leftover)
-        except Exception:
-            pass
+        except (AttributeError, ValueError) as e:
+            logger.debug("Failed to delete leftover template row: %s", e)
 
 
 def _fill_core_experiences_legacy(doc, display_companies, target_config, font):
@@ -1132,8 +1132,8 @@ def _delete_guide_text(doc, mapping):
             if pat in text:
                 try:
                     delete_paragraph(p)
-                except Exception:
-                    pass
+                except (AttributeError, ValueError) as e:
+                    logger.debug("Failed to delete guide text paragraph: %s", e)
                 break
 
 

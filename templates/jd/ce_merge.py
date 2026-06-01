@@ -8,12 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-try:
-    from .ce_types import PlatformData
-except ImportError:
-    from ce_types import PlatformData
-
-
+from .ce_types import PlatformData
 def merge_platform_data(data_list: list[PlatformData]) -> dict:
     """Merge multiple PlatformData into a single dict.
 

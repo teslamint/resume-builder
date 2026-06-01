@@ -15,16 +15,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 
-try:
-    from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
-    from .jd_content import extract_metadata_from_jd, get_user_status, is_protected_status
-    from .path_utils import extract_job_id_from_filename
-except ImportError:
-    from constants import JOB_POSTINGS_DIR, SCREENING_DIR
-    from jd_content import extract_metadata_from_jd, get_user_status, is_protected_status
-    from path_utils import extract_job_id_from_filename
-
-
+from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
+from .jd_content import extract_metadata_from_jd, get_user_status, is_protected_status
+from .path_utils import extract_job_id_from_filename
 DOMAIN_TAXONOMY = {
     "mobile": {
         "filename_patterns": [r"(?:^|-)ios(?:-|$)", r"(?:^|-)android(?:-|$)",

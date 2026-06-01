@@ -31,8 +31,8 @@ build_full() {
         css_path="$(pwd)/private/overrides/${build_target}/style.css"
     fi
     echo "Building full resume (${variant}${suffix})..."
-    python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} > "${output_name}.md"
-    python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --format pdf > "${output_name}-pdf.md"
+    python -m templates.build.resume_builder --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} > "${output_name}.md"
+    python -m templates.build.resume_builder --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --format pdf > "${output_name}-pdf.md"
     pandoc "${output_name}-pdf.md" -o "${output_name}.html" --standalone --css="${css_path}"
     weasyprint "${output_name}.html" "${output_name}.pdf"
     rm "${output_name}-pdf.md"
@@ -50,8 +50,8 @@ build_short() {
     fi
     local css_path="$(pwd)/templates/themes/default/style-short.css"
     echo "Building short resume (${variant})..."
-    python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --short > "${output_name}.md"
-    python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --short --format pdf > "${output_name}-pdf.md"
+    python -m templates.build.resume_builder --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --short > "${output_name}.md"
+    python -m templates.build.resume_builder --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --short --format pdf > "${output_name}-pdf.md"
     pandoc "${output_name}-pdf.md" -o "${output_name}.html" --standalone --css="${css_path}"
     weasyprint "${output_name}.html" "${output_name}.pdf"
     rm "${output_name}-pdf.md"
@@ -67,7 +67,7 @@ build_wanted() {
         output_name="private/build/resume-example-wanted.txt"
     fi
     echo "Building wanted resume (${variant})..."
-    python3 templates/build/resume_builder.py --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --format wanted > "${output_name}"
+    python -m templates.build.resume_builder --variant "${variant}" ${build_target:+--target "$build_target"} ${example_opt:+"$example_opt"} --format wanted > "${output_name}"
     echo "Generated: ${output_name}"
 }
 
@@ -84,8 +84,8 @@ build_career() {
     fi
     local css_path="$(pwd)/templates/themes/default/style-career.css"
     echo "Building career description..."
-    python3 templates/build/career_builder.py ${example_opt:+"$example_opt"} > "${output_name}.md"
-    python3 templates/build/career_builder.py ${example_opt:+"$example_opt"} --format pdf > "${output_name}-pdf.md"
+    python -m templates.build.career_builder ${example_opt:+"$example_opt"} > "${output_name}.md"
+    python -m templates.build.career_builder ${example_opt:+"$example_opt"} --format pdf > "${output_name}-pdf.md"
     pandoc "${output_name}-pdf.md" -o "${output_name}.html" --standalone --css="${css_path}"
     weasyprint "${output_name}.html" "${output_name}.pdf"
     rm "${output_name}-pdf.md"
@@ -100,7 +100,7 @@ generate_notes() {
     local output_file="private/build/resume-job-notes.md"
     if [[ -f "private/build/resume-job-base.md" ]]; then
         echo "Generating notes..."
-        python3 templates/build/generate_notes.py \
+        python -m templates.build.generate_notes \
             --base "private/build/resume-job-base.md" \
             --current "$current_file" \
             --target "$target" \

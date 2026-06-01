@@ -3,10 +3,10 @@
 JD Search - Automated job posting search and discovery.
 
 Usage:
-    python3 templates/jd/search.py                    # Run full search
-    python3 templates/jd/search.py --query "백엔드"   # Single query search
-    python3 templates/jd/search.py --dry-run          # Preview without processing
-    python3 templates/jd/search.py --status           # Show search state
+    python -m templates.jd.search                    # Run full search
+    python -m templates.jd.search --query "백엔드"   # Single query search
+    python -m templates.jd.search --dry-run          # Preview without processing
+    python -m templates.jd.search --status           # Show search state
 """
 
 import argparse

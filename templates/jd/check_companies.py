@@ -3,11 +3,7 @@
 import json
 from pathlib import Path
 
-try:
-    from .naming import slugify_company as _slugify
-except ImportError:
-    from naming import slugify_company as _slugify
-
+from .naming import slugify_company as _slugify
 def main():
     # Remember 통과 목록
     with open("private/job_postings/unprocessed/passed.json") as f:

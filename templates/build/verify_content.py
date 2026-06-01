@@ -3,9 +3,9 @@
 Content Integrity Verifier - 면접 답변의 이력서 근거 검증
 
 Usage:
-    python3 templates/build/verify_content.py <interview-md>
-    python3 templates/build/verify_content.py <interview-md> --resume <resume-md>
-    python3 templates/build/verify_content.py <interview-md> --json
+    python -m templates.build.verify_content <interview-md>
+    python -m templates.build.verify_content <interview-md> --resume <resume-md>
+    python -m templates.build.verify_content <interview-md> --json
 """
 
 import argparse

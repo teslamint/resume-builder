@@ -10,11 +10,7 @@ import logging
 import time
 from typing import Optional
 
-try:
-    from .http_client_base import http_json_request
-except ImportError:
-    from http_client_base import http_json_request
-
+from .http_client_base import http_json_request
 logger = logging.getLogger(__name__)
 
 REMEMBER_API_BASE = "https://career-api.rememberapp.co.kr"

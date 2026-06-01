@@ -6,13 +6,8 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    from .http_client_base import http_text_request
-    from .naming import slugify_company as _slugify
-except ImportError:
-    from http_client_base import http_text_request
-    from naming import slugify_company as _slugify
-
+from .http_client_base import http_text_request
+from .naming import slugify_company as _slugify
 logger = logging.getLogger(__name__)
 
 def fetch_wanted_posting(job_id):

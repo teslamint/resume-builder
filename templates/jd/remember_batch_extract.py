@@ -10,13 +10,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-try:
-    from .http_client_base import DEFAULT_USER_AGENT, http_text_request
-    from .naming import slugify_company as _slugify
-except ImportError:
-    from http_client_base import DEFAULT_USER_AGENT, http_text_request
-    from naming import slugify_company as _slugify
-
+from .http_client_base import DEFAULT_USER_AGENT, http_text_request
+from .naming import slugify_company as _slugify
 logger = logging.getLogger(__name__)
 
 def _fetch_with_urllib(url):

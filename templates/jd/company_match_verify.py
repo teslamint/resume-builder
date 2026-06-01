@@ -17,11 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-try:
-    from .jd_content import extract_heading_company as _extract_heading_company
-except ImportError:
-    from jd_content import extract_heading_company as _extract_heading_company
-
+from .jd_content import extract_heading_company as _extract_heading_company
 _SECTION_RE = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9]+|[가-힣]{2,}")
 

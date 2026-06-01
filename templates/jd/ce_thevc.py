@@ -10,21 +10,16 @@ If the file doesn't exist or H1 doesn't match, returns None.
 """
 from __future__ import annotations
 
+import logging
 import re
 import time
 from urllib.parse import quote
 
-try:
-    from .ce_types import PlatformData
-    from .constants import COMPANY_INFO_DIR
-    from .constants import get_rate_limit
-    from .naming import slugify_company
-except ImportError:
-    from ce_types import PlatformData
-    from constants import COMPANY_INFO_DIR
-    from constants import get_rate_limit
-    from naming import slugify_company
-
+from .ce_types import PlatformData
+from .constants import COMPANY_INFO_DIR
+from .constants import get_rate_limit
+from .naming import slugify_company
+logger = logging.getLogger(__name__)
 REQUEST_DELAY = 1.5
 REQUEST_DELAY = get_rate_limit("thevc", REQUEST_DELAY)
 
@@ -75,8 +70,8 @@ def get_english_name_from_company_info(company_name: str) -> str | None:
         m = re.search(r"^#\s+.+?\(([A-Za-z][\w\s&.-]*)\)", content, re.MULTILINE)
         if m:
             return m.group(1).strip()
-    except Exception:
-        pass
+    except (OSError, UnicodeError) as e:
+        logger.debug("Failed to read company info for %s: %s", company_name, e)
     return None
 
 
@@ -152,8 +147,8 @@ def extract_thevc(company_name: str, context) -> PlatformData | None:
                 try:
                     tab.click()
                     page.wait_for_timeout(2000)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to open TheVC investment tab for %s: %s", company_name, e)
                 break
 
         body_text = page.inner_text("body")

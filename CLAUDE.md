@@ -18,14 +18,14 @@ Resume builder & job search automation system. Markdown source → PDF/HTML/TXT 
 ## Auto Pipeline CLI
 
 ```bash
-python3 templates/jd/auto.py                          # full pipeline
-python3 templates/jd/auto.py --from-urls <file>        # skip search
-python3 templates/jd/auto.py --screening-only --from-urls <file>  # screen existing JDs only
-python3 templates/jd/auto.py --company-enrichment-only  # reprocess TheVC queue
-python3 templates/jd/auto.py --min-completeness 60      # re-collect if existing company info < 60%
-python3 templates/jd/auto.py --thevc-mode auto|skip|require  # TheVC login failure handling
-python3 templates/jd/auto.py --resume                        # resume from last incomplete run
-python3 templates/jd/auto.py --no-prescreen                  # disable LLM 직전 빠른 컷
+python -m templates.jd.auto                          # full pipeline
+python -m templates.jd.auto --from-urls <file>        # skip search
+python -m templates.jd.auto --screening-only --from-urls <file>  # screen existing JDs only
+python -m templates.jd.auto --company-enrichment-only  # reprocess TheVC queue
+python -m templates.jd.auto --min-completeness 60      # re-collect if existing company info < 60%
+python -m templates.jd.auto --thevc-mode auto|skip|require  # TheVC login failure handling
+python -m templates.jd.auto --resume                        # resume from last incomplete run
+python -m templates.jd.auto --no-prescreen                  # disable LLM 직전 빠른 컷
 ```
 
 - `--min-completeness N`: skip re-collection when existing `company_info` completeness ≥ N% (0–100)
@@ -89,7 +89,7 @@ When writing company-specific technical experience in AI-generated content:
 
 ```bash
 # Verify generated content against resume:
-python3 templates/build/verify_content.py private/jd_analysis/interview/<file>.md
+python -m templates.build.verify_content private/jd_analysis/interview/<file>.md
 ```
 
 ## Build Verification

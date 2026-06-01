@@ -7,11 +7,7 @@ from pathlib import Path
 
 import yaml
 
-try:
-    from .constants import CONFIG_PATH
-except ImportError:
-    from constants import CONFIG_PATH
-
+from .constants import CONFIG_PATH
 _CONFIG_PATH = CONFIG_PATH
 
 _FALLBACK_CONFIG = {

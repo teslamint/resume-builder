@@ -15,11 +15,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-try:
-    from .http_client_base import http_text_request
-except ImportError:
-    from http_client_base import http_text_request
-
+from .http_client_base import http_text_request
 HIGH = Path("private/job_postings/conditional/high")
 CLOSED = Path("private/job_postings/closed")
 SUMMARY = Path("private/jd_analysis/screening/SUMMARY.md")

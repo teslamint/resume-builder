@@ -7,11 +7,7 @@ import time
 from typing import Optional
 from urllib.parse import urlencode
 
-try:
-    from .http_client_base import http_json_request
-except ImportError:
-    from http_client_base import http_json_request
-
+from .http_client_base import http_json_request
 logger = logging.getLogger(__name__)
 
 GROUPBY_API_BASE = "https://api.groupby.kr"

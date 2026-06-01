@@ -23,16 +23,16 @@ Purpose
 Usage
 -----
     # 골든 검증 (정정 처리된 파일도 포함)
-    python templates/jd/audit_05.py --include-processed --output /tmp/audit_05_validation.csv
+    python -m templates.jd.audit_05 --include-processed --output /tmp/audit_05_validation.csv
 
     # 전수 감사 (현재 비추천만)
-    python templates/jd/audit_05.py --output private/jd_analysis/audit_05_2026-04-25.csv
+    python -m templates.jd.audit_05 --output private/jd_analysis/audit_05_2026-04-25.csv
 
     # 라플라스(285243) anchor 검증 — score >= 60일 경우 비0 종료
-    python templates/jd/audit_05.py --include-processed --check-anchor 285243
+    python -m templates.jd.audit_05 --include-processed --check-anchor 285243
 
     # advisor 라운드 검토용 풀 컨텍스트 JSON
-    python templates/jd/audit_05.py --json --output /tmp/audit_05.csv
+    python -m templates.jd.audit_05 --json --output /tmp/audit_05.csv
 """
 
 from __future__ import annotations
@@ -47,14 +47,10 @@ from pathlib import Path
 from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-_JD_DIR = Path(__file__).resolve().parent
-if str(_JD_DIR) not in sys.path:
-    sys.path.insert(0, str(_JD_DIR))
-
-from path_utils import extract_job_id_from_filename, find_existing_jd  # noqa: E402
-from verdict import normalize_verdict  # noqa: E402
-from constants import PROTECTED_STATUSES, SCREENING_DIR, COMPANY_INFO_DIR  # noqa: E402
-from audit_hypotheses import (  # noqa: E402
+from .path_utils import extract_job_id_from_filename, find_existing_jd
+from .verdict import normalize_verdict
+from .constants import COMPANY_INFO_DIR, PROTECTED_STATUSES, SCREENING_DIR
+from .audit_hypotheses import (
     extract_last_verdict,
     parse_summary_verdicts,
     load_file_locations,

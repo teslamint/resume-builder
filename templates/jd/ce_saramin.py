@@ -4,13 +4,8 @@ import re
 import time
 from urllib.parse import quote
 
-try:
-    from .ce_types import PlatformData
-    from .constants import get_rate_limit
-except ImportError:
-    from ce_types import PlatformData
-    from constants import get_rate_limit
-
+from .ce_types import PlatformData
+from .constants import get_rate_limit
 REQUEST_DELAY = 1.5
 REQUEST_DELAY = get_rate_limit("saramin", REQUEST_DELAY)
 

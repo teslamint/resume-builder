@@ -6,11 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional, List, TypeAlias, cast
 
-try:
-    from .constants import VERDICT_FOLDER_MAP, VERDICT_PRIORITY, JOB_POSTINGS_DIR
-except ImportError:
-    from constants import VERDICT_FOLDER_MAP, VERDICT_PRIORITY, JOB_POSTINGS_DIR
-
+from .constants import VERDICT_FOLDER_MAP, VERDICT_PRIORITY, JOB_POSTINGS_DIR
 VerdictType: TypeAlias = Literal["지원 추천", "지원 보류", "지원 비추천"]
 
 

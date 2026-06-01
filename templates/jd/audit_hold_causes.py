@@ -19,11 +19,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-try:
-    from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
-except ImportError:
-    from constants import JOB_POSTINGS_DIR, SCREENING_DIR
-
+from .constants import JOB_POSTINGS_DIR, SCREENING_DIR
 HOLD_DIR = JOB_POSTINGS_DIR / "conditional" / "hold"
 
 FALLBACK_MARKERS = (

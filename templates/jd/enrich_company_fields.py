@@ -2,9 +2,9 @@
 """Detect and report company info files with empty/placeholder fields.
 
 Usage:
-    python3 templates/jd/enrich_company_fields.py --scan
-    python3 templates/jd/enrich_company_fields.py --scan --threshold 3
-    python3 templates/jd/enrich_company_fields.py --scan --empty-only
+    python -m templates.jd.enrich_company_fields --scan
+    python -m templates.jd.enrich_company_fields --scan --threshold 3
+    python -m templates.jd.enrich_company_fields --scan --empty-only
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from recollect_company_info import (
+from .recollect_company_info import (
     extract_urls,
     list_company_files,
     parse_company_name,
 )
-from company_validator import parse_company_file, validate_company
+from .company_validator import parse_company_file, validate_company
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 BUILD_DIR = BASE_DIR / "private" / "build"

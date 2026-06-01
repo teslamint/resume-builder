@@ -640,7 +640,8 @@ def _create_new_company_info(
         try:
             data = parse_company_file(output_path)
             completeness = validate_company(data, output_path).completeness_score
-        except Exception:
+        except Exception as e:
+            _log.debug("Failed to calculate completeness for %s: %s", output_path, e)
             completeness = 0.0
 
         _verify_and_warn_homonym(output_path, jd_path)
@@ -653,8 +654,8 @@ def _create_new_company_info(
                     output_path.name,
                     conf,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("Failed to verify company match for %s: %s", output_path, e)
 
     return CompanyInfoResult(
         company=company_name,

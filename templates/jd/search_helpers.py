@@ -17,6 +17,7 @@ from typing import Callable, Optional
 from urllib.parse import quote, urljoin
 
 try:
+    from .browser_utils import PlaywrightTimeoutError
     from .experience_filter import filter_experience
     from .http_client_base import http_text_request
     from .jd_content import is_rejected_company, parse_remember_experience
@@ -25,6 +26,7 @@ try:
     from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
     from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 except ImportError:
+    from browser_utils import PlaywrightTimeoutError
     from experience_filter import filter_experience
     from http_client_base import http_text_request
     from jd_content import is_rejected_company, parse_remember_experience
@@ -34,6 +36,13 @@ except ImportError:
     from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 
 logger = logging.getLogger(__name__)
+KNOWN_PARSE_EXCEPTIONS = (AttributeError, KeyError, TypeError, ValueError)
+
+
+def _is_timeout_exception(error: Exception) -> bool:
+    if isinstance(error, (PlaywrightTimeoutError, TimeoutError)):
+        return True
+    return str(error).strip().lower() == "timeout"
 
 
 def _fetch_html(url: str, timeout_seconds: int = 15) -> str:
@@ -282,9 +291,16 @@ def _load_and_scrape_browser(page, search_url: str, config: SearchPageConfig, sc
             has_results.first.or_(no_results.first).wait_for(
                 state="attached", timeout=config.timeout_ms
             )
-        except Exception:
+        except (PlaywrightTimeoutError, TimeoutError) as e:
+            logger.debug("Timed out waiting for search results at %s: %s", search_url, e)
             outcome.timed_out = True
             return outcome
+        except Exception as e:
+            if _is_timeout_exception(e):
+                logger.debug("Timed out waiting for search results at %s: %s", search_url, e)
+                outcome.timed_out = True
+                return outcome
+            raise
 
         if no_results.count() > 0 or has_results.count() == 0:
             outcome.no_results = True
@@ -320,7 +336,8 @@ def _load_and_scrape_browser(page, search_url: str, config: SearchPageConfig, sc
                 if result is None:
                     continue
                 outcome.results.append(result)
-            except Exception:
+            except KNOWN_PARSE_EXCEPTIONS as e:
+                logger.debug("Failed to parse search result row at %s: %s", search_url, e)
                 continue
 
     except Exception as e:
@@ -471,8 +488,8 @@ def convert_groupby_to_raw_results(
                 href=f"/positions/{item_id}",
                 platform="groupby",
             ))
-        except Exception:
-            logger.debug("Failed to convert GroupBy item %s", item.get("id"), exc_info=True)
+        except KNOWN_PARSE_EXCEPTIONS as e:
+            logger.debug("Failed to convert GroupBy item %s: %s", item.get("id"), e)
             continue
 
     return outcome
@@ -525,8 +542,8 @@ def convert_wanted_to_raw_results(
                 href=f"/wd/{job_id}",
                 platform="wanted",
             ))
-        except Exception:
-            logger.debug("Failed to convert Wanted item %s", item.get("id"), exc_info=True)
+        except KNOWN_PARSE_EXCEPTIONS as e:
+            logger.debug("Failed to convert Wanted item %s: %s", item.get("id"), e)
             continue
 
     return outcome
@@ -580,8 +597,8 @@ def convert_remember_to_raw_results(
                 href=f"/job/posting/{raw_id}",
                 platform="remember",
             ))
-        except Exception:
-            logger.debug("Failed to convert Remember item %s", item.get("id"), exc_info=True)
+        except KNOWN_PARSE_EXCEPTIONS as e:
+            logger.debug("Failed to convert Remember item %s: %s", item.get("id"), e)
             continue
 
     return outcome

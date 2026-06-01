@@ -424,7 +424,7 @@ class TestDryRunReport(unittest.TestCase):
             },
             "target_folders": {"pass": 1},
             "skip_reasons": {},
-            "recommendations": {"next_command": "python3 templates/jd/pipeline.py --rescreen private/job_postings/conditional/hold"},
+            "recommendations": {"next_command": "python -m templates.jd.pipeline --rescreen private/job_postings/conditional/hold"},
             "move_candidates": ["1"],
             "skipped_job_ids": [],
             "items": [],

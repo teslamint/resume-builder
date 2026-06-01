@@ -28,27 +28,15 @@ from pathlib import Path
 _JD_DIR = Path(__file__).resolve().parent
 if str(_JD_DIR) not in sys.path:
     sys.path.insert(0, str(_JD_DIR))
-try:
-    from .constants import (  # noqa: E402
-        BASE_DIR,
-        COMPANY_INFO_DIR,
-        JOB_POSTINGS_DIR,
-        SCREENING_DIR,
-        SUMMARY_PATH,
-    )
-    from .path_utils import extract_job_id_from_filename  # noqa: E402
-    from .verdict import normalize_verdict  # noqa: E402
-except ImportError:
-    from constants import (  # noqa: E402
-        BASE_DIR,
-        COMPANY_INFO_DIR,
-        JOB_POSTINGS_DIR,
-        SCREENING_DIR,
-        SUMMARY_PATH,
-    )
-    from path_utils import extract_job_id_from_filename  # noqa: E402
-    from verdict import normalize_verdict  # noqa: E402
-
+from .constants import (  # noqa: E402
+    BASE_DIR,
+    COMPANY_INFO_DIR,
+    JOB_POSTINGS_DIR,
+    SCREENING_DIR,
+    SUMMARY_PATH,
+)
+from .path_utils import extract_job_id_from_filename  # noqa: E402
+from .verdict import normalize_verdict  # noqa: E402
 REPO_ROOT = BASE_DIR
 SUMMARY_MD = SUMMARY_PATH
 

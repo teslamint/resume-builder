@@ -38,13 +38,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-try:
-    from .company_match_verify import _extract_heading_company, _extract_section, _tokenize
-    from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-except ImportError:
-    from company_match_verify import _extract_heading_company, _extract_section, _tokenize
-    from company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
-
+from .company_match_verify import _extract_heading_company, _extract_section, _tokenize
+from .company_validator import COMPANY_INFO_DIR, parse_company_file, validate_company
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 QUEUE_PATH = BASE_DIR / "private" / "job_postings" / "unprocessed" / "cosmetic_duplicates_followup.txt"
 BUILD_DIR = BASE_DIR / "private" / "build"

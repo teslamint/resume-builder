@@ -18,11 +18,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-try:
-    from .constants import SCREENING_DIR, JOB_POSTINGS_DIR
-except ImportError:
-    from constants import SCREENING_DIR, JOB_POSTINGS_DIR
-
+from .constants import SCREENING_DIR, JOB_POSTINGS_DIR
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PASS_DIR = JOB_POSTINGS_DIR / "pass"
 logger = logging.getLogger(__name__)

@@ -8,30 +8,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .auto_company import (
-        ENRICHMENT_QUEUE_PATH,
-        _append_thevc_source_note,
-        _has_thevc_source,
-        _inject_thevc_into_file,
-        is_headhunting_company,
-    )
-    from .ce_thevc import extract_thevc
-    from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
-    from .queue_utils import _append_to_queue
-except ImportError:
-    from auto_company import (
-        ENRICHMENT_QUEUE_PATH,
-        _append_thevc_source_note,
-        _has_thevc_source,
-        _inject_thevc_into_file,
-        is_headhunting_company,
-    )
-    from ce_thevc import extract_thevc
-    from company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
-    from queue_utils import _append_to_queue
-
-
+from .auto_company import (
+    ENRICHMENT_QUEUE_PATH,
+    _append_thevc_source_note,
+    _has_thevc_source,
+    _inject_thevc_into_file,
+    is_headhunting_company,
+)
+from .ce_thevc import extract_thevc
+from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
+from .queue_utils import _append_to_queue
 BASE_DIR = Path(__file__).parent.parent.parent
 REPORT_PATH = BASE_DIR / "private" / "build" / "thevc_enrichment_report.md"
 

@@ -6,13 +6,8 @@ import re
 import time
 from urllib.parse import quote
 
-try:
-    from .ce_types import PlatformData
-    from .constants import get_rate_limit
-except ImportError:
-    from ce_types import PlatformData
-    from constants import get_rate_limit
-
+from .ce_types import PlatformData
+from .constants import get_rate_limit
 logger = logging.getLogger(__name__)
 
 REQUEST_DELAY = 1.5
@@ -216,10 +211,7 @@ def extract_wanted_http(company_name: str) -> PlatformData | None:
 
     Uses Wanted search API + SSR company page (__NEXT_DATA__).
     """
-    try:
-        from .wanted_client import search_company, fetch_company_html, WantedAPIError
-    except ImportError:
-        from wanted_client import search_company, fetch_company_html, WantedAPIError
+    from .wanted_client import WantedAPIError, fetch_company_html, search_company
 
     try:
         result = search_company(company_name)

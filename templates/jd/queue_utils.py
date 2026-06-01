@@ -15,11 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-try:
-    from .models import DiscoveredJob
-except ImportError:
-    from models import DiscoveredJob
-
+from .models import DiscoveredJob
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent.parent.parent

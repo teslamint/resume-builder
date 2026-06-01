@@ -3,8 +3,8 @@
 룰: 같은 회사에 직전 6개월 내 지원·탈락 이력 → 자동 ❌ rejected/
 
 사용:
-  python3 templates/jd/backfill_prior_applications.py --dry-run
-  python3 templates/jd/backfill_prior_applications.py
+  python -m templates.jd.backfill_prior_applications --dry-run
+  python -m templates.jd.backfill_prior_applications
 """
 
 from __future__ import annotations
@@ -15,12 +15,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from naming import slugify_company
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).parent))
-    from naming import slugify_company
-
+from .naming import slugify_company
 JOB_POSTINGS = Path("private/job_postings")
 SUMMARY = Path("private/jd_analysis/screening/SUMMARY.md")
 PRIOR_FOLDERS = ("applied", "rejected", "submitted")

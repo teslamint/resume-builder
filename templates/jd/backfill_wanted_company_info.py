@@ -9,24 +9,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .auto_company import is_headhunting_company
-    from .ce_merge import build_enriched_markdown, merge_platform_data
-    from .ce_types import PlatformData
-    from .ce_wanted import extract_wanted_from_text, find_query_data, parse_next_data_company
-    from .enrich_company_fields import BASE_DIR, BUILD_DIR, scan_empty_files
-    from .http_client_base import http_text_request
-    from .wanted_extract import extract_company_id, fetch_wanted_posting
-except ImportError:
-    from auto_company import is_headhunting_company
-    from ce_merge import build_enriched_markdown, merge_platform_data
-    from ce_types import PlatformData
-    from ce_wanted import extract_wanted_from_text, find_query_data, parse_next_data_company
-    from enrich_company_fields import BASE_DIR, BUILD_DIR, scan_empty_files
-    from http_client_base import http_text_request
-    from wanted_extract import extract_company_id, fetch_wanted_posting
-
-
+from .auto_company import is_headhunting_company
+from .ce_merge import build_enriched_markdown, merge_platform_data
+from .ce_types import PlatformData
+from .ce_wanted import extract_wanted_from_text, find_query_data, parse_next_data_company
+from .enrich_company_fields import BASE_DIR, BUILD_DIR, scan_empty_files
+from .http_client_base import http_text_request
+from .wanted_extract import extract_company_id, fetch_wanted_posting
 REPORT_PATH = BUILD_DIR / "wanted_company_backfill_report.md"
 COMPANY_INFO_DIR = BASE_DIR / "private" / "company_info"
 WANTED_JD_RE = re.compile(r"https://www\.wanted\.co\.kr/wd/(\d+)")

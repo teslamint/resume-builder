@@ -8,11 +8,11 @@ Processes items from queue.json:
 - Updates queue status
 
 Usage:
-    python3 templates/jd/worker.py                    # Process all pending
-    python3 templates/jd/worker.py --limit 5          # Process up to 5 items
-    python3 templates/jd/worker.py --job-id 123456    # Process specific job
-    python3 templates/jd/worker.py --status           # Show queue status
-    python3 templates/jd/worker.py --clear-done       # Remove completed items
+    python -m templates.jd.worker                    # Process all pending
+    python -m templates.jd.worker --limit 5          # Process up to 5 items
+    python -m templates.jd.worker --job-id 123456    # Process specific job
+    python -m templates.jd.worker --status           # Show queue status
+    python -m templates.jd.worker --clear-done       # Remove completed items
 """
 
 import argparse
@@ -25,13 +25,8 @@ from typing import List, Optional
 
 import yaml
 
-try:
-    from .constants import CONFIG_PATH, JOB_POSTINGS_DIR
-    from .queue_utils import QueueStatus, load_queue, save_queue, update_item_status, QUEUE_PATH
-except ImportError:
-    from constants import CONFIG_PATH, JOB_POSTINGS_DIR
-    from queue_utils import QueueStatus, load_queue, save_queue, update_item_status, QUEUE_PATH
-
+from .constants import CONFIG_PATH, JOB_POSTINGS_DIR
+from .queue_utils import QueueStatus, load_queue, save_queue, update_item_status, QUEUE_PATH
 logger = logging.getLogger(__name__)
 
 # Paths
@@ -165,10 +160,7 @@ def process_queue(
 
     Uses single browser instance for all items (performance optimization).
     """
-    try:
-        from .browser_utils import sync_playwright
-    except ImportError:
-        from browser_utils import sync_playwright
+    from .browser_utils import sync_playwright
 
     items, stats = load_queue(with_stats=True)
 

@@ -8,9 +8,9 @@ Optimized for cron execution:
 - Outputs to queue.json for worker processing
 
 Usage:
-    python3 templates/jd/search_quick.py              # Run search, update queue
-    python3 templates/jd/search_quick.py --dry-run    # Preview without saving
-    python3 templates/jd/search_quick.py --status     # Show queue status
+    python -m templates.jd.search_quick              # Run search, update queue
+    python -m templates.jd.search_quick --dry-run    # Preview without saving
+    python -m templates.jd.search_quick --status     # Show queue status
 """
 
 import argparse
