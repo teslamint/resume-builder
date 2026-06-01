@@ -9,37 +9,75 @@ Extracts raw job listing data from search result pages or API responses. Does NO
 """
 from __future__ import annotations
 
-import logging
 import html
+import importlib
+import logging
 import re
-import urllib.request
+from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Optional
-from urllib.parse import quote
+from functools import lru_cache
+from typing import Callable, Optional
+from urllib.parse import quote, urljoin
 
 try:
     from .experience_filter import filter_experience
+    from .http_client_base import http_text_request
     from .jd_content import is_rejected_company, parse_remember_experience
+    from .models import DiscoveredJob
     from .path_utils import is_duplicate
-    from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from .remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
+    from .wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 except ImportError:
     from experience_filter import filter_experience
+    from http_client_base import http_text_request
     from jd_content import is_rejected_company, parse_remember_experience
+    from models import DiscoveredJob
     from path_utils import is_duplicate
-    from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
     from remember_client import RememberAPIError, search_jobs as remember_search_jobs, format_experience as remember_format_exp
+    from wanted_client import WantedAPIError, search_jobs as wanted_search_jobs, format_experience as wanted_format_exp
 
 logger = logging.getLogger(__name__)
+KNOWN_PARSE_EXCEPTIONS = (AttributeError, KeyError, TypeError, ValueError)
+
+
+@lru_cache(maxsize=1)
+def _load_playwright_error() -> type[BaseException] | None:
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module("templates.jd.browser_utils").PlaywrightError
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module("browser_utils").PlaywrightError
+    return None
+
+
+@lru_cache(maxsize=1)
+def _load_playwright_timeout_error() -> type[BaseException] | None:
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module(
+            "templates.jd.browser_utils"
+        ).PlaywrightTimeoutError
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module("browser_utils").PlaywrightTimeoutError
+    return None
+
+
+def _is_timeout_exception(error: Exception) -> bool:
+    playwright_timeout_error = _load_playwright_timeout_error()
+    if playwright_timeout_error is not None and isinstance(error, playwright_timeout_error):
+        return True
+    if isinstance(error, TimeoutError):
+        return True
+    return str(error).strip().lower() == "timeout"
+
+
+def _is_row_parse_exception(error: Exception) -> bool:
+    if isinstance(error, KNOWN_PARSE_EXCEPTIONS):
+        return True
+    playwright_error = _load_playwright_error()
+    return playwright_error is not None and isinstance(error, playwright_error)
 
 
 def _fetch_html(url: str, timeout_seconds: int = 15) -> str:
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
-        return response.read().decode("utf-8", errors="ignore")
+    return http_text_request(url, timeout=timeout_seconds)
 
 
 def _split_html_lines(raw: str) -> list[str]:
@@ -50,22 +88,17 @@ def _split_html_lines(raw: str) -> list[str]:
 
 
 @dataclass
-class RawJobResult:
+class RawJobResult(DiscoveredJob):
     """A single job listing extracted from a search page."""
     raw_id: str              # Platform-native ID (e.g., "12345")
-    canonical_id: str        # Normalized ID (e.g., "remember-12345" or "12345")
-    title: str
-    company: str
-    experience: str
-    url: str                 # Full URL to the posting
     href: str                # Original href from the DOM element
     platform: str            # "wanted" or "remember"
 
     def duplicate_keys(self) -> list[str]:
-        """All IDs to check for dedup. Remember uses dual-key (canonical + raw)."""
+        """All IDs to check for dedup. Remember uses dual-key (job_id + raw_id)."""
         if self.platform == "remember":
-            return [self.canonical_id, self.raw_id]
-        return [self.canonical_id]
+            return [self.job_id, self.raw_id]
+        return [self.job_id]
 
 
 @dataclass
@@ -88,140 +121,232 @@ class ScrapeOutcome:
     error: Exception | None = None
 
 
-def load_and_scrape_wanted(page, search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
-    """Navigate to Wanted search page, scroll, extract job rows.
+BrowserResultBuilder = Callable[[SearchPageConfig, str, str, list[str]], RawJobResult | None]
+HttpResultBuilder = Callable[[SearchPageConfig, str, str, list[str]], RawJobResult | None]
 
-    Caller builds search_url. Helper handles navigation, wait, scroll, DOM extraction.
-    Returns ScrapeOutcome with raw results (no filtering or dedup applied).
-    """
+
+@dataclass(frozen=True)
+class BrowserScraperConfig:
+    results_selector: str
+    no_results_selectors: tuple[str, ...]
+    url_pattern: re.Pattern[str]
+    required_href_fragment: str | None
+    build_result: BrowserResultBuilder
+
+
+@dataclass(frozen=True)
+class HttpScraperConfig:
+    no_results_markers: tuple[str, ...]
+    link_pattern: re.Pattern[str]
+    required_href_fragment: str | None
+    build_result: HttpResultBuilder
+    empty_error: str
+
+
+def _combine_locators(page, selectors: tuple[str, ...]):
+    locator = page.locator(selectors[0])
+    for selector in selectors[1:]:
+        locator = locator.or_(page.locator(selector))
+    return locator
+
+
+def _scroll_to_page_end(page, config: SearchPageConfig) -> None:
     import time
 
+    time.sleep(config.post_load_delay)
+    for _ in range(config.scroll_count):
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        time.sleep(config.scroll_sleep)
+
+
+def _build_wanted_result(
+    *,
+    raw_id: str,
+    title: str,
+    company: str,
+    experience: str,
+    href: str,
+    url: str,
+) -> RawJobResult:
+    return RawJobResult(
+        raw_id=raw_id,
+        job_id=raw_id,
+        title=title,
+        company=company,
+        experience=experience,
+        url=url,
+        href=href,
+        platform="wanted",
+    )
+
+
+def _build_remember_result(
+    *,
+    raw_id: str,
+    title: str,
+    company: str,
+    experience: str,
+    href: str,
+    url: str,
+) -> RawJobResult:
+    return RawJobResult(
+        raw_id=raw_id,
+        job_id=f"remember-{raw_id}",
+        title=title,
+        company=company,
+        experience=experience,
+        url=url,
+        href=href,
+        platform="remember",
+    )
+
+
+def _build_wanted_browser_result(
+    config: SearchPageConfig, href: str, raw_id: str, lines: list[str]
+) -> RawJobResult | None:
+    if len(lines) < 2:
+        return None
+
+    return _build_wanted_result(
+        raw_id=raw_id,
+        title=lines[0],
+        company=lines[1],
+        experience=lines[2] if len(lines) > 2 else "",
+        href=href,
+        url=urljoin(config.base_url, href),
+    )
+
+
+def _build_remember_browser_result(
+    config: SearchPageConfig, href: str, raw_id: str, lines: list[str]
+) -> RawJobResult | None:
+    if len(lines) < 2:
+        return None
+
+    return _build_remember_result(
+        raw_id=raw_id,
+        company=lines[0],
+        title=lines[1],
+        experience=parse_remember_experience(lines[2:]),
+        href=href,
+        url=f"{config.base_url}/job/posting/{raw_id}",
+    )
+
+
+def _build_wanted_http_result(
+    config: SearchPageConfig, href: str, raw_id: str, lines: list[str]
+) -> RawJobResult | None:
+    if len(lines) < 2:
+        return None
+
+    return _build_wanted_result(
+        raw_id=raw_id,
+        title=lines[0],
+        company=lines[1],
+        experience=lines[2] if len(lines) > 2 else "",
+        href=href,
+        url=f"{config.base_url}/wd/{raw_id}" if href.startswith("/wd/") else href,
+    )
+
+
+def _build_remember_http_result(
+    config: SearchPageConfig, href: str, raw_id: str, lines: list[str]
+) -> RawJobResult | None:
+    if len(lines) < 2:
+        return None
+
+    return _build_remember_result(
+        raw_id=raw_id,
+        company=lines[0],
+        title=lines[1],
+        experience=parse_remember_experience(lines[2:]),
+        href=href,
+        url=f"{config.base_url}/job/posting/{raw_id}" if href.startswith("/job/posting/") else href,
+    )
+
+
+wanted_browser = BrowserScraperConfig(
+    results_selector='a[href*="/wd/"]',
+    no_results_selectors=(
+        "text=검색 결과가 없습니다",
+        '[class*="EmptyContent"]',
+        "text=일치하는 결과가 없",
+    ),
+    url_pattern=re.compile(r"/wd/(\d+)"),
+    required_href_fragment=None,
+    build_result=_build_wanted_browser_result,
+)
+
+remember_browser = BrowserScraperConfig(
+    results_selector='a[href*="/job/posting/"]',
+    no_results_selectors=("text=총 0개 공고",),
+    url_pattern=re.compile(r"/job/posting/(\d+)"),
+    required_href_fragment="jdViewSource=inweb_list",
+    build_result=_build_remember_browser_result,
+)
+
+wanted_http = HttpScraperConfig(
+    no_results_markers=("검색 결과가 없습니다", "일치하는 결과가 없습니다"),
+    link_pattern=re.compile(
+        r'<a[^>]*href=["\']([^"\']*?/wd/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    ),
+    required_href_fragment=None,
+    build_result=_build_wanted_http_result,
+    empty_error="Wanted HTTP 검색에서 공고 링크를 추출하지 못했습니다.",
+)
+
+remember_http = HttpScraperConfig(
+    no_results_markers=("총 0개 공고",),
+    link_pattern=re.compile(
+        r'<a[^>]*href=["\']([^"\']*?/job/posting/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    ),
+    required_href_fragment="jdViewSource=inweb_list",
+    build_result=_build_remember_http_result,
+    empty_error="Remember HTTP 검색에서 공고 링크를 추출하지 못했습니다.",
+)
+
+
+def _load_and_scrape_browser(page, search_url: str, config: SearchPageConfig, scraper: BrowserScraperConfig) -> ScrapeOutcome:
+    """Navigate to a search page, scroll, and extract raw job rows."""
     outcome = ScrapeOutcome()
 
     try:
         page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
 
-        has_results = page.locator('a[href*="/wd/"]')
-        no_results = page.locator('text=검색 결과가 없습니다').or_(
-            page.locator('[class*="EmptyContent"]')
-        ).or_(page.locator('text=일치하는 결과가 없'))
+        has_results = page.locator(scraper.results_selector)
+        no_results = _combine_locators(page, scraper.no_results_selectors)
 
         try:
             has_results.first.or_(no_results.first).wait_for(
                 state="attached", timeout=config.timeout_ms
             )
-        except Exception:
-            outcome.timed_out = True
-            return outcome
+        except Exception as e:
+            if _is_timeout_exception(e):
+                logger.debug("Timed out waiting for search results at %s: %s", search_url, e)
+                outcome.timed_out = True
+                return outcome
+            raise
 
         if no_results.count() > 0 or has_results.count() == 0:
             outcome.no_results = True
             return outcome
 
-        time.sleep(config.post_load_delay)
+        _scroll_to_page_end(page, config)
 
-        for _ in range(config.scroll_count):
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            time.sleep(config.scroll_sleep)
-
-        job_links = page.query_selector_all('a[href*="/wd/"]')
+        job_links = page.query_selector_all(scraper.results_selector)
         seen_in_page: set[str] = set()
 
         for link in job_links:
             try:
                 href = link.get_attribute("href")
-                if not href or "/wd/" not in href:
+                if not href:
+                    continue
+                if scraper.required_href_fragment and scraper.required_href_fragment not in href:
                     continue
 
-                match = re.search(r"/wd/(\d+)", href)
-                if not match:
-                    continue
-
-                job_id = match.group(1)
-                if job_id in seen_in_page:
-                    continue
-                seen_in_page.add(job_id)
-
-                outcome.candidate_count += 1
-
-                text = link.inner_text()
-                lines = [l.strip() for l in text.split("\n") if l.strip()]
-                if len(lines) < 2:
-                    continue
-
-                title = lines[0]
-                company = lines[1] if len(lines) > 1 else "Unknown"
-                experience = lines[2] if len(lines) > 2 else ""
-
-                from urllib.parse import urljoin
-                full_url = urljoin(config.base_url, href)
-
-                outcome.results.append(RawJobResult(
-                    raw_id=job_id,
-                    canonical_id=job_id,
-                    title=title,
-                    company=company,
-                    experience=experience,
-                    url=full_url,
-                    href=href,
-                    platform="wanted",
-                ))
-            except Exception:
-                continue
-
-    except Exception as e:
-        outcome.error = e
-
-    return outcome
-
-
-def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
-    """Navigate to Remember search page, scroll, extract job rows.
-
-    Caller builds search_url (Remember needs JSON+quote construction).
-    Helper handles jdViewSource=inweb_list filter internally (DOM-level).
-    """
-    import time
-
-    outcome = ScrapeOutcome()
-
-    try:
-        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-
-        has_results = page.locator('a[href*="/job/posting/"]')
-        no_results = page.locator('text=총 0개 공고')
-
-        try:
-            has_results.first.or_(no_results.first).wait_for(
-                state="attached", timeout=config.timeout_ms
-            )
-        except Exception:
-            outcome.timed_out = True
-            return outcome
-
-        if no_results.count() > 0 or has_results.count() == 0:
-            outcome.no_results = True
-            return outcome
-
-        time.sleep(config.post_load_delay)
-
-        for _ in range(config.scroll_count):
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            time.sleep(config.scroll_sleep)
-
-        job_links = page.query_selector_all('a[href*="/job/posting/"]')
-        seen_in_page: set[str] = set()
-
-        for link in job_links:
-            try:
-                href = link.get_attribute("href")
-                if not href or "/job/posting/" not in href:
-                    continue
-
-                if "jdViewSource=inweb_list" not in href:
-                    continue
-
-                match = re.search(r"/job/posting/(\d+)", href)
+                match = scraper.url_pattern.search(href)
                 if not match:
                     continue
 
@@ -233,29 +358,16 @@ def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) ->
                 outcome.candidate_count += 1
 
                 text = link.inner_text()
-                lines = [l.strip() for l in text.split("\n") if l.strip()]
-                if len(lines) < 2:
+                lines = [line.strip() for line in text.split("\n") if line.strip()]
+                result = scraper.build_result(config, href, raw_id, lines)
+                if result is None:
                     continue
-
-                company = lines[0]
-                title = lines[1]
-                experience = parse_remember_experience(lines[2:])
-
-                canonical_id = f"remember-{raw_id}"
-                full_url = f"{config.base_url}/job/posting/{raw_id}"
-
-                outcome.results.append(RawJobResult(
-                    raw_id=raw_id,
-                    canonical_id=canonical_id,
-                    title=title,
-                    company=company,
-                    experience=experience,
-                    url=full_url,
-                    href=href,
-                    platform="remember",
-                ))
-            except Exception:
-                continue
+                outcome.results.append(result)
+            except Exception as e:
+                if _is_row_parse_exception(e):
+                    logger.debug("Failed to parse search result row at %s: %s", search_url, e)
+                    continue
+                raise
 
     except Exception as e:
         outcome.error = e
@@ -263,8 +375,26 @@ def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) ->
     return outcome
 
 
-def load_and_scrape_wanted_http(search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
-    """Fallback Wanted search path without Playwright (raw HTML parse)."""
+def load_and_scrape_wanted(page, search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
+    """Navigate to Wanted search page, scroll, extract job rows.
+
+    Caller builds search_url. Helper handles navigation, wait, scroll, DOM extraction.
+    Returns ScrapeOutcome with raw results (no filtering or dedup applied).
+    """
+    return _load_and_scrape_browser(page, search_url, config, wanted_browser)
+
+
+def load_and_scrape_remember(page, search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
+    """Navigate to Remember search page, scroll, extract job rows.
+
+    Caller builds search_url (Remember needs JSON+quote construction).
+    Helper handles jdViewSource=inweb_list filter internally (DOM-level).
+    """
+    return _load_and_scrape_browser(page, search_url, config, remember_browser)
+
+
+def _load_and_scrape_http(search_url: str, config: SearchPageConfig, scraper: HttpScraperConfig) -> ScrapeOutcome:
+    """Fetch a search page over HTTP and parse raw job rows from the HTML."""
     outcome = ScrapeOutcome()
 
     try:
@@ -273,73 +403,16 @@ def load_and_scrape_wanted_http(search_url: str, config: SearchPageConfig) -> Sc
         outcome.error = e
         return outcome
 
-    if "검색 결과가 없습니다" in html_text or "일치하는 결과가 없습니다" in html_text:
+    if any(marker in html_text for marker in scraper.no_results_markers):
         outcome.no_results = True
         return outcome
 
-    pattern = re.compile(
-        r'<a[^>]*href=["\']([^"\']*?/wd/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
-        re.IGNORECASE | re.DOTALL,
-    )
-
     seen_in_page: set[str] = set()
-    for href, job_id, inner_html in pattern.findall(html_text):
-        if "/wd/" not in href or job_id in seen_in_page:
-            continue
-
-        lines = _split_html_lines(inner_html)
-        if len(lines) < 2:
-            continue
-
-        seen_in_page.add(job_id)
-        outcome.candidate_count += 1
-
-        title = lines[0]
-        company = lines[1]
-        experience = lines[2] if len(lines) > 2 else ""
-
-        outcome.results.append(RawJobResult(
-            raw_id=job_id,
-            canonical_id=job_id,
-            title=title,
-            company=company,
-            experience=experience,
-            url=f"{config.base_url}/wd/{job_id}" if href.startswith("/wd/") else href,
-            href=href,
-            platform="wanted",
-        ))
-
-    if outcome.results:
-        return outcome
-
-    outcome.error = ValueError("Wanted HTTP 검색에서 공고 링크를 추출하지 못했습니다.")
-    return outcome
-
-
-def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
-    """Fallback Remember search path without Playwright (raw HTML parse)."""
-    outcome = ScrapeOutcome()
-
-    try:
-        html_text = _fetch_html(search_url, timeout_seconds=max(15, int(config.timeout_ms / 1000)))
-    except Exception as e:
-        outcome.error = e
-        return outcome
-
-    if "총 0개 공고" in html_text:
-        outcome.no_results = True
-        return outcome
-
-    pattern = re.compile(
-        r'<a[^>]*href=["\']([^"\']*?/job/posting/(\d+)[^"\']*)["\'][^>]*>(.*?)</a>',
-        re.IGNORECASE | re.DOTALL,
-    )
-
-    seen_in_page: set[str] = set()
-    for href, raw_id, inner_html in pattern.findall(html_text):
+    for match in scraper.link_pattern.finditer(html_text):
+        href, raw_id, inner_html = match.groups()
         if raw_id in seen_in_page:
             continue
-        if "jdViewSource=inweb_list" not in href:
+        if scraper.required_href_fragment and scraper.required_href_fragment not in href:
             continue
 
         lines = _split_html_lines(inner_html)
@@ -349,33 +422,26 @@ def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> 
         seen_in_page.add(raw_id)
         outcome.candidate_count += 1
 
-        company = lines[0]
-        title = lines[1]
-        experience = parse_remember_experience(lines[2:])
-
-        canonical_id = f"remember-{raw_id}"
-        full_url = (
-            f"{config.base_url}/job/posting/{raw_id}"
-            if href.startswith("/job/posting/")
-            else href
-        )
-
-        outcome.results.append(RawJobResult(
-            raw_id=raw_id,
-            canonical_id=canonical_id,
-            title=title,
-            company=company,
-            experience=experience,
-            url=full_url,
-            href=href,
-            platform="remember",
-        ))
+        result = scraper.build_result(config, href, raw_id, lines)
+        if result is None:
+            continue
+        outcome.results.append(result)
 
     if outcome.results:
         return outcome
 
-    outcome.error = ValueError("Remember HTTP 검색에서 공고 링크를 추출하지 못했습니다.")
+    outcome.error = ValueError(scraper.empty_error)
     return outcome
+
+
+def load_and_scrape_wanted_http(search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
+    """Fallback Wanted search path without Playwright (raw HTML parse)."""
+    return _load_and_scrape_http(search_url, config, wanted_http)
+
+
+def load_and_scrape_remember_http(search_url: str, config: SearchPageConfig) -> ScrapeOutcome:
+    """Fallback Remember search path without Playwright (raw HTML parse)."""
+    return _load_and_scrape_http(search_url, config, remember_http)
 
 
 # ---------------------------------------------------------------------------
@@ -438,12 +504,12 @@ def convert_groupby_to_raw_results(
                 continue
 
             startup = item.get("startup") or {}
-            canonical_id = f"groupby-{item_id}"
+            job_id = f"groupby-{item_id}"
 
             outcome.candidate_count += 1
             outcome.results.append(RawJobResult(
-                raw_id=canonical_id,
-                canonical_id=canonical_id,
+                raw_id=str(item_id),
+                job_id=job_id,
                 title=(item.get("name") or "").strip(),
                 company=(startup.get("name") or "").strip(),
                 experience=format_groupby_experience(item),
@@ -451,8 +517,8 @@ def convert_groupby_to_raw_results(
                 href=f"/positions/{item_id}",
                 platform="groupby",
             ))
-        except Exception:
-            logger.debug("Failed to convert GroupBy item %s", item.get("id"), exc_info=True)
+        except KNOWN_PARSE_EXCEPTIONS as e:
+            logger.debug("Failed to convert GroupBy item %s: %s", item.get("id"), e)
             continue
 
     return outcome
@@ -497,7 +563,7 @@ def convert_wanted_to_raw_results(
             outcome.candidate_count += 1
             outcome.results.append(RawJobResult(
                 raw_id=job_id,
-                canonical_id=job_id,
+                job_id=job_id,
                 title=(item.get("position") or "").strip(),
                 company=(company_info.get("name") or "").strip(),
                 experience=wanted_format_exp(item),
@@ -505,8 +571,8 @@ def convert_wanted_to_raw_results(
                 href=f"/wd/{job_id}",
                 platform="wanted",
             ))
-        except Exception:
-            logger.debug("Failed to convert Wanted item %s", item.get("id"), exc_info=True)
+        except KNOWN_PARSE_EXCEPTIONS as e:
+            logger.debug("Failed to convert Wanted item %s: %s", item.get("id"), e)
             continue
 
     return outcome
@@ -547,12 +613,12 @@ def convert_remember_to_raw_results(
 
             organization = item.get("organization") or {}
             raw_id = str(item_id)
-            canonical_id = f"remember-{raw_id}"
+            job_id = f"remember-{raw_id}"
 
             outcome.candidate_count += 1
             outcome.results.append(RawJobResult(
                 raw_id=raw_id,
-                canonical_id=canonical_id,
+                job_id=job_id,
                 title=(item.get("title") or "").strip(),
                 company=(organization.get("name") or "").strip(),
                 experience=remember_format_exp(item),
@@ -560,8 +626,8 @@ def convert_remember_to_raw_results(
                 href=f"/job/posting/{raw_id}",
                 platform="remember",
             ))
-        except Exception:
-            logger.debug("Failed to convert Remember item %s", item.get("id"), exc_info=True)
+        except KNOWN_PARSE_EXCEPTIONS as e:
+            logger.debug("Failed to convert Remember item %s: %s", item.get("id"), e)
             continue
 
     return outcome
@@ -633,9 +699,9 @@ def filter_and_dedup(
 ) -> FilterResult:
     """Apply title/company/experience filters and dedup against *seen_ids* + filesystem.
 
-    Mutates *seen_ids* in-place (adds accepted and fs-dup canonical IDs).
+    Mutates *seen_ids* in-place (adds accepted and fs-dup job IDs).
     Uses ``RawJobResult.duplicate_keys()`` for platform-aware dedup:
-    canonical_id for most platforms, and [canonical_id, raw_id] for Remember.
+    job_id for most platforms, and [job_id, raw_id] for Remember.
     Filesystem dedup is checked through ``is_duplicate()`` for each dedup key.
     """
     out = FilterResult()
@@ -668,10 +734,10 @@ def filter_and_dedup(
                 break
         if fs_dup:
             out.duplicates += 1
-            seen_ids.add(raw.canonical_id)
+            seen_ids.add(raw.job_id)
             continue
 
         out.accepted.append(raw)
-        seen_ids.add(raw.canonical_id)
+        seen_ids.add(raw.job_id)
 
     return out

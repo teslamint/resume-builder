@@ -2,6 +2,7 @@
 import argparse
 import glob
 import json
+import logging
 import re
 import sys
 from datetime import datetime
@@ -11,6 +12,7 @@ _BASE_DIR = Path(__file__).parent.parent.parent
 BASE_DIR = _BASE_DIR / "private"  # Will be updated if --example is used
 _GLOBAL_TARGET: str | None = None
 _EXAMPLE_MODE: bool = False
+logger = logging.getLogger(__name__)
 
 def _load_config_file(path: Path) -> dict:
     """Load variant config from a JSON file."""
@@ -27,11 +29,11 @@ def get_variant_config():
 
     if not config_path.exists():
         example_path = _BASE_DIR / 'variant_config.example.json'
-        print(
-            f"Error: {config_path} not found.\n"
-            f"Copy the example file to get started:\n"
-            f"  cp {example_path} {config_path}",
-            file=sys.stderr,
+        logger.error(
+            "%s not found.\nCopy the example file to get started:\n  cp %s %s",
+            config_path,
+            example_path,
+            config_path,
         )
         sys.exit(1)
 
@@ -1010,9 +1012,9 @@ def main():
             from schema import validate_all
         errors = validate_all(example=args.example)
         if errors:
-            print("Validation errors found:", file=sys.stderr)
+            logger.error("Validation errors found:")
             for error in errors:
-                print(f"  {error}", file=sys.stderr)
+                logger.error("  %s", error)
             sys.exit(1)
         print("All validations passed.")
         if not args.variant:

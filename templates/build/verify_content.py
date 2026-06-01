@@ -3,13 +3,14 @@
 Content Integrity Verifier - 면접 답변의 이력서 근거 검증
 
 Usage:
-    python3 templates/build/verify_content.py <interview-md>
-    python3 templates/build/verify_content.py <interview-md> --resume <resume-md>
-    python3 templates/build/verify_content.py <interview-md> --json
+    python -m templates.build.verify_content <interview-md>
+    python -m templates.build.verify_content <interview-md> --resume <resume-md>
+    python -m templates.build.verify_content <interview-md> --json
 """
 
 import argparse
 import json
+import logging
 import re
 import sys
 from dataclasses import asdict, dataclass, field
@@ -18,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 BASE_DIR = Path(__file__).parent.parent.parent
 DEFAULT_RESUME = BASE_DIR / "private" / "build" / "resume-job-base.md"
+logger = logging.getLogger(__name__)
 
 COMPANY_ALIASES: Dict[str, List[str]] = {
     "April7": ["에이프릴세븐", "April7", "april7"],
@@ -370,17 +372,17 @@ def main():
 
     interview_path = Path(args.interview)
     if not interview_path.exists():
-        print(f"Error: {interview_path} not found", file=sys.stderr)
+        logger.error("%s not found", interview_path)
         sys.exit(1)
 
     resume_path = Path(args.resume)
     if not resume_path.exists():
-        print(f"Error: {resume_path} not found", file=sys.stderr)
+        logger.error("%s not found", resume_path)
         sys.exit(1)
 
     sections = parse_resume_sections(resume_path)
     if not sections:
-        print("Warning: no company sections found in resume", file=sys.stderr)
+        logger.warning("No company sections found in resume")
 
     claims = extract_claims(interview_path)
     if not claims:

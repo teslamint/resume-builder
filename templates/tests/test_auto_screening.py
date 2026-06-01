@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """Golden-path regression tests for auto_screening.py."""
 
-import subprocess
-from pathlib import Path
-
 import auto_screening
 
 
@@ -60,36 +57,28 @@ def test_run_screening_writes_golden_output_and_result(monkeypatch, tmp_path):
     jd_path.write_text(FIXED_JD, encoding="utf-8")
     screening_dir = tmp_path / "screening"
     summary_calls = []
+    provider = auto_screening.FakeProvider(
+        GOLDEN_LLM_OUTPUT,
+        provider_name="fake-claude",
+    )
 
-    monkeypatch.setenv("CLAUDE_SCREENING_CMD", "fake-llm --print")
-    monkeypatch.delenv("CODEX_SCREENING_CMD", raising=False)
     monkeypatch.setattr(auto_screening, "SCREENING_DIR", screening_dir)
     monkeypatch.setattr(auto_screening, "load_screening_rules", lambda: FIXED_RULES)
     monkeypatch.setattr(auto_screening, "_load_candidate_context", lambda: "fixed candidate context")
     monkeypatch.setattr(auto_screening, "update_summary", lambda **kwargs: summary_calls.append(kwargs))
-
-    def fake_run(cmd, input, text, capture_output, timeout, env):
-        assert cmd == ["fake-llm", "--print"]
-        assert text is True
-        assert capture_output is True
-        assert timeout == 30
-        assert FIXED_RULES in input
-        assert FIXED_JD in input
-        return subprocess.CompletedProcess(cmd, 0, stdout=GOLDEN_LLM_OUTPUT, stderr="")
-
-    monkeypatch.setattr(auto_screening.subprocess, "run", fake_run)
 
     result = auto_screening.run_screening(
         jd_path=jd_path,
         company_file=None,
         llm_timeout=30,
         dry_run=False,
+        llm_provider=provider,
     )
 
     expected_path = screening_dir / "123456-golden-backend.md"
     assert result.verdict == "지원 추천"
     assert result.screening_path == expected_path
-    assert result.provider == "claude"
+    assert result.provider == "fake-claude"
     assert result.used_fallback is False
     assert expected_path.read_text(encoding="utf-8") == GOLDEN_LLM_OUTPUT.rstrip() + "\n"
     assert summary_calls == [

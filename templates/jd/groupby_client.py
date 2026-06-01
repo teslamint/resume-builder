@@ -1,16 +1,9 @@
-"""GroupBy API client — centralized HTTP layer for api.groupby.kr.
-
-Handles headers, pagination, response validation, and HTML→text conversion.
-Used by both search_helpers (listing) and auto_extractors (detail).
-"""
+"""GroupBy API client — centralized HTTP layer for api.groupby.kr."""
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
-import urllib.request
-import urllib.error
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -25,10 +18,6 @@ GROUPBY_API_BASE = "https://api.groupby.kr"
 GROUPBY_BASE_URL = "https://groupby.kr"
 GROUPBY_HEADERS = {
     "Origin": GROUPBY_BASE_URL,
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json",
 }
 GROUPBY_MAX_LIMIT = 10

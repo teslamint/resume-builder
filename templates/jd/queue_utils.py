@@ -15,15 +15,30 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
-try:
-    from .models import DiscoveredJob
-except ImportError:
-    from models import DiscoveredJob
-
+from .models import DiscoveredJob
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent.parent.parent
 QUEUE_PATH = BASE_DIR / "private" / "job_postings" / "queue.json"
+
+
+def _append_to_queue(path: Path, company: str) -> None:
+    """Append a company name to a newline-delimited queue file once, under lock."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "a+", encoding="utf-8") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.seek(0)
+            content = f.read()
+            existing = {line.strip() for line in content.splitlines() if line.strip()}
+            if company in existing:
+                return
+            if content and not content.endswith("\n"):
+                f.write("\n")
+            f.write(company + "\n")
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 class QueueStatus(str, Enum):

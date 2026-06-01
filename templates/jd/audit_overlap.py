@@ -25,13 +25,8 @@ from typing import Sequence
 _JD_DIR = Path(__file__).resolve().parent
 if str(_JD_DIR) not in sys.path:
     sys.path.insert(0, str(_JD_DIR))
-try:
-    from .constants import JD_ANALYSIS_DIR, JOB_POSTINGS_DIR, SCREENING_DIR  # noqa: E402
-    from .path_utils import extract_job_id_from_filename  # noqa: E402
-except ImportError:
-    from constants import JD_ANALYSIS_DIR, JOB_POSTINGS_DIR, SCREENING_DIR  # noqa: E402
-    from path_utils import extract_job_id_from_filename  # noqa: E402
-
+from .constants import JD_ANALYSIS_DIR, JOB_POSTINGS_DIR, SCREENING_DIR  # noqa: E402
+from .path_utils import extract_job_id_from_filename  # noqa: E402
 PASS_DIR = JOB_POSTINGS_DIR / "pass"
 
 M1_PATTERNS = [

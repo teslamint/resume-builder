@@ -3,9 +3,11 @@
 
 import argparse
 import difflib
+import logging
 from datetime import datetime
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
 def generate_diff(base_content: str, current_content: str) -> tuple[list[str], int, int]:
     """Generate unified diff and count additions/deletions."""
@@ -59,11 +61,11 @@ def main():
     output_path = Path(args.output)
 
     if not base_path.exists():
-        print(f"Error: Base file not found: {base_path}")
+        logger.error("Base file not found: %s", base_path)
         return 1
 
     if not current_path.exists():
-        print(f"Error: Current file not found: {current_path}")
+        logger.error("Current file not found: %s", current_path)
         return 1
 
     base_content = base_path.read_text(encoding='utf-8')

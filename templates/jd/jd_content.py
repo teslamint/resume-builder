@@ -11,6 +11,7 @@ try:
     from .naming import normalize_company_name
 except ImportError:
     import constants
+
     from naming import normalize_company_name
 
 _HEADING_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)

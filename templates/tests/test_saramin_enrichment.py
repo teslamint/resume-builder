@@ -60,47 +60,6 @@ RICH_BODY = (
 )
 
 
-class TestAppendSaraminEnrichmentQueue(unittest.TestCase):
-    def test_appends_new_company(self):
-        from auto_company import _append_saramin_enrichment_queue, SARAMIN_ENRICHMENT_QUEUE_PATH
-
-        with tempfile.TemporaryDirectory() as tmp:
-            queue_path = Path(tmp) / "company_enrichment_saramin.txt"
-            with patch("auto_company.SARAMIN_ENRICHMENT_QUEUE_PATH", queue_path):
-                _append_saramin_enrichment_queue("테스트회사")
-
-            self.assertTrue(queue_path.exists())
-            lines = queue_path.read_text(encoding="utf-8").strip().splitlines()
-            self.assertEqual(lines, ["테스트회사"])
-
-    def test_deduplicates_existing_company(self):
-        from auto_company import _append_saramin_enrichment_queue
-
-        with tempfile.TemporaryDirectory() as tmp:
-            queue_path = Path(tmp) / "company_enrichment_saramin.txt"
-            queue_path.write_text("테스트회사\n", encoding="utf-8")
-            with patch("auto_company.SARAMIN_ENRICHMENT_QUEUE_PATH", queue_path):
-                _append_saramin_enrichment_queue("테스트회사")
-                _append_saramin_enrichment_queue("테스트회사")
-
-            lines = [l for l in queue_path.read_text(encoding="utf-8").splitlines() if l.strip()]
-            self.assertEqual(lines.count("테스트회사"), 1)
-
-    def test_appends_multiple_different_companies(self):
-        from auto_company import _append_saramin_enrichment_queue
-
-        with tempfile.TemporaryDirectory() as tmp:
-            queue_path = Path(tmp) / "company_enrichment_saramin.txt"
-            with patch("auto_company.SARAMIN_ENRICHMENT_QUEUE_PATH", queue_path):
-                _append_saramin_enrichment_queue("회사A")
-                _append_saramin_enrichment_queue("회사B")
-
-            lines = [l for l in queue_path.read_text(encoding="utf-8").splitlines() if l.strip()]
-            self.assertIn("회사A", lines)
-            self.assertIn("회사B", lines)
-            self.assertEqual(len(lines), 2)
-
-
 class TestEnsureCompanyInfoSaraminQueue(unittest.TestCase):
     """Verify that ensure_company_info routes Saramin failures to the backfill queue."""
 

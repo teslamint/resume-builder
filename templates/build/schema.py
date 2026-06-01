@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Schema validation for resume markdown files."""
 import argparse
+import logging
 import re
 import sys
 from pathlib import Path
 
 _PROJECT_DIR = Path(__file__).parent.parent.parent
 BASE_DIR = _PROJECT_DIR / "private"
+logger = logging.getLogger(__name__)
 
 SCHEMAS = {
     'contact': {
@@ -236,9 +238,9 @@ def main():
         return
 
     if errors:
-        print("Validation errors found:", file=sys.stderr)
+        logger.error("Validation errors found:")
         for error in errors:
-            print(f"  {error}", file=sys.stderr)
+            logger.error("  %s", error)
         sys.exit(1)
     else:
         print("All validations passed.")

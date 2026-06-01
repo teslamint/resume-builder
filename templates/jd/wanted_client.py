@@ -9,24 +9,19 @@ import json
 import logging
 import time
 import urllib.error
-import urllib.request
 from typing import Optional
 from urllib.parse import urlencode
 
 try:
-    from .http_client_base import http_json_request
+    from .http_client_base import http_json_request, http_text_request
 except ImportError:
-    from http_client_base import http_json_request
+    from http_client_base import http_json_request, http_text_request
 
 logger = logging.getLogger(__name__)
 
 WANTED_API_BASE = "https://www.wanted.co.kr/api/v4"
 WANTED_BASE_URL = "https://www.wanted.co.kr"
 WANTED_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json",
     "Referer": f"{WANTED_BASE_URL}/",
 }
@@ -99,13 +94,15 @@ def search_jobs(
 
 
 def _fetch_html(url: str) -> str:
-    req = urllib.request.Request(url, headers={
-        **WANTED_HEADERS,
-        "Accept": "text/html,application/xhtml+xml",
-    })
     try:
-        with urllib.request.urlopen(req, timeout=WANTED_REQUEST_TIMEOUT) as resp:
-            return resp.read().decode("utf-8")
+        return http_text_request(
+            url,
+            headers={
+                **WANTED_HEADERS,
+                "Accept": "text/html,application/xhtml+xml",
+            },
+            timeout=WANTED_REQUEST_TIMEOUT,
+        )
     except urllib.error.HTTPError as e:
         raise WantedAPIError(f"HTTP {e.code} for {url}") from e
     except urllib.error.URLError as e:

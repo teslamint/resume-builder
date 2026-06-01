@@ -11,6 +11,7 @@ Usage:
 """
 import argparse
 import json
+import logging
 import re
 import sys
 from datetime import datetime
@@ -23,6 +24,7 @@ from docx.oxml.ns import qn
 _SCRIPT_DIR = Path(__file__).parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent.parent
 _PRIVATE_DIR = _PROJECT_ROOT / "private"
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(_SCRIPT_DIR))
 from docx_helpers import (
@@ -854,8 +856,8 @@ def _fill_career_summary_legacy(doc, resume, display_companies, target_config, f
     for leftover in template_rows[len(display_companies):]:
         try:
             delete_paragraph(leftover)
-        except Exception:
-            pass
+        except (AttributeError, ValueError) as e:
+            logger.debug("Failed to delete leftover template row: %s", e)
 
 
 def _fill_core_experiences_legacy(doc, display_companies, target_config, font):
@@ -1130,8 +1132,8 @@ def _delete_guide_text(doc, mapping):
             if pat in text:
                 try:
                     delete_paragraph(p)
-                except Exception:
-                    pass
+                except (AttributeError, ValueError) as e:
+                    logger.debug("Failed to delete guide text paragraph: %s", e)
                 break
 
 
@@ -1162,7 +1164,7 @@ def cmd_fill(args):
 
     template = args.template or target_config.get("template_path", "")
     if not template:
-        print("Error: --template or template_path in target config required", file=sys.stderr)
+        logger.error("--template or template_path in target config required")
         sys.exit(1)
 
     output = args.output or target_config.get("output_path", "resume-headhunter.docx")

@@ -13,7 +13,7 @@ from wanted_client import (
 
 
 class TestRequest:
-    @patch("wanted_client.urllib.request.urlopen")
+    @patch("http_client_base.urllib.request.urlopen")
     def test_success(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"data": [{"id": 1}]}'
@@ -24,7 +24,7 @@ class TestRequest:
         result = _request("/jobs", {"search": "test"})
         assert result == {"data": [{"id": 1}]}
 
-    @patch("wanted_client.urllib.request.urlopen")
+    @patch("http_client_base.urllib.request.urlopen")
     def test_http_error(self, mock_urlopen):
         import urllib.error
         mock_urlopen.side_effect = urllib.error.HTTPError(
@@ -36,7 +36,7 @@ class TestRequest:
         except WantedAPIError as e:
             assert "HTTP 500" in str(e)
 
-    @patch("wanted_client.urllib.request.urlopen")
+    @patch("http_client_base.urllib.request.urlopen")
     def test_invalid_json(self, mock_urlopen):
         mock_resp = MagicMock()
         mock_resp.read.return_value = b"not json"
@@ -148,12 +148,19 @@ class TestSearchCompany:
 
 
 class TestFetchCompanyHtml:
-    @patch("wanted_client._fetch_html")
+    @patch("wanted_client.http_text_request")
     def test_returns_html(self, mock_fetch):
         mock_fetch.return_value = "<html>__NEXT_DATA__</html>"
         result = fetch_company_html("113")
         assert "__NEXT_DATA__" in result
-        mock_fetch.assert_called_once_with("https://www.wanted.co.kr/company/113")
+        mock_fetch.assert_called_once_with(
+            "https://www.wanted.co.kr/company/113",
+            headers={
+                "Accept": "text/html,application/xhtml+xml",
+                "Referer": "https://www.wanted.co.kr/",
+            },
+            timeout=15,
+        )
 
 
 class TestExperienceValues:

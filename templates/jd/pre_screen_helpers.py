@@ -10,14 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-try:
-    from .constants import JOB_POSTINGS_DIR
-    from .naming import slugify_company
-except ImportError:
-    from constants import JOB_POSTINGS_DIR
-    from naming import slugify_company
-
-
+from .constants import JOB_POSTINGS_DIR
+from .naming import slugify_company
 _CLOSED_MARKERS = (
     "채용 마감",
     "채용이 마감",

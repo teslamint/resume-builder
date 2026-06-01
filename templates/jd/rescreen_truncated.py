@@ -6,7 +6,7 @@ violations (Insight preamble, summary-only, frontmatter) or Python fallback
 templates (_run_llm() failure).
 
 Usage:
-    python3 templates/jd/rescreen_truncated.py [--dry-run]
+    python -m templates.jd.rescreen_truncated [--dry-run]
 """
 
 from __future__ import annotations

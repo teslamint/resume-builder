@@ -10,7 +10,6 @@ try:
 except ImportError:
     from constants import JOB_POSTINGS_DIR
 
-
 def extract_job_id(url: str) -> Optional[str]:
     """Extract job ID from various recruitment platform URLs.
 

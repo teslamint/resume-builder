@@ -8,28 +8,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-try:
-    from .auto_company import (
-        _append_enrichment_queue,
-        _append_thevc_source_note,
-        _has_thevc_source,
-        _inject_thevc_into_file,
-        is_headhunting_company,
-    )
-    from .ce_thevc import extract_thevc
-    from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
-except ImportError:
-    from auto_company import (
-        _append_enrichment_queue,
-        _append_thevc_source_note,
-        _has_thevc_source,
-        _inject_thevc_into_file,
-        is_headhunting_company,
-    )
-    from ce_thevc import extract_thevc
-    from company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
-
-
+from .auto_company import (
+    ENRICHMENT_QUEUE_PATH,
+    _append_thevc_source_note,
+    _has_thevc_source,
+    _inject_thevc_into_file,
+    is_headhunting_company,
+)
+from .ce_thevc import extract_thevc
+from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
+from .queue_utils import _append_to_queue
 BASE_DIR = Path(__file__).parent.parent.parent
 REPORT_PATH = BASE_DIR / "private" / "build" / "thevc_enrichment_report.md"
 
@@ -164,11 +152,11 @@ def enrich_candidate(candidate: Candidate, context) -> EnrichmentResult:
     try:
         data = extract_thevc(candidate.company, context)
     except Exception as exc:
-        _append_enrichment_queue(candidate.company)
+        _append_to_queue(ENRICHMENT_QUEUE_PATH, candidate.company)
         return EnrichmentResult(candidate, "error", message=str(exc))
 
     if not data:
-        _append_enrichment_queue(candidate.company)
+        _append_to_queue(ENRICHMENT_QUEUE_PATH, candidate.company)
         return EnrichmentResult(candidate, "not_found", message="TheVC search returned no company")
 
     has_investment = bool(data.investment_round or data.investment_total or data.investors)

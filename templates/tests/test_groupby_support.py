@@ -81,7 +81,7 @@ def test_run_quick_search_groupby_populates_queue_item_fields():
     }
     raw = RawJobResult(
         raw_id="8807",
-        canonical_id="groupby-8807",
+        job_id="groupby-8807",
         title="Backend Engineer",
         company="GroupBy Co",
         experience="경력 3년 이상",
@@ -126,7 +126,7 @@ def test_search_wanted_http_fallback_does_not_import_playwright_when_disabled():
     }
     outcome = ScrapeOutcome(results=[])
 
-    with patch.dict(sys.modules, {"browser_utils": None}), \
+    with patch.dict(sys.modules, {"browser_utils": None, "templates.jd.browser_utils": None}), \
          patch("search.get_rejected_companies", return_value=set()), \
          patch("search.search_wanted_api", return_value=outcome) as api_fallback:
         result = search.search_wanted("backend", config, search.SearchState())
@@ -178,7 +178,7 @@ def test_search_wanted_falls_back_to_api_when_playwright_import_missing():
     }
     outcome = ScrapeOutcome(results=[])
 
-    with patch.dict(sys.modules, {"browser_utils": None}), \
+    with patch.dict(sys.modules, {"browser_utils": None, "templates.jd.browser_utils": None}), \
          patch("search.get_rejected_companies", return_value=set()), \
          patch("search.search_wanted_api", return_value=outcome) as api_fallback:
         result = search.search_wanted("backend", config, search.SearchState())

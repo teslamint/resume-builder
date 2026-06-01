@@ -3,10 +3,10 @@
 JD Search - Automated job posting search and discovery.
 
 Usage:
-    python3 templates/jd/search.py                    # Run full search
-    python3 templates/jd/search.py --query "백엔드"   # Single query search
-    python3 templates/jd/search.py --dry-run          # Preview without processing
-    python3 templates/jd/search.py --status           # Show search state
+    python -m templates.jd.search                    # Run full search
+    python -m templates.jd.search --query "백엔드"   # Single query search
+    python -m templates.jd.search --dry-run          # Preview without processing
+    python -m templates.jd.search --status           # Show search state
 """
 
 import argparse
@@ -281,7 +281,7 @@ def _outcome_to_search_result(
         result.duplicates = fr.duplicates
         for raw in fr.accepted:
             posting = JobPosting(
-                job_id=raw.canonical_id,
+                job_id=raw.job_id,
                 url=raw.url,
                 title=raw.title,
                 company=raw.company,
@@ -410,7 +410,7 @@ def _prefetch_groupby(config: dict, state: "SearchState") -> "SearchResult":
     # Pre-filter GroupBy experience with API min/max values; text-only platforms use the common parser.
     exp_filtered: list = []
     for raw in outcome.results:
-        orig_item = next((it for it in items if f"groupby-{it['id']}" == raw.canonical_id), None)
+        orig_item = next((it for it in items if f"groupby-{it['id']}" == raw.job_id), None)
         if orig_item:
             exp_min, exp_max = groupby_experience_values(orig_item)
             if filter_experience(raw.experience, config, min_years=exp_min, max_years=exp_max):

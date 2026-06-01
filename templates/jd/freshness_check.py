@@ -13,17 +13,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 import sys
 from datetime import date, datetime
 from pathlib import Path
 
-try:
-    from .constants import SCREENING_DIR, JOB_POSTINGS_DIR
-except ImportError:
-    from constants import SCREENING_DIR, JOB_POSTINGS_DIR
-
+from .constants import SCREENING_DIR, JOB_POSTINGS_DIR
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PASS_DIR = JOB_POSTINGS_DIR / "pass"
+logger = logging.getLogger(__name__)
 
 
 def main() -> int:
@@ -41,7 +39,7 @@ def main() -> int:
     )
 
     if not SCREENING_DIR.exists():
-        print(f"Error: {SCREENING_DIR} not found", file=sys.stderr)
+        logger.error("%s not found", SCREENING_DIR)
         return 1
 
     pass_files = {f.name for f in PASS_DIR.iterdir() if f.suffix == ".md"} if PASS_DIR.exists() else set()
