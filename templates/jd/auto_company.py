@@ -18,6 +18,7 @@ try:
     from .http_client_base import http_text_request
     from .jd_content import _PAREN_RE as _HEADING_PAREN_RE, extract_heading_company, extract_metadata_from_jd
     from .naming import slugify_company
+    from .queue_utils import _append_to_queue
 except ImportError:
     from company_extractor import extract_company_info
     from company_match_verify import verify_company_match
@@ -25,6 +26,7 @@ except ImportError:
     from http_client_base import http_text_request
     from jd_content import _PAREN_RE as _HEADING_PAREN_RE, extract_heading_company, extract_metadata_from_jd
     from naming import slugify_company
+    from queue_utils import _append_to_queue
 
 _log = logging.getLogger(__name__)
 
@@ -426,26 +428,6 @@ def _append_thevc_source_note(file_path: Path, source_url: str, note: str) -> No
     file_path.write_text(content, encoding="utf-8")
 
 
-def _append_enrichment_queue(company: str) -> None:
-    ENRICHMENT_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing = set()
-    if ENRICHMENT_QUEUE_PATH.exists():
-        existing = {line.strip() for line in ENRICHMENT_QUEUE_PATH.read_text(encoding="utf-8").splitlines() if line.strip()}
-    if company not in existing:
-        with open(ENRICHMENT_QUEUE_PATH, "a", encoding="utf-8") as f:
-            f.write(company + "\n")
-
-
-def _append_saramin_enrichment_queue(company: str) -> None:
-    SARAMIN_ENRICHMENT_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing = set()
-    if SARAMIN_ENRICHMENT_QUEUE_PATH.exists():
-        existing = {line.strip() for line in SARAMIN_ENRICHMENT_QUEUE_PATH.read_text(encoding="utf-8").splitlines() if line.strip()}
-    if company not in existing:
-        with open(SARAMIN_ENRICHMENT_QUEUE_PATH, "a", encoding="utf-8") as f:
-            f.write(company + "\n")
-
-
 def _thevc_failure_note(status: str) -> str:
     if status == "not_logged_in":
         return "TheVC 로그인 필요로 투자정보를 수집하지 못했습니다."
@@ -543,7 +525,7 @@ def ensure_company_info(
 
                 thevc_note = _thevc_failure_note(thevc_status)
                 _inject_thevc_note_into_file(existing, thevc_note)
-                _append_enrichment_queue(company)
+                _append_to_queue(ENRICHMENT_QUEUE_PATH, company)
                 completeness = _completeness_score(existing)
                 return CompanyInfoResult(
                     company=company,
@@ -594,7 +576,7 @@ def ensure_company_info(
         else:
             thevc_note = _thevc_failure_note(thevc_status)
             if not dry_run:
-                _append_enrichment_queue(company)
+                _append_to_queue(ENRICHMENT_QUEUE_PATH, company)
 
         if thevc_mode == "require" and thevc_status != "success":
             raise RuntimeError(f"TheVC 투자정보 수집 실패({thevc_status}) - require 모드")
@@ -617,7 +599,7 @@ def ensure_company_info(
                 output_path = extraction.file_path
                 _log.info("회사 정보 추출 완료: %s (platforms=%s)", company, extraction.platforms_used)
             if "saramin" in extraction.platforms_failed:
-                _append_saramin_enrichment_queue(company)
+                _append_to_queue(SARAMIN_ENRICHMENT_QUEUE_PATH, company)
         except Exception as exc:
             _log.warning("회사 정보 추출 실패 (%s): %s — 스텁 fallback", company, exc)
             extraction = None

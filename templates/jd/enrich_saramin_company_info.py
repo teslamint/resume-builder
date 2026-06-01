@@ -17,7 +17,6 @@ from pathlib import Path
 try:
     from .auto_company import (
         SARAMIN_ENRICHMENT_QUEUE_PATH,
-        _append_saramin_enrichment_queue,
         _resolve_company_alias,
         is_headhunting_company,
     )
@@ -26,10 +25,10 @@ try:
     from .ce_types import PlatformData
     from .company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
     from .naming import slugify_company
+    from .queue_utils import _append_to_queue
 except ImportError:
     from auto_company import (
         SARAMIN_ENRICHMENT_QUEUE_PATH,
-        _append_saramin_enrichment_queue,
         _resolve_company_alias,
         is_headhunting_company,
     )
@@ -38,6 +37,7 @@ except ImportError:
     from ce_types import PlatformData
     from company_validator import COMPANY_INFO_DIR, CompanyData, parse_company_file, validate_company
     from naming import slugify_company
+    from queue_utils import _append_to_queue
 
 
 BASE_DIR = Path(__file__).parent.parent.parent
@@ -145,16 +145,16 @@ def enrich_candidate(candidate: SaraminCandidate, context) -> SaraminEnrichmentR
     try:
         saramin_data = extract_saramin(candidate.company, context)
     except Exception as exc:
-        _append_saramin_enrichment_queue(candidate.company)
+        _append_to_queue(SARAMIN_ENRICHMENT_QUEUE_PATH, candidate.company)
         return SaraminEnrichmentResult(candidate, "error", message=str(exc))
 
     if not saramin_data:
-        _append_saramin_enrichment_queue(candidate.company)
+        _append_to_queue(SARAMIN_ENRICHMENT_QUEUE_PATH, candidate.company)
         return SaraminEnrichmentResult(candidate, "not_found", message="Saramin search returned no company")
 
     has_data = saramin_data.industry or saramin_data.employee_count or saramin_data.avg_salary
     if not has_data:
-        _append_saramin_enrichment_queue(candidate.company)
+        _append_to_queue(SARAMIN_ENRICHMENT_QUEUE_PATH, candidate.company)
         return SaraminEnrichmentResult(candidate, "no_data", source_url=saramin_data.source_url, message="Saramin page yielded no extractable fields")
 
     file_path = candidate.file_path
