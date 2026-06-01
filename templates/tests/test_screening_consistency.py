@@ -136,10 +136,10 @@ class TestConditionLogicRules:
         triangle_count = conditions.count("△")
 
         if triangle_count > 0:
-            # 0.5절: any evidence conflict → hold path takes priority
-            assert verdict in ("지원 보류", "지원 추천"), (
+            # 0.5절: any evidence conflict → hold path (never auto-cut, never auto-recommend)
+            assert verdict == "지원 보류", (
                 f"{fixture_name}: △ present but verdict is {verdict!r} "
-                f"(0.5절 requires hold path, not auto-cut)"
+                f"(0.5절 requires hold path for manual review)"
             )
         elif pass_count == 4:
             assert verdict != "지원 비추천", (
