@@ -87,10 +87,14 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
 - [x] Golden-file regression tests for `auto_screening.py`
   - Fixed JD + rules → expected verdict structure
   - Mock LLM subprocess to return known output
-- [ ] Rule consistency tests: verify all 4 conditions + meta-rule 0.5 against sample corpus
-  - Deferred: requires private/ screening corpus as fixtures
-- [ ] Edge case coverage: polyglot rule, headhunter detection, closed-JD skip
-  - Deferred: requires private/ screening corpus as fixtures
+- [~] Rule consistency tests: verify all 4 conditions + meta-rule 0.5 against sample corpus
+  - Partially implemented: synthetic fixtures test prompt assembly + verdict parsing pipeline for all 4 conditions (연봉/리드전가/업무범위/조직변동성) and meta-rule 0.5 evidence hierarchy
+  - LLM is mocked → tests verify plumbing (rules reach prompt, verdict is parsed correctly), not actual rule application
+  - True rule-consistency verification against real corpus: still deferred (requires private/ screening fixtures)
+- [x] Edge case coverage: polyglot rule, headhunter detection, closed-JD skip
+  - headhunter detection: all 6 HEADHUNTING_KEYWORDS tested + negative case (deterministic)
+  - closed-JD: all _CLOSED_MARKERS covered (deterministic)
+  - polyglot: domain_filter.classify_domain returns "skip" for non-primary-stack backend JDs (deterministic)
 
 ## Phase 5: Observability (low priority, no rush)
 
@@ -106,8 +110,10 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
   - At minimum: add `logger.warning(f"...: {e}")` before swallowing
   - Where possible: catch specific exceptions (OSError, TimeoutError, json.JSONDecodeError)
   - 22 broad handlers addressed; defensive fallbacks (state loading) kept broad where narrowing proved unsafe
-- [ ] Consider `pyright --basic` in CI (type annotations already at 70-90% coverage)
-  - Deferred: evaluation-only item, not implementation
+- [x] Consider `pyright --basic` in CI (type annotations already at 70-90% coverage)
+  - Evaluated: pyright 1.1.409, `typeCheckingMode = "basic"`, 68 files → 40 errors (below 50-issue threshold)
+  - Config added to pyproject.toml (`[tool.pyright]` section) for local use
+  - Blocking CI deferred: 40 existing errors need fixing first (see `docs/superpowers/plans/pyright-evaluation.md`)
 
 ---
 
