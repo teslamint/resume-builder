@@ -18,7 +18,7 @@ Verify that interview sheet answers are grounded in the actual resume. Catches w
 ### Step 1: Run automated verification
 
 ```bash
-python3 templates/build/verify_content.py private/jd_analysis/interview/<interview-file>.md
+python -m templates.build.verify_content private/jd_analysis/interview/<interview-file>.md
 ```
 
 If `--resume` is not specified, defaults to `private/build/resume-job-base.md`.
@@ -46,7 +46,7 @@ For each ❌ ungrounded claim:
 ### Step 4: Re-run verification
 
 ```bash
-python3 templates/build/verify_content.py <interview-file>.md
+python -m templates.build.verify_content <interview-file>.md
 ```
 
 Confirm 0 ungrounded claims.

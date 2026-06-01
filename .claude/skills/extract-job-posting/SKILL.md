@@ -19,7 +19,7 @@ description: This skill should be used when the user asks to "extract job postin
 ### 0. 중복 체크 (필수)
 
 ```bash
-python3 templates/jd/pipeline.py --url "{URL}"
+python -m templates.jd.pipeline --url "{URL}"
 ```
 
 - `duplicate` → 기존 파일 경로 출력, 추출 스킵
@@ -42,7 +42,7 @@ URL prefix로 분기:
 #### Wanted
 
 ```bash
-python3 templates/jd/wanted_extract.py <job_id>
+python -m templates.jd.wanted_extract <job_id>
 ```
 
 - `job_id`는 URL `wanted.co.kr/wd/{job_id}`에서 추출
@@ -54,7 +54,7 @@ python3 templates/jd/wanted_extract.py <job_id>
 
 ```bash
 echo "<url>" > /tmp/remember_url.txt
-python3 templates/jd/remember_batch_extract.py /tmp/remember_url.txt
+python -m templates.jd.remember_batch_extract /tmp/remember_url.txt
 ```
 
 - 저장 경로: `private/job_postings/unprocessed/{id}-{company_slug}-{title_slug}.md` (자동)
@@ -161,7 +161,7 @@ python3 templates/jd/remember_batch_extract.py /tmp/remember_url.txt
 사용자: "이 채용 공고 정보 추출해줘: https://www.wanted.co.kr/wd/254599"
 
 응답 단계:
-1. `python3 templates/jd/pipeline.py --url "https://www.wanted.co.kr/wd/254599"`로 중복 체크
-2. 중복 아니면 `python3 templates/jd/wanted_extract.py 254599` 실행 (방법 A)
+1. `python -m templates.jd.pipeline --url "https://www.wanted.co.kr/wd/254599"`로 중복 체크
+2. 중복 아니면 `python -m templates.jd.wanted_extract 254599` 실행 (방법 A)
 3. stdout JSON의 `status == "ok"` 확인 → 자동 저장된 마크다운 파일 경로 보고
 4. status != ok 시 방법 B로 fallback
