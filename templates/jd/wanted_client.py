@@ -12,7 +12,11 @@ import urllib.error
 from typing import Optional
 from urllib.parse import urlencode
 
-from .http_client_base import http_json_request, http_text_request
+try:
+    from .http_client_base import http_json_request, http_text_request
+except ImportError:
+    from http_client_base import http_json_request, http_text_request
+
 logger = logging.getLogger(__name__)
 
 WANTED_API_BASE = "https://www.wanted.co.kr/api/v4"

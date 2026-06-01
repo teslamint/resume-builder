@@ -6,8 +6,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict
 
-from . import constants
-from .naming import normalize_company_name
+try:
+    from . import constants
+    from .naming import normalize_company_name
+except ImportError:
+    import constants
+
+    from naming import normalize_company_name
+
 _HEADING_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _PAREN_RE = re.compile(r"\([^)]*\)")
 

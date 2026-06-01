@@ -259,6 +259,31 @@ class TestLoadAndScrapeWanted:
         assert len(outcome.results) == 1
         assert outcome.candidate_count == 1
 
+    def test_row_level_exception_skips_bad_result_and_keeps_scraping(self):
+        class FakePlaywrightError(Exception):
+            pass
+
+        bad_link = MagicMock()
+        bad_link.get_attribute.return_value = "/wd/10001"
+        bad_link.inner_text.side_effect = FakePlaywrightError("element detached")
+
+        good_link = MagicMock()
+        good_link.get_attribute.return_value = "/wd/10002"
+        good_link.inner_text.return_value = "Senior Backend\nStableCo\n3년 이상"
+
+        page = _make_wanted_page(links=[bad_link, good_link])
+        config = SearchPageConfig(
+            base_url="https://www.wanted.co.kr",
+            post_load_delay=0, scroll_count=0, scroll_sleep=0,
+        )
+
+        with patch("search_helpers._load_playwright_error", return_value=FakePlaywrightError):
+            outcome = load_and_scrape_wanted(page, "https://url", config)
+
+        assert outcome.error is None
+        assert outcome.candidate_count == 2
+        assert [result.raw_id for result in outcome.results] == ["10002"]
+
 
 class TestLoadAndScrapeRemember:
     def test_filters_jdViewSource(self):

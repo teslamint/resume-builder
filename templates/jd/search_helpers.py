@@ -41,6 +41,15 @@ KNOWN_PARSE_EXCEPTIONS = (AttributeError, KeyError, TypeError, ValueError)
 
 
 @lru_cache(maxsize=1)
+def _load_playwright_error() -> type[BaseException] | None:
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module("templates.jd.browser_utils").PlaywrightError
+    with suppress(ImportError, AttributeError):
+        return importlib.import_module("browser_utils").PlaywrightError
+    return None
+
+
+@lru_cache(maxsize=1)
 def _load_playwright_timeout_error() -> type[BaseException] | None:
     with suppress(ImportError, AttributeError):
         return importlib.import_module(
@@ -58,6 +67,13 @@ def _is_timeout_exception(error: Exception) -> bool:
     if isinstance(error, TimeoutError):
         return True
     return str(error).strip().lower() == "timeout"
+
+
+def _is_row_parse_exception(error: Exception) -> bool:
+    if isinstance(error, KNOWN_PARSE_EXCEPTIONS):
+        return True
+    playwright_error = _load_playwright_error()
+    return playwright_error is not None and isinstance(error, playwright_error)
 
 
 def _fetch_html(url: str, timeout_seconds: int = 15) -> str:
@@ -347,9 +363,11 @@ def _load_and_scrape_browser(page, search_url: str, config: SearchPageConfig, sc
                 if result is None:
                     continue
                 outcome.results.append(result)
-            except KNOWN_PARSE_EXCEPTIONS as e:
-                logger.debug("Failed to parse search result row at %s: %s", search_url, e)
-                continue
+            except Exception as e:
+                if _is_row_parse_exception(e):
+                    logger.debug("Failed to parse search result row at %s: %s", search_url, e)
+                    continue
+                raise
 
     except Exception as e:
         outcome.error = e

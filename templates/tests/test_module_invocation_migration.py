@@ -24,10 +24,17 @@ ALLOWED_TOP_LEVEL_IMPORT_FALLBACKS = {
     "templates/jd/auto_processor.py",
     "templates/jd/auto_screening.py",
     "templates/jd/auto_state.py",
+    "templates/jd/domain_filter.py",
+    "templates/jd/groupby_client.py",
+    "templates/jd/jd_content.py",
     "templates/jd/pipeline.py",
+    "templates/jd/path_utils.py",
+    "templates/jd/remember_client.py",
     "templates/jd/search.py",
     "templates/jd/search_helpers.py",
     "templates/jd/search_quick.py",
+    "templates/jd/verdict.py",
+    "templates/jd/wanted_client.py",
 }
 
 def _iter_template_python_files() -> list[Path]:
@@ -71,16 +78,35 @@ def test_importerror_fallback_count_stays_bounded() -> None:
     for path in sorted((REPO_ROOT / "templates").glob("build/*.py")):
         count += path.read_text(encoding="utf-8").count("except ImportError")
 
-    assert count <= 15
+    assert count <= 22
 
 
 def test_auto_cli_help_works_via_direct_script_invocation() -> None:
+    result = _run_direct_cli_help("templates/jd/auto.py")
+
+    assert result.returncode == 0, result.stderr
+    assert "usage:" in result.stdout.lower()
+
+
+def test_pipeline_cli_help_works_via_direct_script_invocation() -> None:
+    result = _run_direct_cli_help("templates/jd/pipeline.py")
+
+    assert result.returncode == 0, result.stderr
+    assert "usage:" in result.stdout.lower()
+
+
+def test_search_cli_help_works_via_direct_script_invocation() -> None:
+    result = _run_direct_cli_help("templates/jd/search.py")
+
+    assert result.returncode == 0, result.stderr
+    assert "usage:" in result.stdout.lower()
+
+
+def _run_direct_cli_help(script_path: str) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        [sys.executable, "templates/jd/auto.py", "--help"],
+        [sys.executable, script_path, "--help"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )
-
-    assert result.returncode == 0, result.stderr
-    assert "usage:" in result.stdout.lower()
+    return result

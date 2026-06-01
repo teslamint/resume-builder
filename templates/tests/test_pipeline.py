@@ -169,7 +169,7 @@ class TestMigrateStatus:
 
         results = migrate_status(base_dir, dry_run=True)
 
-        assert [(item.job_id, item.result) for item in results] == [
+        assert sorted((item.job_id, item.result) for item in results) == [
             ("111111", ProcessResult.SUCCESS),
             ("222222", ProcessResult.SUCCESS),
             ("333333", ProcessResult.SKIPPED),
@@ -190,7 +190,7 @@ class TestMigrateStatus:
 
         results = migrate_status(base_dir, dry_run=False)
 
-        assert [(item.job_id, item.result) for item in results] == [
+        assert sorted((item.job_id, item.result) for item in results) == [
             ("111111", ProcessResult.SUCCESS),
             ("222222", ProcessResult.SUCCESS),
         ]

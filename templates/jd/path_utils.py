@@ -5,7 +5,11 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .constants import JOB_POSTINGS_DIR
+try:
+    from .constants import JOB_POSTINGS_DIR
+except ImportError:
+    from constants import JOB_POSTINGS_DIR
+
 def extract_job_id(url: str) -> Optional[str]:
     """Extract job ID from various recruitment platform URLs.
 
