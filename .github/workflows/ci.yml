@@ -10,6 +10,7 @@ on:
       - 'Dockerfile'
       - 'docker-compose.yml'
       - 'Makefile'
+      - 'pyproject.toml'
       - '.github/workflows/**'
   pull_request:
     branches: [main]
@@ -20,9 +21,26 @@ on:
       - 'Dockerfile'
       - 'docker-compose.yml'
       - 'Makefile'
+      - 'pyproject.toml'
       - '.github/workflows/**'
 
 jobs:
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyright pyyaml python-docx patchright playwright
+
+      - name: Run pyright
+        run: pyright
+
   test:
     runs-on: ubuntu-latest
     steps:
