@@ -191,14 +191,12 @@ def scan_job_postings() -> dict:
     """Scan all job posting files and return structured data."""
     jobs = {}
 
-    # Include conditional subdirectories (high, hold, middle, low)
+    # Include active conditional subdirectories.
     scan_dirs = [
         "applied",
         "conditional",
         "conditional/high",
         "conditional/hold",
-        "conditional/middle",
-        "conditional/low",
         "pass",
         "rejected",
     ]

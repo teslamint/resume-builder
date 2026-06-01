@@ -100,8 +100,6 @@ _BASE_SEARCH_DIRS = [
     JOB_POSTINGS_DIR / "conditional",
     JOB_POSTINGS_DIR / "conditional" / "high",
     JOB_POSTINGS_DIR / "conditional" / "hold",
-    JOB_POSTINGS_DIR / "conditional" / "middle",
-    JOB_POSTINGS_DIR / "conditional" / "low",
     JOB_POSTINGS_DIR / "applied",
     JOB_POSTINGS_DIR / "rejected",
     JOB_POSTINGS_DIR / "high_priority",

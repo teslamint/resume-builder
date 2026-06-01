@@ -175,6 +175,42 @@ class TestVerdictParsing(unittest.TestCase):
         self.assertEqual(classify_by_verdict("PASS"), "pass")
 
 
+class TestPipelineStatus(unittest.TestCase):
+    """Pipeline status folder accounting."""
+
+    def test_status_excludes_retired_conditional_tier_buckets(self):
+        import pipeline
+
+        original_dir = pipeline.JOB_POSTINGS_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                pipeline.JOB_POSTINGS_DIR = tmp_path
+
+                for folder in (
+                    "pass",
+                    "conditional/high",
+                    "conditional/hold",
+                    "conditional/middle",
+                    "conditional/low",
+                    "applied",
+                    "rejected",
+                    "unprocessed",
+                ):
+                    path = tmp_path / folder
+                    path.mkdir(parents=True)
+                    (path / "123-testco-backend.md").write_text("# JD\n", encoding="utf-8")
+
+                status = pipeline.get_status()
+
+                self.assertNotIn("conditional/middle", status)
+                self.assertNotIn("conditional/low", status)
+                self.assertEqual(status["conditional/high"], 1)
+                self.assertEqual(status["conditional/hold"], 1)
+        finally:
+            pipeline.JOB_POSTINGS_DIR = original_dir
+
+
 class TestAddFrontmatterStatus(unittest.TestCase):
     """Step 5: add_frontmatter_status tests."""
 

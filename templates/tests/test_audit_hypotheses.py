@@ -124,8 +124,6 @@ def test_load_file_locations_includes_all_tracked_posting_folders(tmp_path, monk
             tmp_path / "conditional",
             tmp_path / "conditional" / "hold",
         ),
-        "middle": tmp_path / "conditional" / "middle",
-        "low": tmp_path / "conditional" / "low",
         "rejected": tmp_path / "rejected",
     }
     for label, paths in folder_map.items():
@@ -144,9 +142,12 @@ def test_load_file_locations_includes_all_tracked_posting_folders(tmp_path, monk
 
     assert locations["123-hold-conditional-backend.md"] == "hold"
     assert locations["123-hold-hold-backend.md"] == "hold"
-    assert locations["123-middle-middle-backend.md"] == "middle"
-    assert locations["123-low-low-backend.md"] == "low"
     assert locations["123-rejected-rejected-backend.md"] == "rejected"
+
+
+def test_default_file_locations_exclude_retired_conditional_tier_buckets():
+    assert "middle" not in audit.JOB_POSTING_DIRS
+    assert "low" not in audit.JOB_POSTING_DIRS
 
 
 def test_pass_folder_cut_scope_uses_folder_ground_truth():

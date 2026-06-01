@@ -59,8 +59,6 @@ JOB_POSTING_DIRS = {
         JOB_POSTINGS_DIR / "conditional",
         JOB_POSTINGS_DIR / "conditional" / "hold",
     ),
-    "middle": JOB_POSTINGS_DIR / "conditional" / "middle",
-    "low": JOB_POSTINGS_DIR / "conditional" / "low",
     "applied": JOB_POSTINGS_DIR / "applied",
     "rejected": JOB_POSTINGS_DIR / "rejected",
     "unprocessed": JOB_POSTINGS_DIR / "unprocessed",
@@ -68,9 +66,8 @@ JOB_POSTING_DIRS = {
 
 # Folders whose membership is the direct output of the verdict pipeline.
 # H3 mismatch count is restricted to these so that status-managed folders
-# (applied/rejected/unprocessed) and unscored buckets (middle/low) do not
-# inflate the metric — those moves are driven by application status, not
-# by re-running screening.
+# (applied/rejected/unprocessed) do not inflate the metric — those moves are
+# driven by application status, not by re-running screening.
 H3_VERDICT_SCOPE = {"pass", "hold", "high"}
 
 # ---------- helpers ----------

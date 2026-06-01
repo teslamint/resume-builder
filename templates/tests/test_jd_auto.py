@@ -799,6 +799,14 @@ class TestScreeningOnlyFindsUnprocessed(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_base_search_dirs_exclude_retired_conditional_tier_buckets(self):
+        import path_utils
+
+        search_dirs = {str(path) for path in path_utils._BASE_SEARCH_DIRS}
+
+        self.assertFalse(any(path.endswith("conditional/middle") for path in search_dirs))
+        self.assertFalse(any(path.endswith("conditional/low") for path in search_dirs))
+
 
 class TestAutoJdPathAfterClassify(unittest.TestCase):
     """Verify that jd_path in result row reflects post-classification file location."""
