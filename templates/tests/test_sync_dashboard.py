@@ -67,3 +67,39 @@ def test_from_obsidian_resolves_retired_conditional_tier_buckets_for_moves(
     target = sync_dashboard.JOB_POSTINGS / "applied" / source.name
     assert not source.exists()
     assert target.exists()
+
+
+def test_from_obsidian_prefers_active_posting_over_retired_lookup_copy(
+    tmp_path,
+    monkeypatch,
+):
+    sync_dashboard = _load_sync_dashboard_module()
+    monkeypatch.setattr(sync_dashboard, "JOB_POSTINGS", tmp_path / "job_postings")
+
+    active_dir = sync_dashboard.JOB_POSTINGS / "pass"
+    retired_dir = sync_dashboard.JOB_POSTINGS / "conditional" / "middle"
+    active_dir.mkdir(parents=True)
+    retired_dir.mkdir(parents=True)
+
+    active = active_dir / "333-active-backend.md"
+    retired = retired_dir / "333-retired-backend.md"
+    active.write_text("# Active JD\n", encoding="utf-8")
+    retired.write_text("# Retired JD\n", encoding="utf-8")
+
+    dashboard = tmp_path / "dashboard.md"
+    dashboard.write_text(
+        "\n".join(
+            [
+                "| ID | 회사 | 포지션 | 최종 판단 | 핵심 사유 |",
+                "| --- | --- | --- | --- | --- |",
+                "| 333 | ActiveCo | Backend | 지원 | dashboard update |",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    sync_dashboard.from_obsidian(dry_run=False, dashboard_path=dashboard)
+
+    assert not active.exists()
+    assert (sync_dashboard.JOB_POSTINGS / "applied" / active.name).exists()
+    assert retired.exists()

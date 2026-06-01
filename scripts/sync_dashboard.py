@@ -209,6 +209,7 @@ def scan_job_postings(*, include_lookup_only: bool = False) -> dict:
     scan_dirs = list(ACTIVE_JOB_POSTING_SCAN_DIRS)
     if include_lookup_only:
         scan_dirs.extend(LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS)
+    lookup_only_dirs = set(LOOKUP_ONLY_JOB_POSTING_SCAN_DIRS)
 
     for status_dir in scan_dirs:
         dir_path = JOB_POSTINGS / status_dir
@@ -226,8 +227,8 @@ def scan_job_postings(*, include_lookup_only: bool = False) -> dict:
             
             # Use filename as unique key if no job_id
             key = job_id or file.stem
-            
-            jobs[key] = {
+
+            job = {
                 "file": file,
                 "filename": file.name,
                 "status_dir": status_dir,
@@ -238,6 +239,10 @@ def scan_job_postings(*, include_lookup_only: bool = False) -> dict:
                 "position": position,
                 "reason": fm.get("reason", ""),
             }
+            if status_dir in lookup_only_dirs:
+                jobs.setdefault(key, job)
+            else:
+                jobs[key] = job
     
     return jobs
 
