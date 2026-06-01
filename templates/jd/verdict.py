@@ -146,5 +146,19 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
     if candidates:
         return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
 
+    # Legacy fallback: top-level blockquote verdicts (files without ## 최종 판정 section)
+    legacy_quote_patterns = [
+        r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
+        r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
+    ]
+    for pattern in legacy_quote_patterns:
+        for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):
+            v = normalize_verdict(match.group(1))
+            if v:
+                candidates.append(v)
+
+    if candidates:
+        return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
+
     heading_candidates = re.findall(r"^\s*#{2,6}\s*(.+?)\s*$", screening_content, re.MULTILINE)
     return _pick_worst_case_verdict(heading_candidates)
