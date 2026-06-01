@@ -238,6 +238,7 @@ class TestLoadAndScrapeWanted:
         assert outcome.results[0].job_id == "12345"
         assert outcome.results[0].title == "Senior Backend"
         assert outcome.results[0].company == "TestCo"
+        assert outcome.results[0].url == "https://www.wanted.co.kr/wd/12345?query=test"
         assert outcome.results[0].platform == "wanted"
         assert outcome.candidate_count == 1
 
@@ -277,6 +278,7 @@ class TestLoadAndScrapeRemember:
         outcome = load_and_scrape_remember(page, "https://url", config)
         assert len(outcome.results) == 1
         assert outcome.results[0].job_id == "remember-111"
+        assert outcome.results[0].url == "https://career.rememberapp.co.kr/job/posting/111"
 
     def test_remember_dual_key(self):
         link = MagicMock()
@@ -336,6 +338,7 @@ class TestLoadAndScrapeWantedHttp:
         assert outcome.results[0].raw_id == "12345"
         assert outcome.results[0].title == "Senior Backend"
         assert outcome.results[0].company == "TestCo"
+        assert outcome.results[0].url == "https://www.wanted.co.kr/wd/12345"
         assert outcome.results[1].raw_id == "67890"
 
     @patch("search_helpers.http_text_request")
@@ -370,6 +373,7 @@ class TestLoadAndScrapeRememberHttp:
         assert outcome.results[0].job_id == "remember-44444"
         assert outcome.results[0].company == "CompanyA"
         assert outcome.results[0].title == "Title1"
+        assert outcome.results[0].url == "https://career.rememberapp.co.kr/job/posting/44444"
 
     @patch("search_helpers.http_text_request")
     def test_filters_without_jdViewSource(self, mock_fetch):
