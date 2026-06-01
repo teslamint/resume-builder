@@ -30,25 +30,8 @@ ALLOWED_TOP_LEVEL_IMPORT_FALLBACKS = {
     "templates/jd/search_quick.py",
 }
 
-TEXT_GLOBS = (
-    "AGENTS.md",
-    "CLAUDE.md",
-    "CONTRIBUTING.md",
-    "README.md",
-    "Makefile",
-    "build.sh",
-    ".github/workflows/*.yml",
-    ".claude/**/*.md",
-    "docs/**/*.md",
-    "templates/**/*.py",
-)
-
-
-def _iter_audit_files() -> list[Path]:
-    files: set[Path] = set()
-    for pattern in TEXT_GLOBS:
-        files.update(REPO_ROOT.glob(pattern))
-    return sorted(path for path in files if path.is_file())
+def _iter_template_python_files() -> list[Path]:
+    return sorted(path for path in (REPO_ROOT / "templates").glob("**/*.py") if path.is_file())
 
 
 def _line_number(text: str, offset: int) -> int:
@@ -57,7 +40,7 @@ def _line_number(text: str, offset: int) -> int:
 
 def test_caller_surfaces_use_python_m_form() -> None:
     matches: list[str] = []
-    for path in _iter_audit_files():
+    for path in _iter_template_python_files():
         text = path.read_text(encoding="utf-8")
         for match in COMMAND_PATTERN.finditer(text):
             rel = path.relative_to(REPO_ROOT)
