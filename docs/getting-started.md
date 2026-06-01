@@ -108,16 +108,16 @@ resume/
 
 ```bash
 # 전체 자동화: 1단계 검색 → 2단계 JD 추출/회사정보/스크리닝/분류
-python3 templates/jd/auto.py
+python -m templates.jd.auto
 
 # 검색 없이 URL 파일로 실행
-python3 templates/jd/auto.py --from-urls private/job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
+python -m templates.jd.auto --from-urls private/job_postings/unprocessed/search_YYYYMMDD_HHMM.txt
 
 # 스타트업 투자정보(TheVC) 처리 정책
-python3 templates/jd/auto.py --thevc-mode auto|skip|require
+python -m templates.jd.auto --thevc-mode auto|skip|require
 
 # 이전 실행에서 미완료 항목만 재처리
-python3 templates/jd/auto.py --resume
+python -m templates.jd.auto --resume
 ```
 
 주요 출력:
