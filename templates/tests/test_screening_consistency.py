@@ -45,6 +45,7 @@ class TestGoldenVerdictParsing:
     EXPECTED_VERDICTS = {
         "golden_salary_reject.md": "지원 비추천",
         "golden_lead_handoff_reject.md": "지원 비추천",
+        "golden_scope_reject.md": "지원 비추천",
         "golden_all_pass_recommend.md": "지원 추천",
         "golden_evidence_hierarchy_hold.md": "지원 보류",
         "golden_volatility_reject.md": "지원 비추천",
@@ -88,6 +89,12 @@ class TestGoldenConditionConsistency:
         conditions = self._extract_conditions(content)
         assert len(conditions) == 4
         assert all(c == "⭕" for c in conditions)
+
+    def test_scope_reject_has_scope_fail(self):
+        content = (FIXTURES_DIR / "golden_scope_reject.md").read_text(encoding="utf-8")
+        conditions = self._extract_conditions(content)
+        assert len(conditions) == 4
+        assert conditions[2] == "❌"  # ③ scope
 
     def test_volatility_reject_has_volatility_fail(self):
         content = (FIXTURES_DIR / "golden_volatility_reject.md").read_text(encoding="utf-8")

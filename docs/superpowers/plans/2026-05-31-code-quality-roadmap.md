@@ -89,7 +89,7 @@ Phase 0 #2 (normalize_company_name) ──► 3E (slugify consolidation, same na
   - Mock LLM subprocess to return known output
 - [x] Rule consistency tests: verify all 4 conditions + meta-rule 0.5 against sample corpus
   - Synthetic fixtures: mocked LLM tests verify prompt assembly + verdict parsing for all 4 conditions
-  - Golden fixtures (committed): 5 sanitized screening outputs covering salary/lead/scope/volatility reject + evidence hierarchy hold
+  - Golden fixtures (committed): 6 sanitized screening outputs covering salary/lead/scope/volatility reject + all-pass recommend + evidence hierarchy hold
   - Parser robustness: 35 verdict format variants from real corpus (emoji/bold/table/annotation patterns)
   - Condition-logic coherence: automated verification that 4-condition results match final verdict per 0.5절 rules
   - Full corpus sweep (1091 files): remains in operational audit scripts (audit_05.py, audit_hypotheses.py), not pytest
