@@ -114,27 +114,25 @@ def parse_verdict_from_screening(screening_content: str) -> Optional[VerdictType
 
     When multiple verdict blocks exist (e.g. re-screened files), returns
     the most conservative (worst-case) verdict for routing safety.
+    Collects from both heading-style and section/table verdicts before deciding.
     """
     candidates: List[VerdictType] = []
 
-    single_line_patterns = [
+    # Heading-style verdicts (scoped: only ### headings are unambiguous verdict markers)
+    heading_verdict_patterns = [
         r"^\s*#{1,6}\s*최종\s*판정\s*[:：\-]\s*(.+?)\s*$",
         r"^\s*#{1,6}\s*최종\s*판정\s+(.+?)\s*$",
-        r"^\s*>\s*판정\s*[:：]\s*(.+?)\s*$",
-        r"^\s*>\s*최종\s*판정\s*[:：]\s*(.+?)\s*$",
         r"^\s*\|\s*최종\s*판단\s*\|\s*(.+?)\s*\|",
         r"^\s*\*\*결론\*\*\s*[:：]\s*(.+?)\s*$",
         r"^\s*-\s*\*\*최종\s*판정\*\*\s*[:：]\s*(.+?)\s*$",
     ]
-    for pattern in single_line_patterns:
+    for pattern in heading_verdict_patterns:
         for match in re.finditer(pattern, screening_content, re.IGNORECASE | re.MULTILINE):
             v = normalize_verdict(match.group(1))
             if v:
                 candidates.append(v)
 
-    if candidates:
-        return min(candidates, key=lambda v: VERDICT_PRIORITY[v])
-
+    # Section-based extraction (handles table and blockquote formats within verdict sections)
     section_patterns = [
         r"(?is)^##\s*최종\s*판정\s*\n(.*?)(?=^##\s|\Z)",
         r"(?is)^##\s*판정\s*\n(.*?)(?=^##\s|\Z)",
